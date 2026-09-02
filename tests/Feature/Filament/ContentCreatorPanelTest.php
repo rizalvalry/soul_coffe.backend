@@ -56,6 +56,21 @@ class ContentCreatorPanelTest extends TestCase
     }
 
     /**
+     * Renders the actual pages, not just the permission booleans.
+     *
+     * A misnamed Filament component or a bad column definition passes every authorisation check
+     * and then throws the moment someone opens the screen — which is a defect only a render
+     * catches.
+     */
+    public function test_the_news_pages_render_for_a_content_creator(): void
+    {
+        $this->actingAs($this->makeUser(Role::CONTENT_CREATOR));
+
+        $this->get(NewsPostResource::getUrl('index'))->assertSuccessful();
+        $this->get(NewsPostResource::getUrl('create'))->assertSuccessful();
+    }
+
+    /**
      * The guard that matters, and the one that must not rot.
      *
      * Enumerated from Filament's own registry rather than a hand-written list, so a resource added
