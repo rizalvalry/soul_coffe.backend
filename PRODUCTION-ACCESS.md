@@ -1,6 +1,6 @@
-# Soul Coffeemate — Akses Build Produksi (v1.0.2)
+# Soul Coffeemate — Akses Build Produksi (v1.0.3)
 
-Ini **bukan** build demo. `dist/soul-coffeemate-v1.0.2.apk` bicara langsung ke API produksi di
+Ini **bukan** build demo. `dist/soul-coffeemate-v1.0.3.apk` bicara langsung ke API produksi di
 `https://soulcoffee.rafancloud.com/api/v1` — setiap alokasi, refill request, foto, dan tanda
 tangan yang dibuat lewat APK ini **tersimpan sungguhan** di database live. Kalau butuh alur yang
 aman diulang-ulang tanpa konsekuensi, pakai `dist/soul-coffeemate-DEMO-v1.0.1.apk` (lihat
@@ -43,18 +43,23 @@ baru (lihat bagian "Menambah akun" di bawah).
 
 ## APK
 
-**Berkas:** `dist/soul-coffeemate-v1.0.2.apk`
+**Berkas:** `dist/soul-coffeemate-v1.0.3.apk`
 
 | Properti | Nilai |
 |---|---|
 | Ukuran | 22.7 MB |
 | Package | `id.soulcoffeemate.ops.demo` |
-| Versi | 1.0.2 (versionCode 3) |
+| Versi | 1.0.3 (versionCode 4) |
 | Min Android | **7.0** (API 24) |
 | Target | Android 16 (API 36) |
 | Arsitektur | `arm64-v8a`, `armeabi-v7a` |
-| SHA-256 | `d6e6d0eb4474e1fd66b158fd339ca429db55c46e514370fb25fa97fffbd463d8` |
-| Tanda tangan | Sama dengan v1.0.0/v1.0.1 — kalau sudah pasang salah satu, tinggal install ini, tidak perlu uninstall dulu |
+| SHA-256 | `b2f7240f331a86c015071c31a8a8456285fd6e3970a16ee308fa901b014ed222` |
+| Tanda tangan | Sama dengan v1.0.0/v1.0.1/v1.0.2 — kalau sudah pasang salah satu, tinggal install ini, tidak perlu uninstall dulu |
+
+**Beda dari v1.0.2:** hanya lapisan realtime — Reverb (tidak bisa jalan di hosting ini, lihat
+bagian "Realtime (Pusher)" di bawah) diganti Pusher Channels, dan layar Approval Finance kini
+ikut auto-refresh. Tidak ada perubahan pada login, refill, alokasi, atau stok — semua verifikasi
+API live dari v1.0.2 di bawah ini tetap berlaku apa adanya untuk v1.0.3.
 
 Package masih diberi akhiran `.demo` (peninggalan penamaan awal) meski build ini sudah bicara ke
 data nyata — akan diganti sebelum rilis Play Store yang sesungguhnya.
@@ -90,7 +95,7 @@ Sama seperti build demo sebelumnya — lihat `DEMO-ACCESS.md` bagian "Izin yang 
 
 ### Cara memasang
 
-1. Buka repositori ini dari browser HP → folder `dist/` → unduh `soul-coffeemate-v1.0.2.apk`.
+1. Buka repositori ini dari browser HP → folder `dist/` → unduh `soul-coffeemate-v1.0.3.apk`.
 2. Izinkan **Install unknown apps** untuk browser yang dipakai.
 3. Buka berkas yang terunduh → **Install**.
 4. Play Protect akan memperingatkan karena APK ini tidak ditandatangani sertifikat Play Store —
