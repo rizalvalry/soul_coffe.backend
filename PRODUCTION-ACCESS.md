@@ -138,12 +138,17 @@ broadcaster (`PublishOutboxEvent`) masuk ke tabel `jobs` dan menunggu di sana se
 tidak ada yang memprosesnya. Shared hosting ini tidak punya `supervisorctl`/`systemd` untuk
 proses persisten, jadi jalannya lewat **cron job** di hPanel (Advanced → Cron Jobs), tiap menit:
 ```bash
-* * * * * cd /home/USERNAME/domains/soulcoffee.rafancloud.com/public_html && php artisan queue:work --stop-when-empty --max-time=55 >> /dev/null 2>&1
+* * * * * cd /home/u253446757/domains/rafancloud.com/public_html/soulcoffee && /usr/bin/php artisan queue:work --stop-when-empty --max-time=55 >> /dev/null 2>&1
 ```
-Sesuaikan path dengan lokasi project sesungguhnya di server (belum saya konfirmasi — saya tidak
-punya akses SSH untuk mengeceknya langsung). `--stop-when-empty` membuat proses keluar begitu
-antrean kosong, `--max-time=55` jadi jaring pengaman supaya tidak tumpang tindih dengan
-pemanggilan cron berikutnya di menit yang sama.
+Path di atas sudah diverifikasi lewat SSH — subdomain `soulcoffee.rafancloud.com` document
+root-nya menunjuk ke folder project di dalam `public_html` domain utama, bukan ke folder
+`domains/soulcoffee.rafancloud.com/` tersendiri, jadi bentuk path yang tertulis di draft
+sebelumnya tidak akan pernah cocok. `--stop-when-empty` membuat proses keluar begitu antrean
+kosong, `--max-time=55` jadi jaring pengaman supaya tidak tumpang tindih dengan pemanggilan cron
+berikutnya di menit yang sama.
+
+Cron **tidak bisa dipasang lewat SSH** di hosting ini: shell-nya tidak punya perintah `crontab`
+sama sekali (sudah dicoba). Satu-satunya jalur adalah UI hPanel → Advanced → Cron Jobs.
 
 **Cara memastikan keduanya benar-benar jalan:** kirim satu refill request lewat APK, lalu
 `SELECT * FROM jobs` harus kosong dalam &lt;1 menit (bukan menumpuk), dan HP lain yang sedang
