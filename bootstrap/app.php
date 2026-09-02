@@ -20,6 +20,17 @@ return Application::configure(basePath: dirname(__DIR__))
         ['prefix' => 'api/v1', 'middleware' => ['auth:sanctum']],
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // This app has no web login route. Authenticate::unauthenticated() calls redirectTo()
+        // to build the guest-redirect target whenever the request does not itself look like it
+        // expects JSON (i.e. no Accept: application/json) - before the exception handler's
+        // shouldRenderJsonWhen below ever runs. The default redirectTo() falls back to
+        // route('login'), which does not exist here, so an unauthenticated api/* request
+        // throws RouteNotFoundException (500) instead of returning 401. Returning null for
+        // api/* keeps the redirect target empty so unauthenticated() constructs the
+        // AuthenticationException without exploding, and the handler below then renders it
+        // as JSON.
+        $middleware->redirectGuestsTo(fn ($request) => $request->is('api/*') ? null : route('login'));
+
         // Applied per-route rather than globally: only state transitions require a key, and a
         // global copy would run twice on routes that also declare it.
         $middleware->alias([
