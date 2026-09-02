@@ -31,5 +31,11 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        // Everything under api/* is a JSON API and must answer in JSON, even when the caller
+        // forgets `Accept: application/json`. Without this, Laravel treats a validation failure
+        // as a web form error and answers 302 with an HTML redirect — a mobile client then sees
+        // a redirect instead of the 422 it needs, and the real error message is lost.
+        $exceptions->shouldRenderJsonWhen(
+            fn ($request) => $request->is('api/*') || $request->expectsJson()
+        );
     })->create();
