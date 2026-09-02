@@ -54,6 +54,10 @@ class UserResource extends JsonResource
             'cart_id' => $cartId,
             'kitchen_name' => $kitchenName,
             'kitchen_id' => $kitchenId,
+            // Whether a PIN exists, never the PIN itself. The Settings screen needs this to show
+            // "change" versus "create", and the login screen needs it to decide whether offering
+            // PIN sign-in on this device would lead anywhere.
+            'has_login_pin' => $user->login_pin_hash !== null,
         ];
     }
 }

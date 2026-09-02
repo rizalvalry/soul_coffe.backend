@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BadgeController;
 use App\Http\Controllers\Api\CartController;
 use App\Http\Controllers\Api\LocationController;
+use App\Http\Controllers\Api\LoginPinController;
 use App\Http\Controllers\Api\MeController;
 use App\Http\Controllers\Api\MediaController;
 use App\Http\Controllers\Api\NotificationController;
@@ -30,9 +31,21 @@ use Illuminate\Support\Facades\Route;
 Route::post('auth/login', [AuthController::class, 'login'])
     ->middleware('throttle:10,1'); // credential stuffing guard
 
+// Tighter than the password route on purpose: a 6-digit PIN is a millionth of the search space
+// a password is, so the network-level limit is halved. The per-account lockout in
+// AuthController::loginWithPin is the guard that actually matters — this one only slows a
+// single source down, and every staff phone on one carrier shares an address.
+Route::post('auth/login-pin', [AuthController::class, 'loginWithPin'])
+    ->middleware('throttle:5,1');
+
 Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('auth/logout', [AuthController::class, 'logout']);
     Route::get('me', [MeController::class, 'show']);
+
+    // The optional PIN sign-in credential. Setting it re-checks the account password — see
+    // LoginPinController for why a valid token alone is not enough to mint one.
+    Route::post('me/login-pin', [LoginPinController::class, 'store']);
+    Route::delete('me/login-pin', [LoginPinController::class, 'destroy']);
 
     // ── Master data (read-only for the mobile client) ───────────────────────
     Route::get('products', [ProductController::class, 'index']);

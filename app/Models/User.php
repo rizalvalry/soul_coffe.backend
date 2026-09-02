@@ -30,6 +30,7 @@ class User extends Authenticatable implements FilamentUser, HasName
         'role',
         'kitchen_id',
         'pin_hash',
+        'login_pin_hash',
         'is_active',
     ];
 
@@ -41,6 +42,7 @@ class User extends Authenticatable implements FilamentUser, HasName
     protected $hidden = [
         'password',
         'pin_hash',
+        'login_pin_hash',
     ];
 
     /**
@@ -52,6 +54,7 @@ class User extends Authenticatable implements FilamentUser, HasName
             'password' => 'hashed',
             'role' => Role::class,
             'is_active' => 'boolean',
+            'login_pin_locked_until' => 'datetime',
         ];
     }
 
