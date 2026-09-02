@@ -10,6 +10,7 @@ use App\Filament\Resources\DailyTargets\Tables\DailyTargetsTable;
 use App\Models\DailyTarget;
 use BackedEnum;
 use UnitEnum;
+use App\Filament\Concerns\AdministratorOnly;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -17,6 +18,8 @@ use Filament\Tables\Table;
 
 class DailyTargetResource extends Resource
 {
+    use AdministratorOnly;
+
     protected static ?string $model = DailyTarget::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedFlag;

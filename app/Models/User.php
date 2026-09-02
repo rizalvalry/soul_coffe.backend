@@ -68,7 +68,12 @@ class User extends Authenticatable implements FilamentUser, HasName
      */
     public function canAccessPanel(Panel $panel): bool
     {
-        return $this->is_active && $this->role === Role::ADMINISTRATOR;
+        // CONTENT_CREATOR reaches the panel too, but sees only the news feed: every other
+        // resource gates on ADMINISTRATOR in its own `canViewAny()`. Panel access is the door;
+        // it is not the authorisation, and it never grants sight of a refill, a price, or a
+        // settlement.
+        return $this->is_active
+            && in_array($this->role, [Role::ADMINISTRATOR, Role::CONTENT_CREATOR], true);
     }
 
     public function getFilamentName(): string

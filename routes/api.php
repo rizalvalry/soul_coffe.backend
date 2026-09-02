@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\LocationController;
 use App\Http\Controllers\Api\LoginPinController;
 use App\Http\Controllers\Api\MeController;
 use App\Http\Controllers\Api\MediaController;
+use App\Http\Controllers\Api\NewsController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\RefillRequestController;
@@ -86,6 +87,14 @@ Route::middleware('auth:sanctum')->group(function (): void {
             Route::post('claim', [RefillTransitionController::class, 'claim']);
             Route::post('deliver', [RefillTransitionController::class, 'deliver']);
         });
+
+    // ── News feed (authored in the Filament panel by CONTENT_CREATOR) ──────
+    // Read-only from the client. The only writes are the reader's own receipt and reaction,
+    // which belong to the reader rather than to the post.
+    Route::get('news', [NewsController::class, 'index']);
+    Route::get('news/{news}', [NewsController::class, 'show']);
+    Route::post('news/{news}/read', [NewsController::class, 'markRead']);
+    Route::post('news/{news}/react', [NewsController::class, 'react']);
 
     // ── Notifications & badges (requirement 3 support) ─────────────────────
     Route::get('notifications', [NotificationController::class, 'index']);

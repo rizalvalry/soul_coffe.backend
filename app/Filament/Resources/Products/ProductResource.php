@@ -11,6 +11,7 @@ use App\Filament\Resources\Products\Tables\ProductsTable;
 use App\Models\Product;
 use BackedEnum;
 use UnitEnum;
+use App\Filament\Concerns\AdministratorOnly;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -18,6 +19,8 @@ use Filament\Tables\Table;
 
 class ProductResource extends Resource
 {
+    use AdministratorOnly;
+
     protected static ?string $model = Product::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedShoppingBag;

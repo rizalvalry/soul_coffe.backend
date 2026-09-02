@@ -10,6 +10,7 @@ use App\Filament\Resources\Locations\Tables\LocationsTable;
 use App\Models\Location;
 use BackedEnum;
 use UnitEnum;
+use App\Filament\Concerns\AdministratorOnly;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -17,6 +18,8 @@ use Filament\Tables\Table;
 
 class LocationResource extends Resource
 {
+    use AdministratorOnly;
+
     protected static ?string $model = Location::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedMapPin;

@@ -9,6 +9,7 @@ use App\Filament\Resources\AuditLogs\Tables\AuditLogsTable;
 use App\Models\AuditLog;
 use BackedEnum;
 use UnitEnum;
+use App\Filament\Concerns\AdministratorOnly;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -17,6 +18,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class AuditLogResource extends Resource
 {
+    use AdministratorOnly;
+
     protected static ?string $model = AuditLog::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedShieldCheck;
