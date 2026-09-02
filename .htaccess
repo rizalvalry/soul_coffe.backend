@@ -1,0 +1,26 @@
+# Soul Coffeemate — root guard for subdomain deployment (docroot = project root).
+#
+# soulcoffee.rafancloud.com's document root stays at the project root (not ./public) per
+# hosting-panel decision. Every request is rewritten internally into public/, so Laravel's
+# front controller handles it exactly as if the docroot pointed at public/ directly. Unlike
+# the old /soulcoffee/... subdirectory deployment, there is no extra URL prefix here, so
+# REQUEST_URI and SCRIPT_NAME agree and Laravel resolves paths correctly.
+#
+# Anything outside public/ (app/, storage/ minus its public/storage symlink, vendor/, .env,
+# etc.) has no route through this rewrite — a request for it becomes public/<that path>,
+# which does not exist on disk, so Apache 404s it. The FilesMatch below is a second layer
+# in case this file itself is ever bypassed.
+
+<FilesMatch "^\.env|^\.env\..*|^composer\.(json|lock)$|^artisan$|^phpunit\.xml$|^package\.json$|\.sql$|\.md$">
+    Require all denied
+</FilesMatch>
+
+RedirectMatch 404 /\.git(/|$)
+
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
