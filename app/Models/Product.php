@@ -62,6 +62,12 @@ class Product extends Model
         return $this->priceVersions()
             ->where('effective_from', '<=', now())
             ->orderByDesc('effective_from')
+            // Tie-break on insertion order. Without it two versions sharing an effective_from
+            // leave "the current price" up to whatever order the database happens to return —
+            // and R10 makes that collision ordinary, not exotic: correcting a price is not an
+            // edit, it is another row, and a correction entered seconds later carries the same
+            // timestamp. The later row is the one that was meant to win.
+            ->orderByDesc('id')
             ->first();
     }
 }

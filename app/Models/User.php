@@ -7,10 +7,13 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Filament\Models\Contracts\FilamentUser;
+use Filament\Models\Contracts\HasName;
+use Filament\Panel;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Laravel\Sanctum\HasApiTokens;
 
-class User extends Authenticatable
+class User extends Authenticatable implements FilamentUser, HasName
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory;
@@ -50,6 +53,24 @@ class User extends Authenticatable
             'role' => Role::class,
             'is_active' => 'boolean',
         ];
+    }
+
+    /**
+     * Who may open the admin panel.
+     *
+     * The panel is a second front door onto the same data the API guards by role, so it applies
+     * the same two conditions the API applies at login: the account must be active, and only
+     * ADMINISTRATOR may enter. Without this method Filament lets every authenticated user in --
+     * which would hand a STAFF account the user-management screen.
+     */
+    public function canAccessPanel(Panel $panel): bool
+    {
+        return $this->is_active && $this->role === Role::ADMINISTRATOR;
+    }
+
+    public function getFilamentName(): string
+    {
+        return $this->name;
     }
 
     /**

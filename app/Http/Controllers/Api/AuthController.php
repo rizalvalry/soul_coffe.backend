@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\LoginRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Support\PhoneNumber;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -19,7 +20,10 @@ class AuthController extends Controller
 {
     public function login(LoginRequest $request): JsonResponse
     {
-        $phone = $this->normalizePhone($request->validated('phone'));
+        // The mobile client already normalises, but the server must not trust that. PhoneNumber
+        // is the single authoritative rule, shared with the admin panel so an account created
+        // through one can always sign in through the other.
+        $phone = PhoneNumber::normalize($request->validated('phone'));
 
         $user = User::query()->where('phone_e164', $phone)->first();
 
@@ -46,21 +50,5 @@ class AuthController extends Controller
         $request->user()->currentAccessToken()->delete();
 
         return response()->noContent();
-    }
-
-    /**
-     * Normalise `08…`, `62…`, `+62…` to `+62…`. The mobile client already normalises, but the
-     * server must not trust that — this is the one place phone format is authoritative.
-     */
-    private function normalizePhone(string $raw): string
-    {
-        $digits = preg_replace('/[^\d+]/', '', trim($raw)) ?? '';
-
-        return match (true) {
-            str_starts_with($digits, '+62') => $digits,
-            str_starts_with($digits, '62') => '+'.$digits,
-            str_starts_with($digits, '0') => '+62'.substr($digits, 1),
-            default => '+62'.$digits,
-        };
     }
 }

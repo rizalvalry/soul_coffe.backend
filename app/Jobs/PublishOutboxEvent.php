@@ -10,7 +10,7 @@ use Illuminate\Foundation\Queue\Queueable;
 /**
  * Publishes one outbox row to the WebSocket layer, then marks it published.
  *
- * Marking happens only after the broadcast returns, so a Reverb outage leaves `published_at`
+ * Marking happens only after the broadcast returns, so a broadcaster outage leaves `published_at`
  * null and `soul:publish-outbox` will retry the row later. Marking first would lose the event
  * silently — which is exactly the failure the outbox pattern exists to prevent.
  */

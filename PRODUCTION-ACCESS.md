@@ -1,6 +1,6 @@
-# Soul Coffeemate — Akses Build Produksi (v1.0.2)
+# Soul Coffeemate — Akses Build Produksi (v1.0.3)
 
-Ini **bukan** build demo. `dist/soul-coffeemate-v1.0.2.apk` bicara langsung ke API produksi di
+Ini **bukan** build demo. `dist/soul-coffeemate-v1.0.3.apk` bicara langsung ke API produksi di
 `https://soulcoffee.rafancloud.com/api/v1` — setiap alokasi, refill request, foto, dan tanda
 tangan yang dibuat lewat APK ini **tersimpan sungguhan** di database live. Kalau butuh alur yang
 aman diulang-ulang tanpa konsekuensi, pakai `dist/soul-coffeemate-DEMO-v1.0.1.apk` (lihat
@@ -43,18 +43,23 @@ baru (lihat bagian "Menambah akun" di bawah).
 
 ## APK
 
-**Berkas:** `dist/soul-coffeemate-v1.0.2.apk`
+**Berkas:** `dist/soul-coffeemate-v1.0.3.apk`
 
 | Properti | Nilai |
 |---|---|
 | Ukuran | 22.7 MB |
 | Package | `id.soulcoffeemate.ops.demo` |
-| Versi | 1.0.2 (versionCode 3) |
+| Versi | 1.0.3 (versionCode 4) |
 | Min Android | **7.0** (API 24) |
 | Target | Android 16 (API 36) |
 | Arsitektur | `arm64-v8a`, `armeabi-v7a` |
-| SHA-256 | `d6e6d0eb4474e1fd66b158fd339ca429db55c46e514370fb25fa97fffbd463d8` |
-| Tanda tangan | Sama dengan v1.0.0/v1.0.1 — kalau sudah pasang salah satu, tinggal install ini, tidak perlu uninstall dulu |
+| SHA-256 | `b2f7240f331a86c015071c31a8a8456285fd6e3970a16ee308fa901b014ed222` |
+| Tanda tangan | Sama dengan v1.0.0/v1.0.1/v1.0.2 — kalau sudah pasang salah satu, tinggal install ini, tidak perlu uninstall dulu |
+
+**Beda dari v1.0.2:** hanya lapisan realtime — Reverb (tidak bisa jalan di hosting ini, lihat
+bagian "Realtime (Pusher)" di bawah) diganti Pusher Channels, dan layar Approval Finance kini
+ikut auto-refresh. Tidak ada perubahan pada login, refill, alokasi, atau stok — semua verifikasi
+API live dari v1.0.2 di bawah ini tetap berlaku apa adanya untuk v1.0.3.
 
 Package masih diberi akhiran `.demo` (peninggalan penamaan awal) meski build ini sudah bicara ke
 data nyata — akan diganti sebelum rilis Play Store yang sesungguhnya.
@@ -90,7 +95,7 @@ Sama seperti build demo sebelumnya — lihat `DEMO-ACCESS.md` bagian "Izin yang 
 
 ### Cara memasang
 
-1. Buka repositori ini dari browser HP → folder `dist/` → unduh `soul-coffeemate-v1.0.2.apk`.
+1. Buka repositori ini dari browser HP → folder `dist/` → unduh `soul-coffeemate-v1.0.3.apk`.
 2. Izinkan **Install unknown apps** untuk browser yang dipakai.
 3. Buka berkas yang terunduh → **Install**.
 4. Play Protect akan memperingatkan karena APK ini tidak ditandatangani sertifikat Play Store —
@@ -100,11 +105,56 @@ Sama seperti build demo sebelumnya — lihat `DEMO-ACCESS.md` bagian "Izin yang 
 
 ## Menambah akun
 
-Belum ada API atau layar admin untuk membuat user baru — ini sengaja tidak dibangun pada
-iterasi ini. Untuk menambah akun sekarang, satu-satunya jalan adalah langsung ke database
-(`php artisan tinker` atau `INSERT` manual ke tabel `users`, mengikuti pola
-`database/seeders/UserSeeder.php`: `phone_e164` format `+62...`, `password` di-hash lewat
-`Hash::make()`, `role` salah satu dari `ADMINISTRATOR/FINANCE/BARISTA/RIDER/STAFF`).
+Ada panel admin di `https://soulcoffee.rafancloud.com/admin` — login dengan nomor HP + password
+Administrator di tabel atas. `Users` di menu panel punya Create/Edit lengkap; hanya akun dengan
+`role: ADMINISTRATOR` dan `is_active: true` yang bisa masuk panel ini
+(`User::canAccessPanel()`), jadi memberi role Administrator ke akun baru lewat panel ini otomatis
+memberi mereka akses membuat akun lain juga.
+
+Panel ini pintu masuk kedua ke data yang sama dijaga API — belum pernah dites langsung
+(sama seperti APK, lihat catatan verifikasi di atas), jadi treat sebagai belum diverifikasi
+sampai ada yang login dan mencobanya.
+
+---
+
+## Realtime (Pusher) — masih perlu dua langkah manual di server
+
+Notifikasi tanpa reload (requirement 3) butuh **dua** hal berjalan sekaligus di server; sejauh
+ini belum satu pun. Tidak ada nilai rahasia di bagian ini — nilai App Secret/App ID Pusher yang
+sesungguhnya diberikan langsung ke Anda di luar dokumen ini (bukan di repo, publik), supaya tidak
+ikut ter-commit.
+
+**1. Isi `.env` di server dengan kredensial Pusher.** Empat baris `PUSHER_*` di `.env.example`
+sudah menjelaskan formatnya — salin ke `.env` server dan isi dari dashboard Pusher Channels
+("App Keys" di app yang sudah dibuat, cluster `ap1`), lalu:
+```bash
+php artisan config:clear && php artisan config:cache
+```
+`soul_coffe.mobile`'s `app.json` (`pusherKey`/`pusherCluster`) sudah diisi dengan App Key +
+Cluster yang sama — App Secret **tidak pernah** masuk ke mobile app, hanya ke `.env` server ini.
+
+**2. Buat worker antrean berjalan.** `QUEUE_CONNECTION=database` — job yang benar-benar memanggil
+broadcaster (`PublishOutboxEvent`) masuk ke tabel `jobs` dan menunggu di sana selamanya kalau
+tidak ada yang memprosesnya. Shared hosting ini tidak punya `supervisorctl`/`systemd` untuk
+proses persisten, jadi jalannya lewat **cron job** di hPanel (Advanced → Cron Jobs), tiap menit:
+```bash
+* * * * * cd /home/u253446757/domains/rafancloud.com/public_html/soulcoffee && /usr/bin/php artisan queue:work --stop-when-empty --max-time=55 >> /dev/null 2>&1
+```
+Path di atas sudah diverifikasi lewat SSH — subdomain `soulcoffee.rafancloud.com` document
+root-nya menunjuk ke folder project di dalam `public_html` domain utama, bukan ke folder
+`domains/soulcoffee.rafancloud.com/` tersendiri, jadi bentuk path yang tertulis di draft
+sebelumnya tidak akan pernah cocok. `--stop-when-empty` membuat proses keluar begitu antrean
+kosong, `--max-time=55` jadi jaring pengaman supaya tidak tumpang tindih dengan pemanggilan cron
+berikutnya di menit yang sama.
+
+Cron **tidak bisa dipasang lewat SSH** di hosting ini: shell-nya tidak punya perintah `crontab`
+sama sekali (sudah dicoba). Satu-satunya jalur adalah UI hPanel → Advanced → Cron Jobs.
+
+**Cara memastikan keduanya benar-benar jalan:** kirim satu refill request lewat APK, lalu
+`SELECT * FROM jobs` harus kosong dalam &lt;1 menit (bukan menumpuk), dan HP lain yang sedang
+login harus menerima notifikasi tanpa perlu menekan refresh. Sebelum kedua langkah ini selesai,
+aplikasi tetap berfungsi penuh lewat fallback polling 10 detik — bukan blocker, tapi requirement
+3 belum genap terpenuhi tanpa ini.
 
 ---
 
