@@ -53,7 +53,7 @@ ditugaskan kepadanya pada hari itu.
 | Min Android | **7.0** (API 24) |
 | Target | Android 16 (API 36) |
 | Arsitektur | `arm64-v8a`, `armeabi-v7a` |
-| SHA-256 | `526573faa77b63983c8c53834cbb29d0e419a4182581140c458033f65d2f3045` |
+| SHA-256 | `053b243c3bd265fdf29ff923b3565288fb4deeba04d626839bb341e2db455924` |
 
 Package-nya diberi akhiran `.demo` supaya bisa terpasang berdampingan dengan build produksi nanti,
 tanpa saling menimpa.
