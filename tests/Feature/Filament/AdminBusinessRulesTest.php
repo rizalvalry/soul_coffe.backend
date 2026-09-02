@@ -51,16 +51,16 @@ class AdminBusinessRulesTest extends TestCase
             ->call('create')
             ->assertHasNoFormErrors();
 
-        $this->assertDatabaseHas('users', ['phone_e164' => '+6281298765432']);
+        $this->assertDatabaseHas('users', ['phone_e164' => '081298765432']);
     }
 
     public function test_a_duplicate_phone_is_rejected_even_in_a_different_format(): void
     {
-        // The seeded admin is +6281100000001; 081100000001 is the same human being.
+        // The seeded admin is 081100000001; +6281100000001 is the same human being.
         Livewire::test(CreateUser::class)
             ->fillForm([
                 'name' => 'Penyusup',
-                'phone_e164' => '081100000001',
+                'phone_e164' => '+6281100000001',
                 'role' => Role::STAFF->value,
                 'password' => 'rahasia123',
                 'is_active' => true,
@@ -127,7 +127,7 @@ class AdminBusinessRulesTest extends TestCase
         $existing = StaffAssignment::firstOrFail();
         $otherStaff = User::create([
             'name' => 'Staff Kedua',
-            'phone_e164' => '+6281255550001',
+            'phone_e164' => '081255550001',
             'password' => 'rahasia123',
             'role' => Role::STAFF,
             'is_active' => true,
@@ -148,7 +148,7 @@ class AdminBusinessRulesTest extends TestCase
     {
         $staff = User::create([
             'name' => 'Staff Baru',
-            'phone_e164' => '+6281255550002',
+            'phone_e164' => '081255550002',
             'password' => 'rahasia123',
             'role' => Role::STAFF,
             'is_active' => true,

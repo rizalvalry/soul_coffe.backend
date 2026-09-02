@@ -15,11 +15,11 @@ class UserSeeder extends Seeder
         $kitchen = CentralKitchen::query()->firstOrFail();
 
         $users = [
-            ['phone_e164' => '+6281100000001', 'password' => 'admin123', 'role' => Role::ADMINISTRATOR, 'name' => 'Rizal Admin', 'kitchen_id' => null],
-            ['phone_e164' => '+6281100000002', 'password' => 'finance123', 'role' => Role::FINANCE, 'name' => 'Sari Finance', 'kitchen_id' => null],
-            ['phone_e164' => '+6281100000003', 'password' => 'barista123', 'role' => Role::BARISTA, 'name' => 'Dimas Barista', 'kitchen_id' => $kitchen->id],
-            ['phone_e164' => '+6281100000004', 'password' => 'rider123', 'role' => Role::RIDER, 'name' => 'Agus Rider', 'kitchen_id' => null],
-            ['phone_e164' => '+6281100000005', 'password' => 'staff123', 'role' => Role::STAFF, 'name' => 'Maufu', 'kitchen_id' => null],
+            ['phone_e164' => '081100000001', 'password' => 'admin123', 'role' => Role::ADMINISTRATOR, 'name' => 'Rizal Admin', 'kitchen_id' => null],
+            ['phone_e164' => '081100000002', 'password' => 'finance123', 'role' => Role::FINANCE, 'name' => 'Sari Finance', 'kitchen_id' => null],
+            ['phone_e164' => '081100000003', 'password' => 'barista123', 'role' => Role::BARISTA, 'name' => 'Dimas Barista', 'kitchen_id' => $kitchen->id],
+            ['phone_e164' => '081100000004', 'password' => 'rider123', 'role' => Role::RIDER, 'name' => 'Agus Rider', 'kitchen_id' => null],
+            ['phone_e164' => '081100000005', 'password' => 'staff123', 'role' => Role::STAFF, 'name' => 'Maufu', 'kitchen_id' => null],
         ];
 
         foreach ($users as $data) {

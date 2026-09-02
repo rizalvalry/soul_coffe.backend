@@ -31,7 +31,7 @@ class RoleIsolationTest extends TestCase
 
     public function test_staff_token_is_rejected_creating_an_allocation(): void
     {
-        $staff = User::query()->where('phone_e164', '+6281100000005')->firstOrFail();
+        $staff = User::query()->where('phone_e164', '081100000005')->firstOrFail();
         $cart = Cart::query()->where('code', '0018')->firstOrFail();
 
         $response = $this->actingAs($staff, 'sanctum')->postJson('/api/v1/allocations', [
@@ -47,7 +47,7 @@ class RoleIsolationTest extends TestCase
 
     public function test_staff_token_is_rejected_on_the_barista_allocation_worksheet(): void
     {
-        $staff = User::query()->where('phone_e164', '+6281100000005')->firstOrFail();
+        $staff = User::query()->where('phone_e164', '081100000005')->firstOrFail();
 
         $this->actingAs($staff, 'sanctum')
             ->getJson('/api/v1/allocations/today')
@@ -56,7 +56,7 @@ class RoleIsolationTest extends TestCase
 
     public function test_barista_token_is_rejected_on_the_staff_only_cart_stock_endpoint(): void
     {
-        $barista = User::query()->where('phone_e164', '+6281100000003')->firstOrFail();
+        $barista = User::query()->where('phone_e164', '081100000003')->firstOrFail();
 
         $this->actingAs($barista, 'sanctum')
             ->getJson('/api/v1/me/stock')
@@ -65,7 +65,7 @@ class RoleIsolationTest extends TestCase
 
     public function test_r15_barista_products_response_omits_cost_and_sell_price(): void
     {
-        $barista = User::query()->where('phone_e164', '+6281100000003')->firstOrFail();
+        $barista = User::query()->where('phone_e164', '081100000003')->firstOrFail();
 
         $response = $this->actingAs($barista, 'sanctum')->getJson('/api/v1/products');
 
@@ -78,7 +78,7 @@ class RoleIsolationTest extends TestCase
 
     public function test_finance_products_response_includes_cost_and_sell_price(): void
     {
-        $finance = User::query()->where('phone_e164', '+6281100000002')->firstOrFail();
+        $finance = User::query()->where('phone_e164', '081100000002')->firstOrFail();
 
         $response = $this->actingAs($finance, 'sanctum')->getJson('/api/v1/products');
 
@@ -91,8 +91,8 @@ class RoleIsolationTest extends TestCase
 
     public function test_mark_read_on_someone_elses_notification_is_forbidden(): void
     {
-        $owner = User::query()->where('phone_e164', '+6281100000005')->firstOrFail();
-        $intruder = User::query()->where('phone_e164', '+6281100000003')->firstOrFail();
+        $owner = User::query()->where('phone_e164', '081100000005')->firstOrFail();
+        $intruder = User::query()->where('phone_e164', '081100000003')->firstOrFail();
 
         $notification = AppNotification::query()->create([
             'user_id' => $owner->id,
