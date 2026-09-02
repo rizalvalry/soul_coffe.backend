@@ -41,16 +41,37 @@ class MediaService
         $hash = hash_file('sha256', $file->getRealPath());
         $dedupeDays = (int) config('soul.evidence_dedupe_days', 7);
 
-        $isDuplicate = Media::query()
+        $existing = Media::query()
             ->where('kind', 'evidence')
             ->where('sha256', $hash)
             ->where('created_at', '>=', now()->subDays($dedupeDays))
-            ->exists();
+            ->latest('id')
+            ->first();
 
-        if ($isDuplicate) {
-            throw ValidationException::withMessages([
-                'file' => ['Foto bukti wajib diambil langsung dari kamera'],
-            ]);
+        if ($existing !== null) {
+            // A retried upload is not a reused photo. The mobile client retries the multipart
+            // POST when the connection dies before the response arrives (see its
+            // `uploadFileWithStatus()`), and the first attempt may well have been stored — so
+            // the retry arrives with identical bytes seconds later. Rejecting it would strand
+            // the staff member on a request they can never submit, which is the exact failure
+            // R3 exists to prevent, inverted.
+            //
+            // The anti-reuse rule still holds: the row is returned only when the SAME uploader
+            // sent it, within a short window, and it has not yet been attached to a refill
+            // request. Anything else — another user's photo, yesterday's photo, or one already
+            // spent on a request — is still a reuse and is still refused.
+            $isSameUploaderRetry = $existing->uploaded_by === $uploader->id
+                && $existing->created_at !== null
+                && $existing->created_at->gte(now()->subMinutes((int) config('soul.evidence_retry_window_minutes', 10)))
+                && ! $existing->refillRequestsAsEvidence()->exists();
+
+            if (! $isSameUploaderRetry) {
+                throw ValidationException::withMessages([
+                    'file' => ['Foto bukti wajib diambil langsung dari kamera'],
+                ]);
+            }
+
+            return $existing;
         }
 
         $path = $file->store('evidence', 'public');

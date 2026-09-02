@@ -13,6 +13,12 @@ return [
     // E6: an evidence photo's sha256 may not repeat within this rolling window.
     'evidence_dedupe_days' => (int) env('SOUL_EVIDENCE_DEDUPE_DAYS', 7),
 
+    // A re-upload of identical bytes by the same staff member within this window is treated as
+    // a retry of one upload, not a reused photo — the mobile client retries when the connection
+    // drops before the response lands. Kept far shorter than the dedupe window above: it must
+    // cover a handful of retries, never a second submit.
+    'evidence_retry_window_minutes' => (int) env('SOUL_EVIDENCE_RETRY_WINDOW_MINUTES', 10),
+
     // §9: qty_requested upper bound per line.
     'max_qty_per_line' => (int) env('SOUL_MAX_QTY_PER_LINE', 100),
 
