@@ -43,35 +43,55 @@ ditugaskan kepadanya pada hari itu.
 
 ## APK
 
-**Berkas:** `dist/soul-coffeemate-DEMO-v1.0.0.apk`
+**Berkas:** `dist/soul-coffeemate-DEMO-v1.0.1.apk`
 
 | Properti | Nilai |
 |---|---|
-| Ukuran | 56 MB |
+| Ukuran | 22.7 MB |
 | Package | `id.soulcoffeemate.ops.demo` |
-| Versi | 1.0.0 |
+| Versi | 1.0.1 (versionCode 2) |
 | Min Android | **7.0** (API 24) |
 | Target | Android 16 (API 36) |
 | Arsitektur | `arm64-v8a`, `armeabi-v7a` |
-| SHA-256 | `053b243c3bd265fdf29ff923b3565288fb4deeba04d626839bb341e2db455924` |
+| SHA-256 | `5cd8822afa744ae0d6f2471a0d201c33006f35faf8027ad14d561dd6e151bffd` |
+| Tanda tangan | sama dengan v1.0.0 — sudah pasang v1.0.0? Tinggal install ini, tidak perlu uninstall dulu |
 
 Package-nya diberi akhiran `.demo` supaya bisa terpasang berdampingan dengan build produksi nanti,
 tanpa saling menimpa.
+
+**Kenapa jauh lebih kecil dari v1.0.0 (56 MB):** v1.0.0 dibuild tanpa R8/shrinkResources dan
+tanpa kompresi native lib — bukan karena mengurangi arsitektur atau fitur. `soul_coffe.mobile`
+punya breakdown lengkapnya (README, bagian "APK size").
+
+Kalau v1.0.1 bermasalah di HP Anda, `dist/soul-coffeemate-DEMO-v1.0.0-legacy.apk` (56 MB) adalah
+build sebelumnya yang identik secara fungsional — signature sama, jadi bisa langsung install
+menimpa tanpa uninstall. Tolong laporkan dulu apa yang bermasalah sebelum beralih, supaya bisa
+diperbaiki di source-nya.
 
 ### Yang sudah diverifikasi, dan yang belum
 
 Sudah diperiksa langsung pada berkas APK-nya:
 
-- Tanda tangan valid — APK bisa dipasang
+- Tanda tangan valid — APK bisa dipasang, dan sama dengan v1.0.0 (upgrade in-place, bukan install baru)
 - Bundle JS ada di dalamnya (3,4 MB), berisi data demo dan seluruh teks Indonesia
 - Izin berlebih sudah hilang (lihat di bawah)
 - `demoMode: true` benar ter-bake di konfigurasi build
+- Semua modul native (kamera, lokasi, secure store, WebView tanda tangan, dst.) dibandingkan
+  byte-demi-byte antara build sebelum dan sesudah proses pemangkasan ukuran — tidak ada yang hilang
+- Resource shrinker berjalan di safe mode (mendeteksi `Resources#getIdentifier`), font ikon dan
+  logo dipastikan masih utuh di dalam APK setelah build
 
-**Yang belum:** APK ini **belum pernah dijalankan** di HP atau emulator. Mesin build tidak
-memiliki emulator terpasang dan tidak ada perangkat terhubung. Logika alur dan seluruh guard-nya
-sudah dibuktikan lewat eksekusi nyata di level state machine, tetapi tampilan UI-nya sendiri —
-kamera, kanvas tanda tangan, tombol ganti role — belum pernah disentuh tangan. Anda akan menjadi
-yang pertama menjalankannya. Kalau ada yang aneh, itu bukan hal yang mustahil.
+**Yang belum:** APK ini **belum pernah dijalankan** di HP atau emulator — mesin build tidak
+punya perangkat fisik, dan satu-satunya image emulator yang terpasang adalah x86_64, arsitektur
+yang justru sengaja dibuang dari APK ini karena tidak ada HP yang memakainya. Logika alur dan
+seluruh guard-nya sudah dibuktikan lewat eksekusi nyata di level state machine, dan proses
+pemangkasan ukuran sudah diverifikasi tidak menyentuh JS bundle (beda 232 byte dari v1.0.0,
+persis sebesar satu font yang memang sengaja dibuang) — tetapi tampilan UI-nya sendiri, kamera,
+kanvas tanda tangan, tombol ganti role, belum pernah disentuh tangan. Build dengan R8 aktif
+punya risiko tambahan: kalau ada kode yang dipanggil lewat refleksi dan lolos dari deteksi R8,
+gejalanya baru muncul saat runtime, bukan saat build. Anda akan menjadi yang pertama
+menjalankannya. Kalau ada yang aneh — terutama di keempat alur ini — kembali ke APK legacy di
+atas dan laporkan: login, foto refill, tanda tangan serah terima, lokasi rider.
 
 ### Izin yang diminta
 
