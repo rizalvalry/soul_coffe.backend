@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * Transactional outbox (§12) — written in the same DB transaction as the state
- * change that produced it, published by a worker. Ensures a Reverb restart
+ * change that produced it, published by a worker. Ensures a broadcaster outage or restart
  * never silently drops a realtime notification.
  */
 class OutboxEvent extends Model

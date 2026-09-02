@@ -14,7 +14,7 @@ use Illuminate\Support\Str;
  * The outbox pattern is the whole point: the event row is written inside the SAME transaction as
  * the state change, so an event can never describe a state that was rolled back, and a state
  * change can never happen without its event being durably recorded. Broadcasting is deferred to
- * a job dispatched after commit, so a Reverb outage delays notifications instead of losing them
+ * a job dispatched after commit, so a broadcaster outage delays notifications instead of losing them
  * or — worse — rolling back a delivered refill because a socket was down.
  */
 class EventPublisher

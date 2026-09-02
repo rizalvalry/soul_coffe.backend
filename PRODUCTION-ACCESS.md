@@ -100,11 +100,51 @@ Sama seperti build demo sebelumnya — lihat `DEMO-ACCESS.md` bagian "Izin yang 
 
 ## Menambah akun
 
-Belum ada API atau layar admin untuk membuat user baru — ini sengaja tidak dibangun pada
-iterasi ini. Untuk menambah akun sekarang, satu-satunya jalan adalah langsung ke database
-(`php artisan tinker` atau `INSERT` manual ke tabel `users`, mengikuti pola
-`database/seeders/UserSeeder.php`: `phone_e164` format `+62...`, `password` di-hash lewat
-`Hash::make()`, `role` salah satu dari `ADMINISTRATOR/FINANCE/BARISTA/RIDER/STAFF`).
+Ada panel admin di `https://soulcoffee.rafancloud.com/admin` — login dengan nomor HP + password
+Administrator di tabel atas. `Users` di menu panel punya Create/Edit lengkap; hanya akun dengan
+`role: ADMINISTRATOR` dan `is_active: true` yang bisa masuk panel ini
+(`User::canAccessPanel()`), jadi memberi role Administrator ke akun baru lewat panel ini otomatis
+memberi mereka akses membuat akun lain juga.
+
+Panel ini pintu masuk kedua ke data yang sama dijaga API — belum pernah dites langsung
+(sama seperti APK, lihat catatan verifikasi di atas), jadi treat sebagai belum diverifikasi
+sampai ada yang login dan mencobanya.
+
+---
+
+## Realtime (Pusher) — masih perlu dua langkah manual di server
+
+Notifikasi tanpa reload (requirement 3) butuh **dua** hal berjalan sekaligus di server; sejauh
+ini belum satu pun. Tidak ada nilai rahasia di bagian ini — nilai App Secret/App ID Pusher yang
+sesungguhnya diberikan langsung ke Anda di luar dokumen ini (bukan di repo, publik), supaya tidak
+ikut ter-commit.
+
+**1. Isi `.env` di server dengan kredensial Pusher.** Empat baris `PUSHER_*` di `.env.example`
+sudah menjelaskan formatnya — salin ke `.env` server dan isi dari dashboard Pusher Channels
+("App Keys" di app yang sudah dibuat, cluster `ap1`), lalu:
+```bash
+php artisan config:clear && php artisan config:cache
+```
+`soul_coffe.mobile`'s `app.json` (`pusherKey`/`pusherCluster`) sudah diisi dengan App Key +
+Cluster yang sama — App Secret **tidak pernah** masuk ke mobile app, hanya ke `.env` server ini.
+
+**2. Buat worker antrean berjalan.** `QUEUE_CONNECTION=database` — job yang benar-benar memanggil
+broadcaster (`PublishOutboxEvent`) masuk ke tabel `jobs` dan menunggu di sana selamanya kalau
+tidak ada yang memprosesnya. Shared hosting ini tidak punya `supervisorctl`/`systemd` untuk
+proses persisten, jadi jalannya lewat **cron job** di hPanel (Advanced → Cron Jobs), tiap menit:
+```bash
+* * * * * cd /home/USERNAME/domains/soulcoffee.rafancloud.com/public_html && php artisan queue:work --stop-when-empty --max-time=55 >> /dev/null 2>&1
+```
+Sesuaikan path dengan lokasi project sesungguhnya di server (belum saya konfirmasi — saya tidak
+punya akses SSH untuk mengeceknya langsung). `--stop-when-empty` membuat proses keluar begitu
+antrean kosong, `--max-time=55` jadi jaring pengaman supaya tidak tumpang tindih dengan
+pemanggilan cron berikutnya di menit yang sama.
+
+**Cara memastikan keduanya benar-benar jalan:** kirim satu refill request lewat APK, lalu
+`SELECT * FROM jobs` harus kosong dalam &lt;1 menit (bukan menumpuk), dan HP lain yang sedang
+login harus menerima notifikasi tanpa perlu menekan refresh. Sebelum kedua langkah ini selesai,
+aplikasi tetap berfungsi penuh lewat fallback polling 10 detik — bukan blocker, tapi requirement
+3 belum genap terpenuhi tanpa ini.
 
 ---
 
