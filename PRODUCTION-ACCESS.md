@@ -10,34 +10,44 @@ aman diulang-ulang tanpa konsekuensi, pakai `dist/soul-coffeemate-DEMO-v1.0.1.ap
 
 ## ⚠️ Kredensial di bawah ini publik
 
-Kelima akun di tabel berikut dibuat oleh `database/seeders/UserSeeder.php`, yang ada di
+Keenam akun di tabel berikut dibuat oleh `database/seeders/UserSeeder.php`, yang ada di
 repositori ini — dan repositori ini **publik**. Saya sudah membuktikan langsung: kredensial
 Administrator di bawah berhasil login ke API produksi live pada 2026-09-02, lalu saya logout
 token itu segera setelah verifikasi. Siapa pun yang menemukan repo ini punya akses yang sama.
 
-Ini bukan potensi risiko — ini eksposur aktif, sejak API-nya hidup. Rotasi password kelima akun
+Ini bukan potensi risiko — ini eksposur aktif, sejak API-nya hidup. Rotasi password keenam akun
 ini (`php artisan tinker` atau lewat query langsung) adalah langkah yang disarankan sebelum akun
 ini dipakai untuk operasional sungguhan, atau jadikan repo ini private.
 
 ## Akun login
 
+Nomor HP disimpan dalam format lokal (`08...`), bukan E.164 — lihat `app/Support/PhoneNumber.php`.
+Login masih menerima ketikan `08...`, `62...`, atau `+62...`; ketiganya dinormalisasi ke bentuk
+yang sama sebelum dicocokkan.
+
 | Role | Nomor HP | Password |
 |---|---|---|
-| Administrator | `+6281100000001` | `admin123` |
-| Finance | `+6281100000002` | `finance123` |
-| Barista | `+6281100000003` | `barista123` |
-| Rider | `+6281100000004` | `rider123` |
-| Staff (Maufu) | `+6281100000005` | `staff123` |
+| Administrator | `081100000001` | `admin123` |
+| Finance | `081100000002` | `finance123` |
+| Barista | `081100000003` | `barista123` |
+| Rider | `081100000004` | `rider123` |
+| Staff (Maufu) | `081100000005` | `staff123` |
+| Content Creator | `081100000006` | `contentcreator123` |
 
-**PIN staff:** `123456`. Nomor boleh diketik `08...`, `62...`, atau `+62...`.
+**PIN staff:** `123456`.
 
 **Staff Maufu bertugas di gerobak `0018`, lokasi Sudirman** — dikonfirmasi langsung dari
 `GET /me` pada akun ini, bukan asumsi dari data seed.
 
-Kelima akun ini dikonfirmasi bisa login ke API produksi pada 2026-09-02 (`POST /auth/login`
-mengembalikan 200 dan role yang benar untuk semuanya; setiap token probe langsung di-revoke lewat
-`POST /auth/logout` setelah diperiksa). Tidak ada akun lain — belum ada API untuk membuat user
-baru (lihat bagian "Menambah akun" di bawah).
+**Content Creator tidak punya akses ke API mobile sama sekali** — satu-satunya pintu masuknya
+adalah panel Filament (`/admin`), untuk menulis dan mengedit News Feed. Ia sengaja tidak ambil
+bagian dalam alur refill/alokasi operasional (lihat `Role::isOperational()`), jadi tidak tercakup
+oleh verifikasi API di bawah ini.
+
+Kelima akun operasional ini dikonfirmasi bisa login ke API produksi pada 2026-09-02
+(`POST /auth/login` mengembalikan 200 dan role yang benar untuk semuanya; setiap token probe
+langsung di-revoke lewat `POST /auth/logout` setelah diperiksa). Tidak ada akun lain di luar
+keenam ini — belum ada API untuk membuat user baru (lihat bagian "Menambah akun" di bawah).
 
 ---
 

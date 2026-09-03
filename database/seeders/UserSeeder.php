@@ -20,6 +20,8 @@ class UserSeeder extends Seeder
             ['phone_e164' => '081100000003', 'password' => 'barista123', 'role' => Role::BARISTA, 'name' => 'Dimas Barista', 'kitchen_id' => $kitchen->id],
             ['phone_e164' => '081100000004', 'password' => 'rider123', 'role' => Role::RIDER, 'name' => 'Agus Rider', 'kitchen_id' => null],
             ['phone_e164' => '081100000005', 'password' => 'staff123', 'role' => Role::STAFF, 'name' => 'Maufu', 'kitchen_id' => null],
+            // Panel-only — never appears in the mobile client's operational flow (Role::isOperational()).
+            ['phone_e164' => '081100000006', 'password' => 'contentcreator123', 'role' => Role::CONTENT_CREATOR, 'name' => 'Nadia Content', 'kitchen_id' => null],
         ];
 
         foreach ($users as $data) {
