@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AllocationController;
+use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BadgeController;
 use App\Http\Controllers\Api\CartController;
@@ -13,6 +14,7 @@ use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\RefillRequestController;
 use App\Http\Controllers\Api\RefillTransitionController;
+use App\Http\Controllers\Api\ShowcaseStockController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -95,6 +97,32 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('news/{news}', [NewsController::class, 'show']);
     Route::post('news/{news}/read', [NewsController::class, 'markRead']);
     Route::post('news/{news}/react', [NewsController::class, 'react']);
+
+    // ── Showcase stock (barista) ───────────────────────────────────────────
+    // Runs alongside Flow A/B rather than replacing them. `hand-to-cart` is the barista's
+    // Add Stock submit and also what puts a cart on today's roster — see CentralStockService.
+    //
+    // `idempotent:require` on the three writes for the same reason Flow B has it (R12): these
+    // are taps on a phone in a kitchen, and a retried tap must not brew, hand over, or write
+    // off the same cups twice.
+    Route::get('showcase/stock', [ShowcaseStockController::class, 'index']);
+    Route::get('showcase/allowance/{cart}', [ShowcaseStockController::class, 'allowance']);
+
+    Route::middleware('idempotent:require')->group(function (): void {
+        Route::post('showcase/brew', [ShowcaseStockController::class, 'brew']);
+        Route::post('showcase/hand-to-cart', [ShowcaseStockController::class, 'handToCart']);
+        Route::post('showcase/close-out', [ShowcaseStockController::class, 'closeOut']);
+    });
+
+    // ── Absen (barista & staff) ────────────────────────────────────────────
+    // `status` is what the app reads to decide whether the absen button is pressable, so the
+    // client never has to infer that from a rejected write.
+    Route::get('absen/status', [AttendanceController::class, 'status']);
+    Route::get('absen', [AttendanceController::class, 'index']);
+    // No idempotency key needed: clocking in is idempotent by its own unique index, and a
+    // second tap deliberately returns the existing row rather than an error.
+    Route::post('absen', [AttendanceController::class, 'store']);
+    Route::post('absen/open', [AttendanceController::class, 'open']);
 
     // ── Notifications & badges (requirement 3 support) ─────────────────────
     Route::get('notifications', [NotificationController::class, 'index']);
