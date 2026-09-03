@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\AiSetting;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -15,14 +16,12 @@ use RuntimeException;
  * staff coba minggu ini"), the model returns a structured draft, and the writer edits from there —
  * this never submits on its own.
  *
- * Deliberately a single OpenAI call with `response_format: json_object`, not a chain of tool calls
- * or an agent loop: the shape of the output (six named fields) is fixed and known ahead of time,
- * so there is nothing here for the model to plan around.
+ * Deliberately a single Gemini call with a JSON response mime type, not a chain of tool calls or
+ * an agent loop: the shape of the output (six named fields) is fixed and known ahead of time, so
+ * there is nothing here for the model to plan around.
  */
 class NewsArticleGenerator
 {
-    private const ENDPOINT = 'https://api.openai.com/v1/chat/completions';
-
     /**
      * @return array{kicker: ?string, title: string, slug: string, excerpt: ?string, body: string, tags: array<string>, accent_color: ?string}
      *
@@ -32,29 +31,43 @@ class NewsArticleGenerator
      */
     public function generate(string $prompt): array
     {
-        $apiKey = config('services.openai.key');
+        $setting = AiSetting::current();
+
+        // The panel's own "Pengaturan AI" page (an Administrator-only setting, stored encrypted)
+        // is the primary source — it exists so a key/model change never needs .env or a deploy
+        // again. config('services.gemini.*') is a fallback for local dev and any environment
+        // where nobody has visited that page yet.
+        $apiKey = $setting->gemini_api_key ?: config('services.gemini.key');
 
         if (blank($apiKey)) {
             throw new RuntimeException(
-                'Fitur AI belum diaktifkan — OPENAI_API_KEY belum diisi di server.'
+                'Fitur AI belum diaktifkan — isi Gemini API Key di menu Pengaturan > AI.'
             );
         }
 
-        $response = Http::withToken($apiKey)
+        $model = $setting->gemini_model ?: config('services.gemini.model', 'gemini-2.0-flash');
+
+        // The key goes in a header, not the URL query string, so it never ends up in a proxy
+        // access log, a browser history entry, or an error report that happens to include the
+        // request URL — all real places a query-string secret has leaked before.
+        $response = Http::withHeaders(['x-goog-api-key' => $apiKey])
             ->timeout(45)
-            ->post(self::ENDPOINT, [
-                'model' => config('services.openai.model', 'gpt-4o-mini'),
-                'response_format' => ['type' => 'json_object'],
-                'temperature' => 0.7,
-                'messages' => [
-                    ['role' => 'system', 'content' => $this->systemPrompt()],
-                    ['role' => 'user', 'content' => $prompt],
+            ->post("https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent", [
+                'systemInstruction' => [
+                    'parts' => [['text' => $this->systemPrompt()]],
+                ],
+                'contents' => [
+                    ['role' => 'user', 'parts' => [['text' => $prompt]]],
+                ],
+                'generationConfig' => [
+                    'temperature' => 0.7,
+                    'responseMimeType' => 'application/json',
                 ],
             ]);
 
         if ($response->failed()) {
             report(new RuntimeException(
-                "NewsArticleGenerator: OpenAI returned {$response->status()}: {$response->body()}"
+                "NewsArticleGenerator: Gemini returned {$response->status()}: {$response->body()}"
             ));
 
             throw new RuntimeException(
@@ -62,7 +75,7 @@ class NewsArticleGenerator
             );
         }
 
-        $content = $response->json('choices.0.message.content');
+        $content = $response->json('candidates.0.content.parts.0.text');
         $draft = is_string($content) ? json_decode($content, true) : null;
 
         if (! is_array($draft) || blank($draft['title'] ?? null) || blank($draft['body'] ?? null)) {

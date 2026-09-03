@@ -3,24 +3,31 @@
 namespace Tests\Feature;
 
 use App\Services\NewsArticleGenerator;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use Tests\TestCase;
 
 /**
- * The AI half of "Generate dengan AI" — everything here is the boundary between an OpenAI
+ * The AI half of "Generate dengan AI" — everything here is the boundary between a Gemini
  * response and what's safe to hand back to NewsPostForm's ->action() to `$set()` onto the form,
  * so every failure mode is tested through an actual (faked) HTTP response, never by calling the
  * sanitizer methods directly.
+ *
+ * The key/model come from AiSetting (the "Pengaturan AI" panel page), with config('services.gemini.*')
+ * as a fallback for whoever hasn't visited that page — every test here exercises the fallback,
+ * since the DB row starts empty on a fresh migration.
  */
 class NewsArticleGeneratorTest extends TestCase
 {
-    private function fakeChatResponse(array $draft, int $status = 200): void
+    use RefreshDatabase;
+
+    private function fakeGeminiResponse(array $draft, int $status = 200): void
     {
         Http::fake([
-            'api.openai.com/*' => Http::response([
-                'choices' => [
-                    ['message' => ['content' => json_encode($draft)]],
+            'generativelanguage.googleapis.com/*' => Http::response([
+                'candidates' => [
+                    ['content' => ['parts' => [['text' => json_encode($draft)]]]],
                 ],
             ], $status),
         ]);
@@ -28,19 +35,19 @@ class NewsArticleGeneratorTest extends TestCase
 
     public function test_it_throws_a_friendly_message_when_the_key_is_missing(): void
     {
-        config(['services.openai.key' => null]);
+        config(['services.gemini.key' => null]);
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('OPENAI_API_KEY belum diisi');
+        $this->expectExceptionMessage('isi Gemini API Key di menu Pengaturan');
 
         app(NewsArticleGenerator::class)->generate('promo matcha baru');
     }
 
     public function test_a_complete_draft_is_returned_and_sanitized(): void
     {
-        config(['services.openai.key' => 'sk-test']);
+        config(['services.gemini.key' => 'test-key']);
 
-        $this->fakeChatResponse([
+        $this->fakeGeminiResponse([
             'kicker' => 'BARU NIH!',
             'title' => 'Matcha Series Hadir Minggu Ini',
             'excerpt' => 'Rasakan kesegaran matcha baru kami.',
@@ -64,9 +71,9 @@ class NewsArticleGeneratorTest extends TestCase
 
     public function test_a_null_kicker_and_accent_color_pass_through_as_null(): void
     {
-        config(['services.openai.key' => 'sk-test']);
+        config(['services.gemini.key' => 'test-key']);
 
-        $this->fakeChatResponse([
+        $this->fakeGeminiResponse([
             'kicker' => null,
             'title' => 'Judul Sederhana',
             'excerpt' => null,
@@ -85,9 +92,9 @@ class NewsArticleGeneratorTest extends TestCase
 
     public function test_an_invalid_accent_color_is_dropped_rather_than_stored(): void
     {
-        config(['services.openai.key' => 'sk-test']);
+        config(['services.gemini.key' => 'test-key']);
 
-        $this->fakeChatResponse([
+        $this->fakeGeminiResponse([
             'title' => 'Judul',
             'body' => '<p>Isi.</p>',
             'accent_color' => 'javascript:alert(1)',
@@ -100,9 +107,9 @@ class NewsArticleGeneratorTest extends TestCase
 
     public function test_a_failed_http_response_is_translated_to_a_friendly_message(): void
     {
-        config(['services.openai.key' => 'sk-test']);
+        config(['services.gemini.key' => 'test-key']);
 
-        Http::fake(['api.openai.com/*' => Http::response('rate limited', 429)]);
+        Http::fake(['generativelanguage.googleapis.com/*' => Http::response('rate limited', 429)]);
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Gagal menghubungi layanan AI');
@@ -112,9 +119,9 @@ class NewsArticleGeneratorTest extends TestCase
 
     public function test_a_response_missing_the_required_fields_is_rejected(): void
     {
-        config(['services.openai.key' => 'sk-test']);
+        config(['services.gemini.key' => 'test-key']);
 
-        $this->fakeChatResponse(['kicker' => 'BARU NIH!']); // no title, no body
+        $this->fakeGeminiResponse(['kicker' => 'BARU NIH!']); // no title, no body
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('tidak sesuai format');
@@ -124,12 +131,12 @@ class NewsArticleGeneratorTest extends TestCase
 
     public function test_non_json_content_is_rejected(): void
     {
-        config(['services.openai.key' => 'sk-test']);
+        config(['services.gemini.key' => 'test-key']);
 
         Http::fake([
-            'api.openai.com/*' => Http::response([
-                'choices' => [
-                    ['message' => ['content' => 'ini bukan JSON']],
+            'generativelanguage.googleapis.com/*' => Http::response([
+                'candidates' => [
+                    ['content' => ['parts' => [['text' => 'ini bukan JSON']]]],
                 ],
             ], 200),
         ]);
@@ -137,5 +144,22 @@ class NewsArticleGeneratorTest extends TestCase
         $this->expectException(RuntimeException::class);
 
         app(NewsArticleGenerator::class)->generate('promo matcha baru');
+    }
+
+    public function test_the_api_key_is_sent_as_a_header_not_a_query_string(): void
+    {
+        config(['services.gemini.key' => 'test-key']);
+
+        $this->fakeGeminiResponse([
+            'title' => 'Judul',
+            'body' => '<p>Isi.</p>',
+        ]);
+
+        app(NewsArticleGenerator::class)->generate('artikel');
+
+        Http::assertSent(function ($request) {
+            return $request->hasHeader('x-goog-api-key', 'test-key')
+                && ! str_contains((string) $request->url(), 'test-key');
+        });
     }
 }

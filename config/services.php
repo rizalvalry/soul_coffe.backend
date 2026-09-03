@@ -36,11 +36,11 @@ return [
     ],
 
     // NewsArticleGenerator (News Feed "Generate dengan AI") and the Dashboard sales-insight
-    // summary. Must be a Platform API key (sk-...) from platform.openai.com — a ChatGPT/Codex
-    // CLI sign-in token is not valid here, it authenticates a different, non-API surface.
-    'openai' => [
-        'key' => env('OPENAI_API_KEY'),
-        'model' => env('OPENAI_MODEL', 'gpt-4o-mini'),
+    // summary. A Gemini API key from https://aistudio.google.com/apikey ("Create API key") —
+    // not a Google/Gemini CLI sign-in session, which authenticates a different, non-API surface.
+    'gemini' => [
+        'key' => env('GEMINI_API_KEY'),
+        'model' => env('GEMINI_MODEL', 'gemini-2.0-flash'),
     ],
 
 ];
