@@ -45,7 +45,12 @@ class NewsArticleGenerator
             );
         }
 
-        $model = $setting->gemini_model ?: config('services.gemini.model', 'gemini-3.6-flash');
+        // "-latest" is a Google-maintained alias, not a pinned version — pinning one (as this
+        // used to) breaks the moment Google retires it, which is exactly what happened here
+        // (gemini-2.0-flash was deprecated mid-project). Verified against a second, already-
+        // working Gemini integration in this workspace (D:\finfam\apps-script\Code.gs) before
+        // relying on it.
+        $model = $setting->gemini_model ?: config('services.gemini.model', 'gemini-flash-latest');
 
         // The key goes in a header, not the URL query string, so it never ends up in a proxy
         // access log, a browser history entry, or an error report that happens to include the
@@ -62,6 +67,13 @@ class NewsArticleGenerator
                 'generationConfig' => [
                     'temperature' => 0.7,
                     'responseMimeType' => 'application/json',
+                    'maxOutputTokens' => 4000,
+                    // Newer Gemini models can spend their entire token budget "thinking" before
+                    // ever writing the JSON — this is a straightforward structured-generation
+                    // task with nothing to reason through, so that budget is switched off rather
+                    // than silently eating maxOutputTokens and leaving 0 for the actual answer
+                    // (same failure mode documented in D:\finfam\apps-script\Code.gs).
+                    'thinkingConfig' => ['thinkingBudget' => 0],
                 ],
             ]);
 
@@ -80,7 +92,9 @@ class NewsArticleGenerator
 
         if (! is_array($draft) || blank($draft['title'] ?? null) || blank($draft['body'] ?? null)) {
             report(new RuntimeException(
-                'NewsArticleGenerator: unparseable or incomplete AI response: '.json_encode($content)
+                'NewsArticleGenerator: unparseable or incomplete AI response (finishReason: '
+                    .($response->json('candidates.0.finishReason') ?? 'null').'): '
+                    .json_encode($content)
             ));
 
             throw new RuntimeException(

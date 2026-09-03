@@ -22,7 +22,7 @@ return new class extends Migration
             // Encrypted at rest (see AiSetting's cast) — this table is reachable by anyone with
             // database access, unlike .env which at least stays off the web root.
             $table->text('gemini_api_key')->nullable();
-            $table->string('gemini_model')->default('gemini-3.6-flash');
+            $table->string('gemini_model')->default('gemini-flash-latest');
             $table->timestamps();
         });
     }

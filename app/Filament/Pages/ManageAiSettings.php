@@ -68,8 +68,8 @@ class ManageAiSettings extends Page
                 TextInput::make('gemini_model')
                     ->label('Model')
                     ->required()
-                    ->default('gemini-3.6-flash')
-                    ->helperText('Nama model Gemini, contoh: gemini-3.6-flash.')
+                    ->default('gemini-flash-latest')
+                    ->helperText('Nama model Gemini, contoh: gemini-flash-latest.')
                     ->maxLength(100),
             ])
             ->statePath('data');
