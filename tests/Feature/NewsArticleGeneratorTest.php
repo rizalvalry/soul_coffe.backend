@@ -105,16 +105,67 @@ class NewsArticleGeneratorTest extends TestCase
         $this->assertNull($draft['accent_color']);
     }
 
-    public function test_a_failed_http_response_is_translated_to_a_friendly_message(): void
+    /**
+     * Gemini answers 503 "experiencing high demand" routinely — it did so here three minutes
+     * after an identical call succeeded. A transient upstream blip must not reach the writer as
+     * a failure when simply asking again works.
+     */
+    public function test_a_503_is_retried_and_succeeds_without_the_writer_ever_seeing_it(): void
     {
         config(['services.gemini.key' => 'test-key']);
 
-        Http::fake(['generativelanguage.googleapis.com/*' => Http::response('rate limited', 429)]);
+        Http::fakeSequence('generativelanguage.googleapis.com/*')
+            ->push('overloaded', 503)
+            ->push([
+                'candidates' => [
+                    ['content' => ['parts' => [['text' => json_encode([
+                        'title' => 'Judul Setelah Retry',
+                        'body' => '<p>Isi.</p>',
+                    ])]]]],
+                ],
+            ], 200);
 
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Gagal menghubungi layanan AI');
+        $draft = app(NewsArticleGenerator::class)->generate('promo matcha baru');
 
-        app(NewsArticleGenerator::class)->generate('promo matcha baru');
+        $this->assertSame('Judul Setelah Retry', $draft['title']);
+        Http::assertSentCount(2);
+    }
+
+    public function test_a_persistent_503_gives_up_after_three_attempts_with_a_try_again_message(): void
+    {
+        config(['services.gemini.key' => 'test-key']);
+
+        Http::fake(['generativelanguage.googleapis.com/*' => Http::response('overloaded', 503)]);
+
+        try {
+            app(NewsArticleGenerator::class)->generate('promo matcha baru');
+            $this->fail('A persistent 503 should still surface as an error.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('sedang sibuk', $e->getMessage());
+        }
+
+        // 3 total attempts, matching finfam's proven 2-retry setting.
+        Http::assertSentCount(3);
+    }
+
+    /**
+     * A rejected key or a retired model will never fix itself, so burning two extra attempts on
+     * it only delays telling the writer where to actually look.
+     */
+    public function test_a_permanent_failure_is_not_retried_and_points_at_the_settings(): void
+    {
+        config(['services.gemini.key' => 'test-key']);
+
+        Http::fake(['generativelanguage.googleapis.com/*' => Http::response('bad key', 401)]);
+
+        try {
+            app(NewsArticleGenerator::class)->generate('promo matcha baru');
+            $this->fail('A 401 should surface as an error.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('Pengaturan', $e->getMessage());
+        }
+
+        Http::assertSentCount(1);
     }
 
     public function test_a_response_missing_the_required_fields_is_rejected(): void

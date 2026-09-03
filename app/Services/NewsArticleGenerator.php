@@ -3,9 +3,11 @@
 namespace App\Services;
 
 use App\Models\AiSetting;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Throwable;
 
 /**
  * Turns a content creator's one-line brief into a full draft — every field the news editor form
@@ -56,7 +58,24 @@ class NewsArticleGenerator
         // access log, a browser history entry, or an error report that happens to include the
         // request URL — all real places a query-string secret has leaked before.
         $response = Http::withHeaders(['x-goog-api-key' => $apiKey])
-            ->timeout(45)
+            ->timeout(30)
+            // Gemini returns 503 "experiencing high demand" as a matter of course — it happened
+            // here three minutes after an identical call succeeded, so it is capacity, not
+            // configuration. Retried rather than surfaced, matching the retry loop the working
+            // integration in D:\finfam\apps-script\Code.gs uses for exactly this (2 retries,
+            // 500ms then 1000ms). The delay stays under ~1.5s because a person is sitting in
+            // front of the button waiting for it.
+            ->retry([500, 1000], when: function (Throwable $e): bool {
+                // A connection that never landed is always worth another try.
+                if (! $e instanceof RequestException) {
+                    return true;
+                }
+
+                // Only genuinely transient statuses. Retrying a 400/401/403/404 would just
+                // delay an error that is never going to resolve itself — a rejected key or a
+                // retired model needs a person, not another attempt.
+                return in_array($e->response->status(), [429, 500, 502, 503, 504], true);
+            }, throw: false)
             ->post("https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent", [
                 'systemInstruction' => [
                     'parts' => [['text' => $this->systemPrompt()]],
@@ -82,8 +101,14 @@ class NewsArticleGenerator
                 "NewsArticleGenerator: Gemini returned {$response->status()}: {$response->body()}"
             ));
 
+            // Separated because these two need different things from the reader: "busy" means
+            // press the button again in a moment, while anything else means a person has to go
+            // look at the key or the model name. One generic message sent everybody to the
+            // wrong place.
             throw new RuntimeException(
-                'Gagal menghubungi layanan AI (status '.$response->status().'). Coba lagi sebentar lagi.'
+                in_array($response->status(), [429, 503], true)
+                    ? 'Layanan AI sedang sibuk (sudah dicoba 3 kali). Tunggu sebentar lalu klik Generate lagi.'
+                    : 'Gagal menghubungi layanan AI (status '.$response->status().'). Cek Gemini API Key dan Model di menu Pengaturan > AI.'
             );
         }
 
