@@ -45,7 +45,7 @@ class NewsArticleGenerator
             );
         }
 
-        $model = $setting->gemini_model ?: config('services.gemini.model', 'gemini-2.0-flash');
+        $model = $setting->gemini_model ?: config('services.gemini.model', 'gemini-3.6-flash');
 
         // The key goes in a header, not the URL query string, so it never ends up in a proxy
         // access log, a browser history entry, or an error report that happens to include the
