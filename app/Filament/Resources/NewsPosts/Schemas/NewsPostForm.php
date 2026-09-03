@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\NewsPosts\Schemas;
 
 use App\Enums\Role;
+use App\Filament\RichEditorPlugins\InlineImagePastePlugin;
 use App\Models\NewsPost;
 use Filament\Forms\Components\ColorPicker;
 use Filament\Forms\Components\DateTimePicker;
@@ -73,6 +74,12 @@ class NewsPostForm
                         RichEditor::make('body')
                             ->label('Isi Artikel')
                             ->required()
+                            // Lets a drag from another browser tab, or a paste of a copied web
+                            // image, actually upload instead of falling through to the browser's
+                            // own default of opening the image in a new tab — see
+                            // InlineImagePastePlugin's docblock.
+                            ->plugins([new InlineImagePastePlugin])
+                            ->fileAttachmentsMaxSize(8192)
                             ->columnSpanFull(),
                     ]),
 
@@ -89,7 +96,12 @@ class NewsPostForm
                             ->imageCropAspectRatio('16:9')
                             ->imageResizeTargetWidth(1280)
                             ->imageResizeTargetHeight(720)
-                            ->maxSize(5120)
+                            // A real phone/camera JPEG straight off the device is routinely
+                            // 5-8MB; the old 5MB cap rejected exactly the photos a content
+                            // creator was most likely to use. Kept below the server's raised
+                            // upload ceiling (see public/.user.ini) with headroom to spare.
+                            ->maxSize(8192)
+                            ->helperText('JPG, PNG, atau WEBP. Maksimal 8MB.')
                             ->disk('public')
                             ->directory('news')
                             ->visibility('public'),
