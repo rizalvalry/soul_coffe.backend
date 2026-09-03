@@ -27,9 +27,9 @@ class UserForm
                     ->label('Nomor HP')
                     ->tel()
                     ->required()
-                    ->helperText('Boleh diketik 08…, 62…, atau +62… — disimpan sebagai +62…')
+                    ->helperText('Boleh diketik 08…, 62…, atau +62… — disimpan sebagai 08…')
                     // Normalising on the way in is what makes the panel and the API agree; a
-                    // user saved as 0811… would never match a login normalised to +62811…
+                    // user saved as +62811… would never match a login normalised to 0811…
                     ->dehydrateStateUsing(fn (string $state): string => PhoneNumber::normalize($state))
                     // The uniqueness check must see the same normalised value the save will
                     // write, otherwise "0811…" and "+62811…" both pass and collide in the DB.

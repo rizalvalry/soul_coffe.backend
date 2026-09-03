@@ -28,11 +28,11 @@ class AuthTest extends TestCase
     public static function demoUsers(): array
     {
         return [
-            'administrator' => ['+6281100000001', 'admin123', 'ADMINISTRATOR'],
-            'finance' => ['+6281100000002', 'finance123', 'FINANCE'],
-            'barista' => ['+6281100000003', 'barista123', 'BARISTA'],
-            'rider' => ['+6281100000004', 'rider123', 'RIDER'],
-            'staff' => ['+6281100000005', 'staff123', 'STAFF'],
+            'administrator' => ['081100000001', 'admin123', 'ADMINISTRATOR'],
+            'finance' => ['081100000002', 'finance123', 'FINANCE'],
+            'barista' => ['081100000003', 'barista123', 'BARISTA'],
+            'rider' => ['081100000004', 'rider123', 'RIDER'],
+            'staff' => ['081100000005', 'staff123', 'STAFF'],
         ];
     }
 
@@ -74,7 +74,7 @@ class AuthTest extends TestCase
     public function test_bad_password_returns_401_with_exact_indonesian_message(): void
     {
         $response = $this->postJson('/api/v1/auth/login', [
-            'phone' => '+6281100000005',
+            'phone' => '081100000005',
             'password' => 'wrong-password',
             'device_name' => 'phpunit',
         ]);
@@ -86,7 +86,7 @@ class AuthTest extends TestCase
     public function test_unknown_phone_returns_the_same_generic_message_as_bad_password(): void
     {
         $response = $this->postJson('/api/v1/auth/login', [
-            'phone' => '+6281199999999',
+            'phone' => '081199999999',
             'password' => 'whatever',
             'device_name' => 'phpunit',
         ]);
@@ -97,7 +97,7 @@ class AuthTest extends TestCase
 
     public function test_logout_revokes_only_the_current_token(): void
     {
-        $user = User::query()->where('phone_e164', '+6281100000005')->firstOrFail();
+        $user = User::query()->where('phone_e164', '081100000005')->firstOrFail();
         $tokenA = $user->createToken('device-a')->plainTextToken;
         $tokenB = $user->createToken('device-b')->plainTextToken;
 

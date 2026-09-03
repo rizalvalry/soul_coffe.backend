@@ -23,7 +23,7 @@ class AdminPanelAccessTest extends TestCase
     {
         return User::create([
             'name' => 'Panel '.$role->value,
-            'phone_e164' => '+628110000'.rand(1000, 9999),
+            'phone_e164' => '08110000'.rand(1000, 9999),
             'password' => 'rahasia123',
             'role' => $role,
             'is_active' => $active,
@@ -62,7 +62,7 @@ class AdminPanelAccessTest extends TestCase
     {
         $admin = User::create([
             'name' => 'Rizal Admin',
-            'phone_e164' => '+6281100000001',
+            'phone_e164' => '081100000001',
             'password' => 'admin123',
             'role' => Role::ADMINISTRATOR,
             'is_active' => true,
@@ -84,7 +84,7 @@ class AdminPanelAccessTest extends TestCase
     {
         User::create([
             'name' => 'Rizal Admin',
-            'phone_e164' => '+6281100000001',
+            'phone_e164' => '081100000001',
             'password' => 'admin123',
             'role' => Role::ADMINISTRATOR,
             'is_active' => true,
@@ -92,7 +92,7 @@ class AdminPanelAccessTest extends TestCase
 
         Livewire::test(Login::class)
             ->fillForm([
-                'phone' => '+6281100000001',
+                'phone' => '081100000001',
                 'password' => 'salah',
             ])
             ->call('authenticate')

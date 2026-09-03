@@ -31,8 +31,8 @@ class AllocationTest extends TestCase
         parent::setUp();
         $this->seed();
 
-        $this->barista = User::query()->where('phone_e164', '+6281100000003')->firstOrFail();
-        $this->staff = User::query()->where('phone_e164', '+6281100000005')->firstOrFail();
+        $this->barista = User::query()->where('phone_e164', '081100000003')->firstOrFail();
+        $this->staff = User::query()->where('phone_e164', '081100000005')->firstOrFail();
         $this->cart = Cart::query()->where('code', '0018')->firstOrFail();
         $this->product = Product::query()->where('name', 'Soul Coffee')->firstOrFail();
     }
