@@ -5,6 +5,8 @@ namespace App\Filament\Resources\NewsPosts\Schemas;
 use App\Enums\Role;
 use App\Filament\RichEditorPlugins\InlineImagePastePlugin;
 use App\Models\NewsPost;
+use App\Services\NewsArticleGenerator;
+use Filament\Actions\Action;
 use Filament\Forms\Components\ColorPicker;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\FileUpload;
@@ -14,9 +16,12 @@ use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\Toggle;
+use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
+use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 /**
  * The writer's workspace.
@@ -38,6 +43,9 @@ class NewsPostForm
             ->components([
                 Section::make('Tulisan')
                     ->description('Bebas berekspresi — hanya judul dan isi yang wajib.')
+                    ->headerActions([
+                        static::generateWithAiAction(),
+                    ])
                     ->schema([
                         TextInput::make('kicker')
                             ->label('Kata Pembuka (gaul)')
@@ -164,5 +172,57 @@ class NewsPostForm
                     ])
                     ->columns(2),
             ]);
+    }
+
+    /**
+     * Fills the whole "Tulisan" section from a one-line brief. Never touches Penayangan — status,
+     * audience, scheduling, and highlighting stay an editorial decision the writer makes
+     * afterwards, not something a model gets to default.
+     */
+    protected static function generateWithAiAction(): Action
+    {
+        return Action::make('generateWithAi')
+            ->label('Generate dengan AI')
+            ->icon(Heroicon::OutlinedSparkles)
+            ->color('gray')
+            ->modalHeading('Generate draft artikel')
+            ->modalSubmitActionLabel('Generate')
+            ->schema([
+                Textarea::make('prompt')
+                    ->label('Ide atau brief singkat')
+                    ->placeholder('Contoh: promo matcha baru minggu ini, nada ceria, ajak staff coba')
+                    ->required()
+                    ->rows(3),
+            ])
+            ->action(function (array $data, callable $set): void {
+                try {
+                    $draft = app(NewsArticleGenerator::class)->generate($data['prompt']);
+                } catch (RuntimeException $e) {
+                    Notification::make()
+                        ->title('Gagal generate draft')
+                        ->body($e->getMessage())
+                        ->danger()
+                        ->send();
+
+                    return;
+                }
+
+                $set('kicker', $draft['kicker']);
+                $set('title', $draft['title']);
+                $set('slug', $draft['slug']);
+                $set('excerpt', $draft['excerpt']);
+                $set('body', $draft['body']);
+                $set('tags', $draft['tags']);
+
+                if (filled($draft['accent_color'])) {
+                    $set('accent_color', $draft['accent_color']);
+                }
+
+                Notification::make()
+                    ->title('Draft AI sudah masuk ke form')
+                    ->body('Cek dan sunting sebelum menyimpan — terutama fakta dan harga.')
+                    ->success()
+                    ->send();
+            });
     }
 }
