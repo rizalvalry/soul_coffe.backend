@@ -11,13 +11,11 @@ use Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
-use Filament\View\PanelsRenderHook;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
-use Illuminate\Support\HtmlString;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 class AdminPanelProvider extends PanelProvider
@@ -59,15 +57,6 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
-            ])
-            // See public/js/news/prevent-drop-navigation.js — stops the browser's default
-            // navigate-to-dropped-resource action anywhere in the panel, which is what a content
-            // creator reported as an image "opening in a new tab" instead of uploading.
-            ->renderHook(
-                PanelsRenderHook::BODY_END,
-                fn (): HtmlString => new HtmlString(
-                    '<script src="'.e(asset('js/news/prevent-drop-navigation.js')).'" defer></script>'
-                ),
-            );
+            ]);
     }
 }
