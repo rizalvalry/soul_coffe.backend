@@ -27,6 +27,7 @@ class StockLedgerService
         MovementType::REFILL_OUT,
         MovementType::SALE_OUT,
         MovementType::WASTE_OUT,
+        MovementType::RETURN_OUT,
     ];
 
     /**

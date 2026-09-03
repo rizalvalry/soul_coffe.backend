@@ -31,4 +31,22 @@ return [
     // here because this is the shared tunables file for both flows.
     'allocation_over_target_tolerance' => (int) env('SOUL_ALLOCATION_OVER_TARGET_TOLERANCE', 20),
 
+    // Daily operational allowance per cart (uang makan/minum staff), in whole rupiah per R9.
+    // Written once per cart per operating day by `soul:seed-daily-allowances` at 00:00 and
+    // pre-filled — still editable — in the barista's Add Stock form, so the usual case needs
+    // no typing at all.
+    'daily_cart_allowance' => (int) env('SOUL_DAILY_CART_ALLOWANCE', 50000),
+
+    // How the allowance above is treated in the money reports.
+    //
+    // false (default) = biaya operasional: company expense, outside the staff's settlement.
+    // true            = counted into Settlement.expected_total_minor, i.e. money the staff is
+    //                   accountable for at day-end reconciliation.
+    //
+    // This is deliberately a switch rather than something baked into how the allowance is
+    // stored: DailyCartAllowance records the plain fact ("cart X received Rp N on date Y") and
+    // nothing else, so changing this rule later changes only what the reports do with that fact
+    // — no data migration, and past records stay true to whichever rule applied at the time.
+    'allowance_counts_toward_settlement' => (bool) env('SOUL_ALLOWANCE_COUNTS_TOWARD_SETTLEMENT', false),
+
 ];

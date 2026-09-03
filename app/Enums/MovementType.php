@@ -16,6 +16,10 @@ enum MovementType: string
     case REFILL_IN = 'REFILL_IN';
     case SALE_OUT = 'SALE_OUT';
     case RETURN_IN = 'RETURN_IN';
+    // Pairs with RETURN_IN for unsold cups going back from a cart to the kitchen showcase at
+    // close of day. RETURN_IN alone only ever described the receiving side; without this the
+    // cart side of that move had no honest type (ADJUSTMENT would hide what actually happened).
+    case RETURN_OUT = 'RETURN_OUT';
     case WASTE_OUT = 'WASTE_OUT';
     case ADJUSTMENT = 'ADJUSTMENT';
 }
