@@ -107,6 +107,9 @@ Route::middleware('auth:sanctum')->group(function (): void {
     // off the same cups twice.
     Route::get('showcase/stock', [ShowcaseStockController::class, 'index']);
     Route::get('showcase/allowance/{cart}', [ShowcaseStockController::class, 'allowance']);
+    // Every active staff member, not only those already rostered — the Add Stock form exists
+    // for the case where nobody has been assigned yet.
+    Route::get('showcase/staff', [ShowcaseStockController::class, 'staff']);
 
     Route::middleware('idempotent:require')->group(function (): void {
         Route::post('showcase/brew', [ShowcaseStockController::class, 'brew']);

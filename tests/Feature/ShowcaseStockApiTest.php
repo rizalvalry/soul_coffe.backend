@@ -246,6 +246,36 @@ class ShowcaseStockApiTest extends TestCase
             ->assertJsonPath('data.is_edited', false);
     }
 
+    /**
+     * The staff picker must list everyone, including people with no assignment yet — filtering
+     * by assignment would hide exactly the staff this form exists to place.
+     */
+    public function test_the_staff_picker_lists_all_active_staff_with_their_current_cart(): void
+    {
+        $unassigned = User::factory()->role(Role::STAFF)->create(['name' => 'Belum Ditugaskan']);
+
+        $response = $this->actingAs($this->barista, 'sanctum')
+            ->getJson('/api/v1/showcase/staff')
+            ->assertSuccessful()
+            ->assertJsonStructure(['data' => [['id', 'name', 'assigned_cart_id', 'assigned_cart_code']]]);
+
+        $rows = collect($response->json('data'));
+
+        // The seeded staff is on cart 0018 today, so the picker says so up front rather than
+        // letting the barista discover the R11 conflict after typing the cups.
+        $this->assertSame($this->cart->code, $rows->firstWhere('id', $this->staff->id)['assigned_cart_code']);
+
+        // And the unassigned one is present with nothing against their name.
+        $this->assertNull($rows->firstWhere('id', $unassigned->id)['assigned_cart_code']);
+    }
+
+    public function test_staff_cannot_read_the_staff_picker(): void
+    {
+        $this->actingAs($this->staff, 'sanctum')
+            ->getJson('/api/v1/showcase/staff')
+            ->assertForbidden();
+    }
+
     /** The reason this endpoint exists: no cart is blocked by paperwork nobody did. */
     public function test_a_cart_with_no_assignment_today_can_still_be_given_stock(): void
     {

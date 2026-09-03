@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreCartCloseOutRequest;
 use App\Http\Requests\StoreShowcaseBrewRequest;
@@ -9,6 +10,7 @@ use App\Http\Requests\StoreShowcaseHandoverRequest;
 use App\Http\Resources\DailyCartAllowanceResource;
 use App\Http\Resources\StockRowResource;
 use App\Models\Cart;
+use App\Models\StaffAssignment;
 use App\Models\User;
 use App\Services\AllocationService;
 use App\Services\CentralStockService;
@@ -161,6 +163,44 @@ class ShowcaseStockController extends Controller implements HasMiddleware
     public function allowance(Request $request, Cart $cart): DailyCartAllowanceResource
     {
         return new DailyCartAllowanceResource($this->allowances->forCart($cart));
+    }
+
+    /**
+     * Staff the barista can hand a cart to.
+     *
+     * Deliberately NOT `/allocations/today`'s staff-on-shift list, which only returns people who
+     * already have an assignment: this form exists precisely for the case where nobody has been
+     * assigned yet, so filtering by assignment would hide exactly the staff the barista needs.
+     *
+     * `assigned_cart_code` is included so the UI can show at a glance who is already placed
+     * today — R11 makes picking them a conflict, and saying so in the list is kinder than a 422
+     * after they have typed the cups.
+     */
+    public function staff(Request $request): JsonResponse
+    {
+        $date = now()->toDateString();
+
+        $staff = User::query()
+            ->where('role', Role::STAFF)
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'phone_e164']);
+
+        $assignments = StaffAssignment::query()
+            ->whereDate('operating_date', $date)
+            ->with('cart:id,code')
+            ->get()
+            ->keyBy('user_id');
+
+        return response()->json([
+            'data' => $staff->map(fn (User $user): array => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'phone' => $user->phone_e164,
+                'assigned_cart_id' => $assignments->get($user->id)?->cart_id,
+                'assigned_cart_code' => $assignments->get($user->id)?->cart?->code,
+            ])->all(),
+        ]);
     }
 
     /**
