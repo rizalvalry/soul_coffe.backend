@@ -27,12 +27,19 @@ yang sama sebelum dicocokkan.
 
 | Role | Nomor HP | Password |
 |---|---|---|
-| Administrator | `081100000001` | `admin123` |
-| Finance | `081100000002` | `finance123` |
-| Barista | `081100000003` | `barista123` |
-| Rider | `081100000004` | `rider123` |
-| Staff (Maufu) | `081100000005` | `staff123` |
-| Content Creator | `081100000006` | `contentcreator123` |
+| Administrator | `0811000001` | `admin123` |
+| Finance | `0811000002` | `finance123` |
+| Barista | `0811000003` | `barista123` |
+| Rider | `0811000004` | `rider123` |
+| Staff (Maufu) | `0811000005` | `staff123` |
+| Content Creator | `0811000006` | `contentcreator123` |
+
+These are the numbers **actually stored on the live server** — confirmed 2026-09-03 by reading
+`users` directly over SSH. They are shorter than `database/seeders/UserSeeder.php`'s own numbers
+(`0811000001` vs `081100000001`): production's five original demo accounts were seeded before
+that file's current numbering existed, so a fresh local install and this live server do not use
+byte-identical demo numbers. Both normalise and log in the same way; this table is what to type
+against `soulcoffee.rafancloud.com`, not a description of the seeder.
 
 **PIN staff:** `123456`.
 
