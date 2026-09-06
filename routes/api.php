@@ -34,21 +34,26 @@ use Illuminate\Support\Facades\Route;
  */
 
 Route::post('auth/login', [AuthController::class, 'login'])
-    ->middleware('throttle:10,1'); // credential stuffing guard
+    ->middleware('throttle:auth-login'); // credential stuffing guard
 
 // Tighter than the password route on purpose: a 6-digit PIN is a millionth of the search space
 // a password is, so the network-level limit is halved. The per-account lockout in
-// AuthController::loginWithPin is the guard that actually matters — this one only slows a
-// single source down, and every staff phone on one carrier shares an address.
+// AuthController::loginWithPin is the guard that actually matters — a rate limit is only volume
+// control, and it does not survive a cache flush the way the lockout column does.
 Route::post('auth/login-pin', [AuthController::class, 'loginWithPin'])
-    ->middleware('throttle:5,1');
+    ->middleware('throttle:auth-login-pin');
 
 // "Lupa PIN". Unauthenticated, writes a row and pushes every Administrator, so it is the most
-// tightly throttled route in the API: three attempts per ten minutes per source. The controller
+// tightly throttled route in the API: three attempts per ten minutes per account. The controller
 // answers an identical 202 for every input, so this limit is what bounds enumeration attempts
 // rather than the response telling anyone anything.
+//
+// All three use NAMED limiters (App\Providers\RateLimitServiceProvider), not the inline
+// `throttle:n,m` form. The inline form keys on domain + IP and nothing else, so every throttled
+// route on this domain shared one counter — three password attempts used up this route's whole
+// allowance — and behind Cloudflare that one counter was shared by the entire fleet.
 Route::post('auth/pin-reset-requests', [PinResetRequestController::class, 'store'])
-    ->middleware('throttle:3,10');
+    ->middleware('throttle:auth-pin-reset');
 
 Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('auth/logout', [AuthController::class, 'logout']);

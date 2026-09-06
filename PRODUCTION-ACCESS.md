@@ -1,4 +1,24 @@
-# Soul Coffeemate — Akses Build Produksi (v1.0.3)
+# Soul Coffeemate — Akses Build Produksi (v1.4.0)
+
+> **v1.4.0 — cara masuk berubah.** Sekali seorang pengguna membuat PIN 6 angka di menu
+> Pengaturan, **kata sandi tidak lagi bisa dipakai untuk masuk** — hanya PIN itu. Membuat PIN juga
+> mengeluarkan semua sesi di semua perangkat, dan aplikasi langsung meminta masuk kembali dengan
+> PIN baru supaya penggunanya membuktikan PIN-nya benar selagi masih ingat.
+>
+> Kalau PIN lupa, tidak ada jalan pintas: tombol **"Lupa PIN?"** di halaman masuk mengirim nomor
+> HP + email + kata sandi ke Administrator. Permintaan itu muncul di panel admin pada menu
+> **Permintaan Reset PIN** (dengan badge merah berisi jumlah yang menunggu) dan sebagai push
+> notification ke HP setiap Administrator. Administrator mengetik sendiri kata sandi barunya;
+> menerapkannya sekaligus menghapus PIN lama dan mengeluarkan semua sesi pengguna itu.
+>
+> Semua akun di tabel bawah saat ini **tanpa PIN**, jadi kelimanya masuk memakai kata sandi
+> seperti biasa — sudah diverifikasi langsung ke API live pada 2026-09-06.
+>
+> Satu batas yang disengaja: aturan ini berlaku untuk **API mobile saja**. Panel `/admin` tetap
+> memakai kata sandi, karena panel tidak punya kolom PIN dan mengunciNya akan menutup satu-satunya
+> pintu masuk Administrator.
+
+## Sebelumnya (v1.0.3)
 
 Ini **bukan** build demo. `dist/soul-coffeemate-v1.0.3.apk` bicara langsung ke API produksi di
 `https://soulcoffee.rafancloud.com/api/v1` — setiap alokasi, refill request, foto, dan tanda
@@ -59,6 +79,38 @@ keenam ini — belum ada API untuk membuat user baru (lihat bagian "Menambah aku
 ---
 
 ## APK
+
+**Berkas:** `dist/soul-coffeemate-v1.4.0.apk`
+
+| Properti | Nilai |
+|---|---|
+| Ukuran | 24.1 MB |
+| Package | `id.soulcoffeemate.ops.demo` |
+| Versi | 1.4.0 (versionCode 14) |
+| Min Android | **8.0** (API 26) |
+| Arsitektur | `arm64-v8a`, `armeabi-v7a` |
+| SHA-256 | `46f03d22df90ff835ab4d490bbab24c29651b89a10f5ba47de39fe876bd3fd13` |
+| Tanda tangan | SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c` — **sama dengan v1.0.x–v1.3.3**, jadi cukup install di atas versi lama, tidak perlu uninstall |
+
+**Beda dari v1.3.3:** cara masuk (PIN menggantikan kata sandi, lihat catatan di atas), tombol
+"Lupa PIN?", dan push notification untuk seluruh alur bisnis. Izin baru yang diminta:
+`POST_NOTIFICATIONS` (dialog sistem muncul sekali setelah masuk), plus `VIBRATE` dan
+`RECEIVE_BOOT_COMPLETED` yang dipakai FCM.
+
+**Push notification belum aktif sampai dua berkas Firebase dipasang** — keduanya sengaja tidak
+ada di repo:
+
+1. `google-services.json` di folder `soul_coffe.mobile`, lalu APK di-build ulang. Ambil dari
+   Firebase console untuk aplikasi Android dengan package `id.soulcoffeemate.ops.demo`.
+2. Service-account JSON di server (`storage/app/private/fcm-service-account.json`), lalu isi
+   `FCM_PROJECT_ID` dan `FCM_CREDENTIALS_PATH` di `.env` dan jalankan
+   `php artisan config:clear && php artisan config:cache`.
+
+Tanpa keduanya aplikasi tetap berjalan penuh: notifikasi masih sampai lewat socket Pusher dan
+fallback polling 10 detik, hanya tidak muncul di layar terkunci. APK ini **sudah** dibuild tanpa
+`google-services.json`, jadi bagian push-nya belum bisa diuji sampai langkah 1 dikerjakan.
+
+### Versi sebelumnya
 
 **Berkas:** `dist/soul-coffeemate-v1.0.3.apk`
 
