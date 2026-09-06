@@ -1,4 +1,4 @@
-# Soul Coffeemate — Akses Build Produksi (v1.4.0)
+# Soul Coffeemate — Akses Build Produksi (v1.4.2)
 
 > **v1.4.0 — cara masuk berubah.** Sekali seorang pengguna membuat PIN 6 angka di menu
 > Pengaturan, **kata sandi tidak lagi bisa dipakai untuk masuk** — hanya PIN itu. Membuat PIN juga
@@ -80,25 +80,44 @@ keenam ini — belum ada API untuk membuat user baru (lihat bagian "Menambah aku
 
 ## APK
 
-**Berkas:** `dist/soul-coffeemate-v1.4.1.apk`
+**Berkas:** `dist/soul-coffeemate-v1.4.2.apk`
 
 **Unduh langsung:**
-`https://github.com/rizalvalry/soul_coffe.backend/raw/main/dist/soul-coffeemate-v1.4.1.apk`
+`https://github.com/rizalvalry/soul_coffe.backend/raw/main/dist/soul-coffeemate-v1.4.2.apk`
 
 | Properti | Nilai |
 |---|---|
-| Ukuran | 24.1 MB |
+| Ukuran | 24.1 MB (25.309.104 byte) |
 | Package | `id.soulcoffeemate.ops.demo` |
-| Versi | 1.4.1 (versionCode 15) |
+| Versi | 1.4.2 (versionCode 16) |
 | Min Android | **7.0** (API 24) |
+| Target | Android 16 (API 36) |
 | Arsitektur | `arm64-v8a`, `armeabi-v7a` |
+| SHA-256 | `4174c2961d3adcb6335b695012fd666f0b28b4bde4dc48c1e46cbc7c3d72c1ce` |
+| Tanda tangan | SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c` — **sama dengan v1.0.x–v1.4.1**, jadi cukup install di atas versi lama, tidak perlu uninstall |
+
+`npm run apk:verify` 13/13 lolos.
+
+**Beda dari v1.4.1:** satu refetch pada saat socket Pusher baru tersambung. Pusher tidak
+mengirim ulang event yang terjadi selagi socket putus, jadi tanpa ini layar bertahan menampilkan
+data lama sampai kebetulan ada event berikutnya. Timer polling 10 detik tetap ada dan tetap hanya
+hidup saat socket **tidak** tersambung — lihat bagian "Realtime (Pusher)" di bawah.
+
+Perubahan yang menyertai rilis ini ada di sisi server dan **sudah live tanpa perlu update APK**:
+broadcast Pusher sekarang dikirim langsung setelah transaksi commit, bukan lewat antrean yang
+tidak pernah ada yang menjalankan.
+
+### v1.4.1 (sebelumnya)
+
+| Properti | Nilai |
+|---|---|
+| Versi | 1.4.1 (versionCode 15) |
 | SHA-256 | `339c257439b8754a2d7fabf28dda453c3568812ecfecff26c9a7a3b3b05895f3` |
-| Tanda tangan | SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c` — **sama dengan v1.0.x–v1.4.0**, jadi cukup install di atas versi lama, tidak perlu uninstall |
 
 **Beda dari v1.4.0:** angka badge di menu (Approval Refill, Permintaan Refill, Siap Diambil,
 Status Permintaan) sekarang benar-benar tampil. Sebelumnya `useMenuBadges()` mengembalikan objek
 kosong — sengaja, sejak sebelum lapisan realtime ada — sehingga tile-nya selalu terlihat sepi
-berapa pun antrean yang menunggu. Tidak ada perubahan lain di sisi aplikasi.
+berapa pun antrean yang menunggu.
 
 ### v1.4.0 (sebelumnya)
 
@@ -179,7 +198,7 @@ Sama seperti build demo sebelumnya — lihat `DEMO-ACCESS.md` bagian "Izin yang 
 
 ### Cara memasang
 
-1. Buka repositori ini dari browser HP → folder `dist/` → unduh `soul-coffeemate-v1.0.3.apk`.
+1. Buka repositori ini dari browser HP → folder `dist/` → unduh `soul-coffeemate-v1.4.2.apk`.
 2. Izinkan **Install unknown apps** untuk browser yang dipakai.
 3. Buka berkas yang terunduh → **Install**.
 4. Play Protect akan memperingatkan karena APK ini tidak ditandatangani sertifikat Play Store —
@@ -201,67 +220,115 @@ sampai ada yang login dan mencobanya.
 
 ---
 
-## Realtime (Pusher) — langkah 1 SELESAI, tinggal langkah 2
+## Realtime (Pusher) — ✅ AKTIF
 
-Notifikasi tanpa reload (requirement 3) butuh **dua** hal berjalan sekaligus di server. Per
-2026-09-06 langkah 1 sudah dikerjakan; tinggal langkah 2 (satu entri cron di hPanel) yang hanya
-bisa dipasang lewat UI. Tidak ada nilai rahasia di bagian ini — App Secret/App ID Pusher
-diberikan langsung ke Anda di luar dokumen ini (bukan di repo, publik), supaya tidak ikut
-ter-commit.
+Notifikasi lonceng/badge tanpa reload (requirement 3) **sudah jalan di produksi** per 2026-09-06.
+Tidak ada langkah manual yang tersisa untuk bagian ini. Tidak ada nilai rahasia di bagian ini —
+App Secret/App ID Pusher diberikan langsung ke Anda di luar dokumen ini (bukan di repo, publik),
+supaya tidak ikut ter-commit.
 
-**1. Isi `.env` di server dengan kredensial Pusher — ✅ SUDAH DILAKUKAN (2026-09-06).**
+Ada **dua** penyebab yang saling menutupi kenapa sebelumnya tidak pernah sampai:
 
-Sebelumnya `.env` produksi berisi `BROADCAST_CONNECTION=log` dan **tidak punya satu pun baris
-`PUSHER_*`**. Artinya setiap broadcast ditulis ke `storage/logs` dan tidak pernah dikirim ke
-klien mana pun — aplikasinya terlihat sehat, tapi tidak ada satu notifikasi pun yang mungkin
-sampai. Itu penyebab pertama push tidak jalan, dan sudah diperbaiki: `BROADCAST_CONNECTION=pusher`
-plus enam baris `PUSHER_*` (app `2191062`, cluster `ap1`), diikuti
-`php artisan config:clear && php artisan config:cache`.
+**Penyebab 1 — broadcaster diarahkan ke `log`.** `.env` produksi berisi
+`BROADCAST_CONNECTION=log` dan **tidak punya satu pun baris `PUSHER_*`**. Setiap broadcast ditulis
+ke `storage/logs` dan tidak pernah dikirim ke klien mana pun. Sudah diperbaiki:
+`BROADCAST_CONNECTION=pusher` plus enam baris `PUSHER_*` (app `2191062`, cluster `ap1`), diikuti
+`php artisan config:clear && php artisan config:cache`. Diverifikasi langsung: `trigger` ke
+`api-ap1.pusher.com` diterima, dan `POST /api/v1/broadcasting/auth` mengembalikan tanda tangan
+yang sah untuk `private-user.10` maupun `private-role.STAFF`.
 
-Sudah diverifikasi langsung ke Pusher: `trigger` ke `api-ap1.pusher.com` diterima, dan endpoint
-otorisasi channel (`POST /api/v1/broadcasting/auth`) mengembalikan tanda tangan yang sah untuk
-`private-user.10` maupun `private-role.STAFF`.
+**Penyebab 2 — broadcast-nya diantrekan, dan tidak ada yang menjalankan antrean.**
+`EventPublisher` dulu memanggil `PublishOutboxEvent::dispatch()` dan berhenti di situ. Hosting ini
+tidak punya `supervisorctl`/`systemd`, dan cron-nya belum terpasang, jadi setiap event menumpuk di
+tabel `jobs` selamanya (ditemukan: 30 job, 30 outbox belum terkirim). Yang membuat bug ini bertahan
+lama justru fallback-nya bekerja — kelihatannya "realtime lambat", padahal realtime tidak pernah
+jalan sama sekali.
 
-Kalau `.env` perlu diisi ulang dari nol, formatnya ada di `.env.example`, lalu jalankan:
-```bash
-php artisan config:clear && php artisan config:cache
+Sudah diperbaiki di commit *"Broadcast realtime events inline instead of only via the queue"*:
+`EventPublisher::broadcast()` menjalankan `handle()`-nya job itu **langsung** setelah transaksi
+commit, dan antrean tinggal jadi jalur ulang kalau panggilan HTTP-nya gagal. Ini pola yang sama
+dengan yang sudah dipakai `PushNotifier` untuk FCM, dengan alasan yang sama: notifikasi yang baru
+tiba setelah cron berikutnya tidak ada gunanya untuk "kopi Anda siap".
+
+Diverifikasi di server produksi setelah deploy:
+
 ```
+broadcaster    : pusher
+outbox id      : 33
+published_at   : 2026-09-06 18:58:07      <- langsung, tanpa worker
+publish took   : 273 ms                    <- termasuk HTTP ke Pusher
+jobs before/after : 0 / 0                  <- tidak ada yang mengantre
+unpublished    : 0
+```
+
 `soul_coffe.mobile`'s `app.json` (`pusherKey`/`pusherCluster`) sudah diisi dengan App Key +
 Cluster yang sama — App Secret **tidak pernah** masuk ke mobile app, hanya ke `.env` server ini.
 
-**2. Buat worker antrean berjalan.** `QUEUE_CONNECTION=database` — job yang benar-benar memanggil
-broadcaster (`PublishOutboxEvent`) masuk ke tabel `jobs` dan menunggu di sana selamanya kalau
-tidak ada yang memprosesnya. Shared hosting ini tidak punya `supervisorctl`/`systemd` untuk
-proses persisten, jadi jalannya lewat **cron job** di hPanel (Advanced → Cron Jobs), tiap menit:
+### Soal "polling 10 detik"
+
+Polling di aplikasi **tidak berjalan berbarengan** dengan Pusher. Guard-nya ada di
+`src/features/realtime/useRealtime.ts`:
+
+```ts
+if (state === 'connected' || !session) return;   // timer tidak pernah dibuat
+```
+
+Begitu socket Pusher `connected`, timer-nya dibongkar dan biaya polling menjadi nol request.
+Polling yang Anda lihat selama ini adalah **gejala** dari Penyebab 2 di atas, bukan desain.
+Sejak v1.4.2 ada juga satu refetch pada saat socket baru tersambung — Pusher tidak punya replay,
+jadi event yang terjadi saat socket putus tidak akan pernah dikirim ulang; satu refetch menutup
+celah itu tanpa perlu timer.
+
+Fallback-nya sendiri sengaja dipertahankan untuk kasus socket memang tidak bisa terbentuk (HP di
+captive-portal WiFi, key belum terisi). Alternatifnya adalah layar yang diam-diam berhenti
+diperbarui, dan itu lebih buruk.
+
+### Cron hPanel — tetap dianjurkan, tapi bukan lagi syarat realtime
+
 ```bash
 * * * * * cd /home/u253446757/domains/rafancloud.com/public_html/soulcoffee && /usr/bin/php artisan schedule:run >> /dev/null 2>&1
 ```
-**Satu entri ini sudah cukup untuk semuanya.** Sejak commit "Run the queue worker from the
-scheduler", `queue:work --stop-when-empty --max-time=55 --tries=3` didaftarkan di
-`routes/console.php` sebagai tugas `everyMinute()`, bukan sebagai entri cron tersendiri. Jadi
-`schedule:run` yang memanggil worker-nya, sekaligus menjalankan `soul:seed-daily-allowances`
-pukul 00:00. Entri cron lama yang memanggil `queue:work` langsung **jangan dipakai lagi** —
-kalau itu yang dipasang, worker jalan tapi uang harian per gerobak tidak pernah terisi.
 
-Path di atas sudah diverifikasi lewat SSH — subdomain `soulcoffee.rafancloud.com` document
-root-nya menunjuk ke folder project di dalam `public_html` domain utama, bukan ke folder
-`domains/soulcoffee.rafancloud.com/` tersendiri, jadi bentuk path yang tertulis di draft
-sebelumnya tidak akan pernah cocok. `--stop-when-empty` membuat proses keluar begitu antrean
-kosong, `--max-time=55` jadi jaring pengaman supaya tidak tumpang tindih dengan pemanggilan cron
-berikutnya di menit yang sama.
-
-Sudah diuji langsung pada 2026-09-06: `php artisan schedule:run` dijalankan manual di server
-memang mengeksekusi worker-nya, dan satu event uji (`DiagnosticPing`, outbox #31) berpindah dari
-`published_at = null` menjadi terkirim ke Pusher dalam sekali jalan, tanpa job gagal.
+Satu entri ini menjalankan dua hal: `soul:seed-daily-allowances` pukul 00:00 (jatah harian per
+gerobak — **ini yang sekarang jadi alasan utama** cron dipasang), dan
+`queue:work --stop-when-empty --max-time=55 --tries=3` tiap menit sebagai penyapu event yang gagal
+dikirim inline saat Pusher sedang bermasalah.
 
 Cron **tidak bisa dipasang lewat SSH** di hosting ini: shell-nya tidak punya perintah `crontab`
-sama sekali (sudah dicoba). Satu-satunya jalur adalah UI hPanel → Advanced → Cron Jobs.
+sama sekali (sudah dicoba). Satu-satunya jalur adalah UI hPanel → Advanced → Cron Jobs. Entri cron
+lama yang memanggil `queue:work` langsung jangan dipakai — kalau itu yang dipasang, worker jalan
+tapi jatah harian per gerobak tidak pernah terisi.
 
-**Cara memastikan keduanya benar-benar jalan:** kirim satu refill request lewat APK, lalu
-`SELECT * FROM jobs` harus kosong dalam &lt;1 menit (bukan menumpuk), dan HP lain yang sedang
-login harus menerima notifikasi tanpa perlu menekan refresh. Sebelum kedua langkah ini selesai,
-aplikasi tetap berfungsi penuh lewat fallback polling 10 detik — bukan blocker, tapi requirement
-3 belum genap terpenuhi tanpa ini.
+---
+
+## FCM Push Notification — ⛔ BELUM AKTIF, butuh 2 file dari Anda
+
+Kode-nya sudah lengkap dan sudah ada test-nya (`tests/Feature/PushNotificationTest.php`).
+`PushNotifier` dipanggil inline setelah transaksi commit, jadi **tidak** butuh cron juga. Yang
+belum ada murni kredensial Firebase, dan itu tidak bisa dibuat dari sisi ini — perlu login ke
+Firebase Console dengan akun Google Anda.
+
+Kondisi terverifikasi di server per 2026-09-06: tidak ada baris `FCM_*` di `.env`,
+`storage/app/private/fcm-service-account.json` tidak ada, `google-services.json` tidak ada di
+repo mobile, dan tabel `device_push_tokens` berisi 0 baris.
+
+**Yang harus Anda lakukan (tidak bisa saya kerjakan):**
+
+1. Buat/buka project di [Firebase Console](https://console.firebase.google.com).
+2. **Add app → Android**, package name persis: `id.soulcoffeemate.ops.demo`. Unduh
+   **`google-services.json`** → kirim ke saya, saya taruh di root `soul_coffe.mobile/` dan
+   rebuild APK-nya.
+3. **Project settings → Service accounts → Generate new private key**. Unduh file JSON-nya →
+   kirim ke saya, saya taruh di `storage/app/private/fcm-service-account.json` di server, isi
+   `FCM_PROJECT_ID` + `FCM_CREDENTIALS_PATH` di `.env`, lalu `config:cache`.
+
+Setelah kedua file itu ada, tidak ada langkah manual lain: aplikasi mendaftarkan token-nya sendiri
+lewat `POST /api/v1/me/devices` saat login, dan `event_id` yang sama dipakai untuk membuang
+duplikat antara socket dan push (E15) sehingga satu kejadian tidak muncul dua kali.
+
+Catatan: sampai FCM aktif, notifikasi hanya sampai saat aplikasi **sedang dibuka** (lewat Pusher).
+Notifikasi yang muncul saat aplikasi tertutup/di background memang tugas FCM, bukan Pusher — itu
+batas teknis, bukan bug.
 
 ---
 
