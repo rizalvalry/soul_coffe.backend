@@ -7,6 +7,7 @@ use App\Models\Attendance;
 use App\Models\StaffAttendanceWindow;
 use App\Models\User;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
@@ -19,6 +20,8 @@ use RuntimeException;
  */
 class AttendanceService
 {
+    public function __construct(private readonly EventPublisher $events) {}
+
     /**
      * Roles that clock in at all. Everyone else (Finance, Rider, Administrator, Content Creator)
      * has no shift to start — an absen button would be meaningless for them.
@@ -55,14 +58,30 @@ class AttendanceService
             return $existing;
         }
 
-        return Attendance::query()->create([
-            'operating_date' => $date,
-            'user_id' => $user->id,
-            // Stored, not joined — a later role change must not rewrite history.
-            'role' => $user->role,
-            // Server clock (R16).
-            'clocked_in_at' => now(),
-        ]);
+        return DB::transaction(function () use ($user, $date): Attendance {
+            $attendance = Attendance::query()->create([
+                'operating_date' => $date,
+                'user_id' => $user->id,
+                // Stored, not joined — a later role change must not rewrite history.
+                'role' => $user->role,
+                // Server clock (R16).
+                'clocked_in_at' => now(),
+            ]);
+
+            // Only the FIRST clock-in of the day publishes — the early return above means a
+            // repeat tap never reaches here, so nobody is buzzed twice for one shift.
+            $this->events->publish(
+                'AttendanceClockedIn',
+                'Absen masuk',
+                sprintf('%s (%s) absen pukul %s.', $user->name, $user->role->label(), $attendance->clocked_in_at->format('H:i')),
+                ['role.ADMINISTRATOR', 'role.FINANCE'],
+                $this->supervisorIds(),
+                null,
+                null,
+            );
+
+            return $attendance;
+        });
     }
 
     /**
@@ -89,13 +108,29 @@ class AttendanceService
             throw new RuntimeException('Absen dulu sebelum membuka absen staff.');
         }
 
-        // firstOrCreate, not create: two baristas at the same kitchen both pressing this is a
-        // race with an obvious right answer — the gate is open either way, and whoever got there
-        // first stays recorded as the one who opened it.
-        return StaffAttendanceWindow::query()->firstOrCreate(
-            ['operating_date' => $date],
-            ['opened_by' => $barista->id, 'opened_at' => now()],
-        );
+        return DB::transaction(function () use ($barista, $date): StaffAttendanceWindow {
+            // firstOrCreate, not create: two baristas at the same kitchen both pressing this is a
+            // race with an obvious right answer — the gate is open either way, and whoever got
+            // there first stays recorded as the one who opened it.
+            $window = StaffAttendanceWindow::query()->firstOrCreate(
+                ['operating_date' => $date],
+                ['opened_by' => $barista->id, 'opened_at' => now()],
+            );
+
+            // Published only by the barista who actually opened the gate. The loser of the race
+            // gets the same window back and must not send a second round of notifications.
+            if ($window->wasRecentlyCreated) {
+                $this->events->publish(
+                    'StaffAttendanceWindowOpened',
+                    'Absen staff dibuka',
+                    sprintf('%s sudah membuka absen. Silakan absen untuk mulai bertugas.', $barista->name),
+                    ['role.STAFF', 'role.ADMINISTRATOR'],
+                    $this->clockingStaffIds(),
+                );
+            }
+
+            return $window;
+        });
     }
 
     public function isStaffWindowOpen(?Carbon $operatingDate = null): bool
@@ -111,5 +146,25 @@ class AttendanceService
             ->where('user_id', $user->id)
             ->whereDate('operating_date', ($operatingDate ?? Carbon::today())->toDateString())
             ->exists();
+    }
+
+    /** Who is told that somebody clocked in: the roles that supervise the day. @return array<int,int> */
+    private function supervisorIds(): array
+    {
+        return User::query()
+            ->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE])
+            ->where('is_active', true)
+            ->pluck('id')
+            ->all();
+    }
+
+    /** Every active staff member waiting on the gate. @return array<int,int> */
+    private function clockingStaffIds(): array
+    {
+        return User::query()
+            ->where('role', Role::STAFF)
+            ->where('is_active', true)
+            ->pluck('id')
+            ->all();
     }
 }

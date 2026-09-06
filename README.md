@@ -114,6 +114,73 @@ demo, but requirement 3 is not met. A small VPS is the right target if realtime 
 9. **Events are written to `outbox_events` inside the state-change transaction** and published by
    the queue worker, so restarting Reverb loses no notifications.
 
+## Sign-in credentials: password, then PIN
+
+An account starts password-only. The moment its owner creates a 6-digit login PIN in the app, the
+PIN **replaces** the password for signing in:
+
+| Account state | `POST /auth/login` (password) | `POST /auth/login-pin` |
+|---|---|---|
+| No login PIN | 200 + token | `409 PIN_NOT_SET` |
+| Login PIN set | `409 PIN_REQUIRED` (only after the password checked out) | 200 + token |
+
+Three consequences that are load-bearing, not incidental:
+
+1. **Creating a PIN revokes every session**, on every device, including the one that created it
+   (`LoginPinController::store`). The app then sends the user straight to the PIN pad, so they
+   prove they can type it while they still remember it. Without this, a mistyped-but-confirmed PIN
+   would only be discovered at the next sign-in, by which point the password no longer works.
+2. **A forgotten PIN is not self-service.** Five wrong attempts lock the PIN route for 15 minutes
+   and there is no password to fall back to, so the recovery path is
+   `POST /auth/pin-reset-requests` → the **Permintaan Reset PIN** queue in the panel. An
+   Administrator types a new password, and applying it clears the PIN and revokes every session in
+   one transaction (`App\Services\PinResetService`). The password is never generated: the
+   characters are the administrator's, and they pass them to the person out of band, using the
+   email captured with the request.
+3. **The panel is not covered by this rule.** `/admin` still authenticates by password — it has no
+   PIN entry, and gating it would lock Administrators out of their only surface. See the
+   `AuthController` docblock.
+
+The `409` on the password route is answered **only after the password matched**. Answering it
+sooner would turn the login endpoint into a free "does this account have a PIN" oracle.
+
+## Push notifications
+
+Every event that already flowed through `EventPublisher` now takes a second path to the phone:
+the Pusher socket as before, plus an FCM push to each of the recipient's registered devices. Both
+carry the same `event_id`, which is what the app dedupes on (E15), and the actor is excluded — the
+person who tapped the button is looking at the result already.
+
+- **Registration:** `POST /me/devices` (upsert on the FCM token), `DELETE /me/devices` on sign-out.
+  The token is keyed by device, not by user, so a shared handset follows whoever signed in last.
+- **Transport:** `App\Services\Push\FcmClient` speaks the FCM HTTP v1 API directly — a
+  service-account JWT for an OAuth2 bearer, then one `messages:send` per device, pooled. No SDK.
+- **Timing:** sent inline after the transaction commits, deliberately **not** queued. With
+  `QUEUE_CONNECTION=database` and no resident worker on this host, a queued push would wait for a
+  cron tick; "your refill is ready" thirty minutes late is worse than useless.
+- **Failure:** never throws. A provider outage delays nothing else — the event is already durable
+  in `outbox_events` and `notifications`. A token FCM reports as `UNREGISTERED` is deleted.
+
+Modules that previously emitted no events now do: absen (clock-in, staff window opened), showcase
+stock (brew, hand-to-cart, close-out) and the news feed (`NewsPostObserver`, fired once on the
+transition into a published state).
+
+**Setup.** Push stays switched off until both halves exist, and everything else works meanwhile:
+
+```bash
+# 1. Firebase console -> Project settings -> Service accounts -> Generate new private key
+#    Upload the JSON to the server, outside public/:
+#      storage/app/private/fcm-service-account.json
+# 2. .env:
+FCM_PROJECT_ID=your-firebase-project-id
+FCM_CREDENTIALS_PATH=/full/path/to/storage/app/private/fcm-service-account.json
+# 3. php artisan config:clear && php artisan config:cache
+```
+
+The mobile app needs `google-services.json` from the **same** Firebase project, dropped into the
+`soul_coffe.mobile` directory before building the APK. Without either half, `PushNotifier` logs
+that it is unconfigured and sends nothing; with both, no code change is needed anywhere.
+
 ## Security posture
 
 - Sanctum bearer tokens, device-labelled and individually revocable

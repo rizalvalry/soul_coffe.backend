@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Enums\Role;
+use App\Observers\NewsPostObserver;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -17,6 +19,7 @@ use Illuminate\Support\Facades\Storage;
  * the slider, a future digest — goes through that one scope, so "published" can never come to
  * mean something slightly different in two places.
  */
+#[ObservedBy(NewsPostObserver::class)]
 class NewsPost extends Model
 {
     use HasFactory;

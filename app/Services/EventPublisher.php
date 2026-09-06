@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Jobs\PublishOutboxEvent;
 use App\Models\AppNotification;
 use App\Models\OutboxEvent;
+use App\Services\Push\PushNotifier;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -19,13 +21,15 @@ use Illuminate\Support\Str;
  */
 class EventPublisher
 {
+    public function __construct(private readonly PushNotifier $push) {}
+
     /**
      * Record an event and schedule its delivery.
      *
      * MUST be called inside the transaction that performs the state change.
      *
-     * @param  array<int,string>  $channels    channel names without the `private-` prefix
-     * @param  array<int,int>  $notifyUserIds users who get a persisted in-app notification
+     * @param  array<int,string>  $channels  channel names without the `private-` prefix
+     * @param  array<int,int>  $notifyUserIds  users who get a persisted in-app notification
      * @return string the event_id, which is the client's dedupe key across WebSocket and push (E15)
      */
     public function publish(
@@ -70,10 +74,31 @@ class EventPublisher
 
         $outboxId = OutboxEvent::query()->where('event_id', $eventId)->value('id');
 
+        $recipients = array_values(array_unique(array_map('intval', $notifyUserIds)));
+        // Resolved now, not inside the closure: by the time afterCommit runs, a Filament action or
+        // a console command may have no request-bound guard left to ask.
+        $actorId = Auth::id();
+
         // Dispatch only once the surrounding transaction commits. Dispatching inside it would let
         // the worker pick up a row that a rollback then erased.
-        DB::afterCommit(function () use ($outboxId): void {
+        DB::afterCommit(function () use ($outboxId, $recipients, $actorId, $title, $body, $payload): void {
             PublishOutboxEvent::dispatch((int) $outboxId);
+
+            // Second transport (E15). Inline rather than queued — see PushNotifier for why — and
+            // never to the actor: the person who just tapped the button is looking at the result.
+            $this->push->notifyUsers(
+                $recipients,
+                $title,
+                $body,
+                [
+                    'event_id' => $payload['event_id'],
+                    'type' => $payload['type'],
+                    'refill_request_id' => $payload['refill_request_id'],
+                    'status' => $payload['status'],
+                    'at' => $payload['at'],
+                ],
+                $actorId !== null ? (int) $actorId : null,
+            );
         });
 
         return $eventId;

@@ -5,12 +5,14 @@ use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BadgeController;
 use App\Http\Controllers\Api\CartController;
+use App\Http\Controllers\Api\DeviceController;
 use App\Http\Controllers\Api\LocationController;
 use App\Http\Controllers\Api\LoginPinController;
 use App\Http\Controllers\Api\MeController;
 use App\Http\Controllers\Api\MediaController;
 use App\Http\Controllers\Api\NewsController;
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\PinResetRequestController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\RefillRequestController;
 use App\Http\Controllers\Api\RefillTransitionController;
@@ -41,6 +43,13 @@ Route::post('auth/login', [AuthController::class, 'login'])
 Route::post('auth/login-pin', [AuthController::class, 'loginWithPin'])
     ->middleware('throttle:5,1');
 
+// "Lupa PIN". Unauthenticated, writes a row and pushes every Administrator, so it is the most
+// tightly throttled route in the API: three attempts per ten minutes per source. The controller
+// answers an identical 202 for every input, so this limit is what bounds enumeration attempts
+// rather than the response telling anyone anything.
+Route::post('auth/pin-reset-requests', [PinResetRequestController::class, 'store'])
+    ->middleware('throttle:3,10');
+
 Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('auth/logout', [AuthController::class, 'logout']);
     Route::get('me', [MeController::class, 'show']);
@@ -49,6 +58,11 @@ Route::middleware('auth:sanctum')->group(function (): void {
     // LoginPinController for why a valid token alone is not enough to mint one.
     Route::post('me/login-pin', [LoginPinController::class, 'store']);
     Route::delete('me/login-pin', [LoginPinController::class, 'destroy']);
+
+    // Push-notification registration for THIS device. Upsert on the token; the app calls delete
+    // on a deliberate sign-out. See DeviceController.
+    Route::post('me/devices', [DeviceController::class, 'store']);
+    Route::delete('me/devices', [DeviceController::class, 'destroy']);
 
     // ── Master data (read-only for the mobile client) ───────────────────────
     Route::get('products', [ProductController::class, 'index']);

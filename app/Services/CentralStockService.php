@@ -7,7 +7,6 @@ use App\Enums\Role;
 use App\Models\AuditLog;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
-use App\Models\DailyCartAllowance;
 use App\Models\StaffAssignment;
 use App\Models\User;
 use Illuminate\Support\Carbon;
@@ -41,6 +40,7 @@ class CentralStockService
     public function __construct(
         private readonly StockLedgerService $ledger,
         private readonly DailyAllowanceService $allowances,
+        private readonly EventPublisher $events,
     ) {}
 
     /**
@@ -75,6 +75,14 @@ class CentralStockService
                 'kitchen_id' => $kitchen->id,
                 'quantities' => $rows,
             ]);
+
+            $this->events->publish(
+                'ShowcaseBrewed',
+                'Stok showcase bertambah',
+                sprintf('%s menyeduh %d cups di %s.', $barista->name, array_sum($rows), $kitchen->name),
+                ['kitchen.'.$kitchen->id, 'role.ADMINISTRATOR'],
+                $this->kitchenWatcherIds($kitchen->id),
+            );
         });
     }
 
@@ -170,6 +178,22 @@ class CentralStockService
                 'allowance_edited' => $allowance->is_edited,
             ]);
 
+            // The staff member is the one who needs this on their phone: it tells them their cart
+            // is loaded and how much operational money was recorded against it today.
+            $this->events->publish(
+                'CartStockHandedOver',
+                'Stok gerobak diterima',
+                sprintf(
+                    'Gerobak %s: %d cups dari %s. Uang operasional Rp %s.',
+                    $cart->code,
+                    array_sum($rows),
+                    $barista->name,
+                    number_format((int) $allowance->amount_minor, 0, ',', '.'),
+                ),
+                ['cart.'.$cart->id, 'user.'.$staff->id, 'kitchen.'.$kitchenId, 'role.ADMINISTRATOR'],
+                array_merge([$staff->id], $this->kitchenWatcherIds($kitchenId)),
+            );
+
             return $assignment;
         });
     }
@@ -261,6 +285,19 @@ class CentralStockService
                 'returned' => $returned,
                 'rejected' => $rejected,
             ]);
+
+            $this->events->publish(
+                'CartClosedOut',
+                'Tutup gerobak',
+                sprintf(
+                    'Gerobak %s ditutup: %d cups sisa, %d cups reject.',
+                    $cart->code,
+                    array_sum($returned),
+                    array_sum($rejected),
+                ),
+                ['cart.'.$cart->id, 'kitchen.'.$kitchenId, 'role.ADMINISTRATOR', 'role.FINANCE'],
+                array_merge($this->cartStaffIds($cart, Carbon::today()), $this->kitchenWatcherIds($kitchenId)),
+            );
         });
     }
 
@@ -384,6 +421,35 @@ class CentralStockService
         }
 
         return $rows;
+    }
+
+    /**
+     * Administrators and Finance follow kitchen movements; a barista does not need a push about
+     * the cups they just typed in themselves (EventPublisher excludes the actor anyway).
+     *
+     * @return array<int,int>
+     */
+    private function kitchenWatcherIds(int $kitchenId): array
+    {
+        return User::query()
+            ->where('is_active', true)
+            ->where(function ($query) use ($kitchenId): void {
+                $query->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE])
+                    ->orWhere(fn ($q) => $q->where('role', Role::BARISTA)->where('kitchen_id', $kitchenId));
+            })
+            ->pluck('id')
+            ->all();
+    }
+
+    /** Today's staff on this cart, if any. @return array<int,int> */
+    private function cartStaffIds(Cart $cart, Carbon $date): array
+    {
+        return StaffAssignment::query()
+            ->where('cart_id', $cart->id)
+            ->whereDate('operating_date', $date->toDateString())
+            ->pluck('user_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
     }
 
     private function assertBarista(User $user): void
