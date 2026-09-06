@@ -186,16 +186,28 @@ sampai ada yang login dan mencobanya.
 
 ---
 
-## Realtime (Pusher) — masih perlu dua langkah manual di server
+## Realtime (Pusher) — langkah 1 SELESAI, tinggal langkah 2
 
-Notifikasi tanpa reload (requirement 3) butuh **dua** hal berjalan sekaligus di server; sejauh
-ini belum satu pun. Tidak ada nilai rahasia di bagian ini — nilai App Secret/App ID Pusher yang
-sesungguhnya diberikan langsung ke Anda di luar dokumen ini (bukan di repo, publik), supaya tidak
-ikut ter-commit.
+Notifikasi tanpa reload (requirement 3) butuh **dua** hal berjalan sekaligus di server. Per
+2026-09-06 langkah 1 sudah dikerjakan; tinggal langkah 2 (satu entri cron di hPanel) yang hanya
+bisa dipasang lewat UI. Tidak ada nilai rahasia di bagian ini — App Secret/App ID Pusher
+diberikan langsung ke Anda di luar dokumen ini (bukan di repo, publik), supaya tidak ikut
+ter-commit.
 
-**1. Isi `.env` di server dengan kredensial Pusher.** Empat baris `PUSHER_*` di `.env.example`
-sudah menjelaskan formatnya — salin ke `.env` server dan isi dari dashboard Pusher Channels
-("App Keys" di app yang sudah dibuat, cluster `ap1`), lalu:
+**1. Isi `.env` di server dengan kredensial Pusher — ✅ SUDAH DILAKUKAN (2026-09-06).**
+
+Sebelumnya `.env` produksi berisi `BROADCAST_CONNECTION=log` dan **tidak punya satu pun baris
+`PUSHER_*`**. Artinya setiap broadcast ditulis ke `storage/logs` dan tidak pernah dikirim ke
+klien mana pun — aplikasinya terlihat sehat, tapi tidak ada satu notifikasi pun yang mungkin
+sampai. Itu penyebab pertama push tidak jalan, dan sudah diperbaiki: `BROADCAST_CONNECTION=pusher`
+plus enam baris `PUSHER_*` (app `2191062`, cluster `ap1`), diikuti
+`php artisan config:clear && php artisan config:cache`.
+
+Sudah diverifikasi langsung ke Pusher: `trigger` ke `api-ap1.pusher.com` diterima, dan endpoint
+otorisasi channel (`POST /api/v1/broadcasting/auth`) mengembalikan tanda tangan yang sah untuk
+`private-user.10` maupun `private-role.STAFF`.
+
+Kalau `.env` perlu diisi ulang dari nol, formatnya ada di `.env.example`, lalu jalankan:
 ```bash
 php artisan config:clear && php artisan config:cache
 ```
@@ -207,14 +219,25 @@ broadcaster (`PublishOutboxEvent`) masuk ke tabel `jobs` dan menunggu di sana se
 tidak ada yang memprosesnya. Shared hosting ini tidak punya `supervisorctl`/`systemd` untuk
 proses persisten, jadi jalannya lewat **cron job** di hPanel (Advanced → Cron Jobs), tiap menit:
 ```bash
-* * * * * cd /home/u253446757/domains/rafancloud.com/public_html/soulcoffee && /usr/bin/php artisan queue:work --stop-when-empty --max-time=55 >> /dev/null 2>&1
+* * * * * cd /home/u253446757/domains/rafancloud.com/public_html/soulcoffee && /usr/bin/php artisan schedule:run >> /dev/null 2>&1
 ```
+**Satu entri ini sudah cukup untuk semuanya.** Sejak commit "Run the queue worker from the
+scheduler", `queue:work --stop-when-empty --max-time=55 --tries=3` didaftarkan di
+`routes/console.php` sebagai tugas `everyMinute()`, bukan sebagai entri cron tersendiri. Jadi
+`schedule:run` yang memanggil worker-nya, sekaligus menjalankan `soul:seed-daily-allowances`
+pukul 00:00. Entri cron lama yang memanggil `queue:work` langsung **jangan dipakai lagi** —
+kalau itu yang dipasang, worker jalan tapi uang harian per gerobak tidak pernah terisi.
+
 Path di atas sudah diverifikasi lewat SSH — subdomain `soulcoffee.rafancloud.com` document
 root-nya menunjuk ke folder project di dalam `public_html` domain utama, bukan ke folder
 `domains/soulcoffee.rafancloud.com/` tersendiri, jadi bentuk path yang tertulis di draft
 sebelumnya tidak akan pernah cocok. `--stop-when-empty` membuat proses keluar begitu antrean
 kosong, `--max-time=55` jadi jaring pengaman supaya tidak tumpang tindih dengan pemanggilan cron
 berikutnya di menit yang sama.
+
+Sudah diuji langsung pada 2026-09-06: `php artisan schedule:run` dijalankan manual di server
+memang mengeksekusi worker-nya, dan satu event uji (`DiagnosticPing`, outbox #31) berpindah dari
+`published_at = null` menjadi terkirim ke Pusher dalam sekali jalan, tanpa job gagal.
 
 Cron **tidak bisa dipasang lewat SSH** di hosting ini: shell-nya tidak punya perintah `crontab`
 sama sekali (sudah dicoba). Satu-satunya jalur adalah UI hPanel → Advanced → Cron Jobs.
