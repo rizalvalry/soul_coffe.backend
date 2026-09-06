@@ -80,17 +80,32 @@ keenam ini — belum ada API untuk membuat user baru (lihat bagian "Menambah aku
 
 ## APK
 
-**Berkas:** `dist/soul-coffeemate-v1.4.0.apk`
+**Berkas:** `dist/soul-coffeemate-v1.4.1.apk`
+
+**Unduh langsung:**
+`https://github.com/rizalvalry/soul_coffe.backend/raw/main/dist/soul-coffeemate-v1.4.1.apk`
 
 | Properti | Nilai |
 |---|---|
 | Ukuran | 24.1 MB |
 | Package | `id.soulcoffeemate.ops.demo` |
-| Versi | 1.4.0 (versionCode 14) |
-| Min Android | **8.0** (API 26) |
+| Versi | 1.4.1 (versionCode 15) |
+| Min Android | **7.0** (API 24) |
 | Arsitektur | `arm64-v8a`, `armeabi-v7a` |
+| SHA-256 | `339c257439b8754a2d7fabf28dda453c3568812ecfecff26c9a7a3b3b05895f3` |
+| Tanda tangan | SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c` — **sama dengan v1.0.x–v1.4.0**, jadi cukup install di atas versi lama, tidak perlu uninstall |
+
+**Beda dari v1.4.0:** angka badge di menu (Approval Refill, Permintaan Refill, Siap Diambil,
+Status Permintaan) sekarang benar-benar tampil. Sebelumnya `useMenuBadges()` mengembalikan objek
+kosong — sengaja, sejak sebelum lapisan realtime ada — sehingga tile-nya selalu terlihat sepi
+berapa pun antrean yang menunggu. Tidak ada perubahan lain di sisi aplikasi.
+
+### v1.4.0 (sebelumnya)
+
+| Properti | Nilai |
+|---|---|
+| Versi | 1.4.0 (versionCode 14) |
 | SHA-256 | `46f03d22df90ff835ab4d490bbab24c29651b89a10f5ba47de39fe876bd3fd13` |
-| Tanda tangan | SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c` — **sama dengan v1.0.x–v1.3.3**, jadi cukup install di atas versi lama, tidak perlu uninstall |
 
 **Beda dari v1.3.3:** cara masuk (PIN menggantikan kata sandi, lihat catatan di atas), tombol
 "Lupa PIN?", dan push notification untuk seluruh alur bisnis. Izin baru yang diminta:
