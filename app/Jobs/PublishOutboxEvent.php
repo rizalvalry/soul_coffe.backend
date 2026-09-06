@@ -11,8 +11,13 @@ use Illuminate\Foundation\Queue\Queueable;
  * Publishes one outbox row to the WebSocket layer, then marks it published.
  *
  * Marking happens only after the broadcast returns, so a broadcaster outage leaves `published_at`
- * null and `soul:publish-outbox` will retry the row later. Marking first would lose the event
- * silently — which is exactly the failure the outbox pattern exists to prevent.
+ * null and the row is retried. Marking first would lose the event silently — which is exactly the
+ * failure the outbox pattern exists to prevent.
+ *
+ * `handle()` is called two ways: inline by EventPublisher::broadcast() on the happy path, and by
+ * the queue when that inline attempt threw. Both entry points run this same body, and the
+ * `published_at !== null` guard below is what makes running it twice harmless — so neither path
+ * needs to know whether the other already succeeded.
  */
 class PublishOutboxEvent implements ShouldQueue
 {
