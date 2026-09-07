@@ -1,4 +1,4 @@
-# Soul Coffeemate — Akses Build Produksi (v1.4.4)
+# Soul Coffeemate — Akses Build Produksi (v1.4.5)
 
 > **v1.4.0 — cara masuk berubah.** Sekali seorang pengguna membuat PIN 6 angka di menu
 > Pengaturan, **kata sandi tidak lagi bisa dipakai untuk masuk** — hanya PIN itu. Membuat PIN juga
@@ -80,23 +80,36 @@ keenam ini — belum ada API untuk membuat user baru (lihat bagian "Menambah aku
 
 ## APK
 
-**Berkas:** `dist/soul-coffeemate-v1.4.4.apk`
+**Berkas:** `dist/soul-coffeemate-v1.4.5.apk`
 
 **Unduh langsung:**
-`https://github.com/rizalvalry/soul_coffe.backend/raw/main/dist/soul-coffeemate-v1.4.4.apk`
+`https://github.com/rizalvalry/soul_coffe.backend/raw/main/dist/soul-coffeemate-v1.4.5.apk`
 
 | Properti | Nilai |
 |---|---|
-| Ukuran | 24.1 MB (25.313.336 byte) |
+| Ukuran | 24.1 MB (25.314.052 byte) |
 | Package | `id.soulcoffeemate.ops.demo` |
-| Versi | 1.4.4 (versionCode 18) |
+| Versi | 1.4.5 (versionCode 19) |
 | Min Android | **7.0** (API 24) |
 | Target | Android 16 (API 36) |
 | Arsitektur | `arm64-v8a`, `armeabi-v7a` |
-| SHA-256 | `711b3513a8ef48ce655e07014573f65667b10f665ce478f5e6ef786cf89057d6` |
-| Tanda tangan | SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c` — **sama dengan v1.0.x–v1.4.3**, jadi cukup install di atas versi lama, tidak perlu uninstall |
+| SHA-256 | `8ce5b0c9fe14bcc6e79d5fce3ce0dd79774ca7d65c7c8a9527de0c9b60c1758a` |
+| Tanda tangan | SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c` — **sama dengan v1.0.x–v1.4.4**, jadi cukup install di atas versi lama, tidak perlu uninstall |
 
 `npm run apk:verify` 13/13 lolos.
+
+**Beda dari v1.4.4:** tombol **"Tandai Semua Dibaca"** di layar Notifikasi (muncul hanya kalau ada
+yang belum dibaca). Badge lonceng kosong **seketika** saat tombol ditekan — angkanya diubah di
+cache sebelum request ke server selesai, bukan menunggu response, supaya lonceng yang menumpuk
+puluhan notifikasi (satu shift sibuk, HP yang lupa di-logout semalaman) tidak memaksa pengguna
+tap satu-satu hanya untuk menghilangkan angkanya.
+
+⚠️ Butuh `POST /api/v1/notifications/read-all` di backend, yang **belum live di server** — masih
+menunggu SSH seperti perubahan backend lain di bawah. Sebelum server di-deploy, tombol ini tetap
+tampil dan badge tetap kosong seketika di HP (optimistic update-nya jalan di sisi aplikasi), tapi
+permintaan ke server akan gagal (404) dan status "sudah dibaca" itu **tidak tersimpan** — begitu
+layar dimuat ulang, notifikasi yang sama akan tampil belum dibaca lagi. Aman dicoba untuk demo
+tampilan, tapi belum bisa diandalkan sampai server ikut di-deploy.
 
 **Beda dari v1.4.3 — `google-services.json` terpasang, FCM aktif di sisi aplikasi.** Firebase
 project `soulcoffee-fb389`, app Android `id.soulcoffeemate.ops.demo` — dikonfirmasi langsung di
@@ -128,6 +141,15 @@ Perubahan yang menyertai rilis ini ada di sisi server dan **sudah live tanpa per
 sebelumnya**: broadcast Pusher dikirim langsung setelah transaksi commit (bukan lewat antrean
 yang tidak pernah ada yang menjalankan), dan penugasan staff kini disalin otomatis dari hari
 sebelumnya — lihat bagian "Dashboard & Laporan" dan "Penugasan Staff Otomatis" di bawah.
+
+### v1.4.4 (sebelumnya)
+
+| Properti | Nilai |
+|---|---|
+| Versi | 1.4.4 (versionCode 18) |
+| SHA-256 | `711b3513a8ef48ce655e07014573f65667b10f665ce478f5e6ef786cf89057d6` |
+
+**Beda dari v1.4.3:** `google-services.json` terpasang, FCM aktif di sisi aplikasi.
 
 ### v1.4.3 (sebelumnya)
 
@@ -239,7 +261,7 @@ Sama seperti build demo sebelumnya — lihat `DEMO-ACCESS.md` bagian "Izin yang 
 
 ### Cara memasang
 
-1. Buka repositori ini dari browser HP → folder `dist/` → unduh `soul-coffeemate-v1.4.4.apk`.
+1. Buka repositori ini dari browser HP → folder `dist/` → unduh `soul-coffeemate-v1.4.5.apk`.
 2. Izinkan **Install unknown apps** untuk browser yang dipakai.
 3. Buka berkas yang terunduh → **Install**.
 4. Play Protect akan memperingatkan karena APK ini tidak ditandatangani sertifikat Play Store —
