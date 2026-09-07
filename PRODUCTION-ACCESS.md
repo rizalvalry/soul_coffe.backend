@@ -374,30 +374,51 @@ bagian dari tarball deploy, bukan diinstal di server.
 
 ---
 
-## FCM Push Notification — ⛔ BELUM AKTIF, butuh 2 file dari Anda
+## FCM Push Notification — 🟡 SETENGAH JALAN: private key sudah ada, tinggal 1 file + deploy
 
 Kode-nya sudah lengkap dan sudah ada test-nya (`tests/Feature/PushNotificationTest.php`).
-`PushNotifier` dipanggil inline setelah transaksi commit, jadi **tidak** butuh cron juga. Yang
-belum ada murni kredensial Firebase, dan itu tidak bisa dibuat dari sisi ini — perlu login ke
-Firebase Console dengan akun Google Anda.
+`PushNotifier` dipanggil inline setelah transaksi commit, jadi **tidak** butuh cron juga.
 
-Kondisi terverifikasi di server per 2026-09-06: tidak ada baris `FCM_*` di `.env`,
-`storage/app/private/fcm-service-account.json` tidak ada, `google-services.json` tidak ada di
-repo mobile, dan tabel `device_push_tokens` berisi 0 baris.
+**Sudah diterima (2026-09-07):** service-account JSON dari Firebase Console. Project id-nya
+`soulcoffee-fb389` (nama "soulcoffee" sudah dipakai pihak lain di Firebase secara global, jadi
+Firebase menambahkan akhiran acak — ini normal, bukan project yang salah). Filenya sudah
+ditempatkan di `storage/app/private/fcm-service-account.json` (di luar git — lihat
+`storage/app/private/.gitignore` — dan tidak pernah masuk ke repo publik ini).
 
-**Yang harus Anda lakukan (tidak bisa saya kerjakan):**
+**Yang masih tertunda, di sisi saya (menunggu SSH):**
+- Upload `fcm-service-account.json` ke server di path yang sama.
+- Tambah dua baris ke `.env` produksi:
+  ```
+  FCM_PROJECT_ID=soulcoffee-fb389
+  FCM_CREDENTIALS_PATH=/home/u253446757/domains/rafancloud.com/public_html/soulcoffee/storage/app/private/fcm-service-account.json
+  ```
+- `php artisan config:clear && php artisan config:cache`.
 
-1. Buat/buka project di [Firebase Console](https://console.firebase.google.com).
-2. **Add app → Android**, package name persis: `id.soulcoffeemate.ops.demo`. Unduh
-   **`google-services.json`** → kirim ke saya, saya taruh di root `soul_coffe.mobile/` dan
-   rebuild APK-nya.
-3. **Project settings → Service accounts → Generate new private key**. Unduh file JSON-nya →
-   kirim ke saya, saya taruh di `storage/app/private/fcm-service-account.json` di server, isi
-   `FCM_PROJECT_ID` + `FCM_CREDENTIALS_PATH` di `.env`, lalu `config:cache`.
+**Yang masih perlu Anda lakukan (tidak bisa saya kerjakan — perlu login Google ke Firebase
+Console dengan project `soulcoffee-fb389`):**
 
-Setelah kedua file itu ada, tidak ada langkah manual lain: aplikasi mendaftarkan token-nya sendiri
-lewat `POST /api/v1/me/devices` saat login, dan `event_id` yang sama dipakai untuk membuang
-duplikat antara socket dan push (E15) sehingga satu kejadian tidak muncul dua kali.
+Daftarkan **app Android** di project itu untuk mendapatkan `google-services.json` — file ini beda
+dari service-account JSON yang sudah dikirim (yang itu untuk SERVER mengirim push; yang ini untuk
+APLIKASI menerimanya). Langkah persis:
+
+1. Buka <https://console.firebase.google.com/project/soulcoffee-fb389/settings/general> —
+   ini langsung ke halaman **Project settings** project Anda.
+2. Scroll ke bagian **"Your apps"** di bawah.
+   - Kalau di situ **belum ada app Android**: klik ikon Android (▸ "Add app"), lalu isi
+     **Android package name** persis (huruf besar/kecil dan titik harus sama): `id.soulcoffeemate.ops.demo`.
+     Nickname bebas (misal "Soul Coffeemate"). Kolom SHA-1 boleh dikosongkan — tidak dipakai
+     aplikasi ini. Klik **Register app**, lalu klik **Download google-services.json** di step
+     berikutnya (boleh lewati/skip langkah SDK setelahnya, tidak diperlukan).
+   - Kalau **sudah ada** app Android terdaftar (kemungkinan ini kasus Anda): klik app itu di
+     daftar, lalu akan ada tombol **google-services.json** untuk mengunduhnya langsung — tidak
+     perlu daftar ulang.
+3. Kirim file `google-services.json` yang terunduh ke saya (lokasinya di komputer Anda, biasanya
+   folder Downloads) — saya taruh di root `soul_coffe.mobile/` dan build ulang APK-nya.
+
+Setelah `google-services.json` terpasang di APK dan server sudah bisa saya deploy (env di atas),
+tidak ada langkah manual lain: aplikasi mendaftarkan token-nya sendiri lewat `POST
+/api/v1/me/devices` saat login, dan `event_id` yang sama dipakai untuk membuang duplikat antara
+socket dan push (E15) sehingga satu kejadian tidak muncul dua kali.
 
 Catatan: sampai FCM aktif, notifikasi hanya sampai saat aplikasi **sedang dibuka** (lewat Pusher).
 Notifikasi yang muncul saat aplikasi tertutup/di background memang tugas FCM, bukan Pusher — itu
