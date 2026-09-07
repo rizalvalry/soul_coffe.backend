@@ -1,4 +1,4 @@
-# Soul Coffeemate — Akses Build Produksi (v1.4.3)
+# Soul Coffeemate — Akses Build Produksi (v1.4.4)
 
 > **v1.4.0 — cara masuk berubah.** Sekali seorang pengguna membuat PIN 6 angka di menu
 > Pengaturan, **kata sandi tidak lagi bisa dipakai untuk masuk** — hanya PIN itu. Membuat PIN juga
@@ -80,23 +80,35 @@ keenam ini — belum ada API untuk membuat user baru (lihat bagian "Menambah aku
 
 ## APK
 
-**Berkas:** `dist/soul-coffeemate-v1.4.3.apk`
+**Berkas:** `dist/soul-coffeemate-v1.4.4.apk`
 
 **Unduh langsung:**
-`https://github.com/rizalvalry/soul_coffe.backend/raw/main/dist/soul-coffeemate-v1.4.3.apk`
+`https://github.com/rizalvalry/soul_coffe.backend/raw/main/dist/soul-coffeemate-v1.4.4.apk`
 
 | Properti | Nilai |
 |---|---|
-| Ukuran | 24.1 MB (25.310.708 byte) |
+| Ukuran | 24.1 MB (25.313.336 byte) |
 | Package | `id.soulcoffeemate.ops.demo` |
-| Versi | 1.4.3 (versionCode 17) |
+| Versi | 1.4.4 (versionCode 18) |
 | Min Android | **7.0** (API 24) |
 | Target | Android 16 (API 36) |
 | Arsitektur | `arm64-v8a`, `armeabi-v7a` |
-| SHA-256 | `fe04a3c19d0f1e16ff08536878868e39c53bb8a8d86127060a85fa3acc37e818` |
-| Tanda tangan | SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c` — **sama dengan v1.0.x–v1.4.2**, jadi cukup install di atas versi lama, tidak perlu uninstall |
+| SHA-256 | `711b3513a8ef48ce655e07014573f65667b10f665ce478f5e6ef786cf89057d6` |
+| Tanda tangan | SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c` — **sama dengan v1.0.x–v1.4.3**, jadi cukup install di atas versi lama, tidak perlu uninstall |
 
 `npm run apk:verify` 13/13 lolos.
+
+**Beda dari v1.4.3 — `google-services.json` terpasang, FCM aktif di sisi aplikasi.** Firebase
+project `soulcoffee-fb389`, app Android `id.soulcoffeemate.ops.demo` — dikonfirmasi langsung di
+dalam APK yang sudah dibuild: `google_app_id` dan `project_id` di resource
+`processReleaseGoogleServices` cocok persis dengan file yang diberikan
+(`1:1067852115776:android:8ed7dd8d7b8c79be8114a5`). File itu sendiri **tidak** ikut ke git —
+`app.config.js` sudah lama dirancang untuk memasangnya secara kondisional begitu file-nya ada,
+jadi tidak perlu perubahan kode apa pun untuk rilis ini.
+
+Push masih belum benar-benar terkirim: sisi server (`FCM_PROJECT_ID`, `FCM_CREDENTIALS_PATH`,
+file service-account) menunggu deploy — lihat bagian "FCM Push Notification" di bawah. Selama itu
+belum jalan, notifikasi tetap sampai lewat Pusher (dan lonceng di v1.4.3) saat aplikasi terbuka.
 
 **Beda dari v1.4.2 — lonceng notifikasi akhirnya ada isinya:** backend (`GET /notifications`),
 mapper, dan query hook-nya sudah lama ada tapi **tidak ada satu layar pun yang memanggilnya** —
@@ -116,6 +128,16 @@ Perubahan yang menyertai rilis ini ada di sisi server dan **sudah live tanpa per
 sebelumnya**: broadcast Pusher dikirim langsung setelah transaksi commit (bukan lewat antrean
 yang tidak pernah ada yang menjalankan), dan penugasan staff kini disalin otomatis dari hari
 sebelumnya — lihat bagian "Dashboard & Laporan" dan "Penugasan Staff Otomatis" di bawah.
+
+### v1.4.3 (sebelumnya)
+
+| Properti | Nilai |
+|---|---|
+| Versi | 1.4.3 (versionCode 17) |
+| SHA-256 | `fe04a3c19d0f1e16ff08536878868e39c53bb8a8d86127060a85fa3acc37e818` |
+
+**Beda dari v1.4.2:** lonceng notifikasi + `RealtimeProvider` (satu koneksi Pusher untuk seluruh
+sesi, bukan hanya empat layar tertentu).
 
 ### v1.4.2 (sebelumnya)
 
@@ -217,7 +239,7 @@ Sama seperti build demo sebelumnya — lihat `DEMO-ACCESS.md` bagian "Izin yang 
 
 ### Cara memasang
 
-1. Buka repositori ini dari browser HP → folder `dist/` → unduh `soul-coffeemate-v1.4.3.apk`.
+1. Buka repositori ini dari browser HP → folder `dist/` → unduh `soul-coffeemate-v1.4.4.apk`.
 2. Izinkan **Install unknown apps** untuk browser yang dipakai.
 3. Buka berkas yang terunduh → **Install**.
 4. Play Protect akan memperingatkan karena APK ini tidak ditandatangani sertifikat Play Store —
@@ -374,19 +396,24 @@ bagian dari tarball deploy, bukan diinstal di server.
 
 ---
 
-## FCM Push Notification — 🟡 SETENGAH JALAN: private key sudah ada, tinggal 1 file + deploy
+## FCM Push Notification — 🟡 Kedua file sudah ada, tinggal deploy server
 
 Kode-nya sudah lengkap dan sudah ada test-nya (`tests/Feature/PushNotificationTest.php`).
 `PushNotifier` dipanggil inline setelah transaksi commit, jadi **tidak** butuh cron juga.
 
-**Sudah diterima (2026-09-07):** service-account JSON dari Firebase Console. Project id-nya
-`soulcoffee-fb389` (nama "soulcoffee" sudah dipakai pihak lain di Firebase secara global, jadi
-Firebase menambahkan akhiran acak — ini normal, bukan project yang salah). Filenya sudah
-ditempatkan di `storage/app/private/fcm-service-account.json` (di luar git — lihat
-`storage/app/private/.gitignore` — dan tidak pernah masuk ke repo publik ini).
+**Sudah diterima dan terpasang (2026-09-07):**
+- Service-account JSON (untuk server mengirim push) — di `storage/app/private/fcm-service-account.json`,
+  di luar git. Diverifikasi langsung: berhasil menukar JWT-nya jadi OAuth access token asli dari
+  Google sebelum dipakai.
+- `google-services.json` (untuk aplikasi menerima push) — sudah masuk ke **APK v1.4.4**. Diverifikasi
+  langsung di dalam APK yang sudah dibuild: `google_app_id` dan `project_id` di resource yang
+  di-merge cocok persis dengan file aslinya.
 
-**Yang masih tertunda, di sisi saya (menunggu SSH):**
-- Upload `fcm-service-account.json` ke server di path yang sama.
+Project Firebase: `soulcoffee-fb389`. App Android: `1:1067852115776:android:8ed7dd8d7b8c79be8114a5`
+(package `id.soulcoffeemate.ops.demo`).
+
+**Satu-satunya yang tersisa — menunggu SSH bisa diakses lagi:**
+- Upload `fcm-service-account.json` ke server, path yang sama.
 - Tambah dua baris ke `.env` produksi:
   ```
   FCM_PROJECT_ID=soulcoffee-fb389
@@ -394,29 +421,7 @@ ditempatkan di `storage/app/private/fcm-service-account.json` (di luar git — l
   ```
 - `php artisan config:clear && php artisan config:cache`.
 
-**Yang masih perlu Anda lakukan (tidak bisa saya kerjakan — perlu login Google ke Firebase
-Console dengan project `soulcoffee-fb389`):**
-
-Daftarkan **app Android** di project itu untuk mendapatkan `google-services.json` — file ini beda
-dari service-account JSON yang sudah dikirim (yang itu untuk SERVER mengirim push; yang ini untuk
-APLIKASI menerimanya). Langkah persis:
-
-1. Buka <https://console.firebase.google.com/project/soulcoffee-fb389/settings/general> —
-   ini langsung ke halaman **Project settings** project Anda.
-2. Scroll ke bagian **"Your apps"** di bawah.
-   - Kalau di situ **belum ada app Android**: klik ikon Android (▸ "Add app"), lalu isi
-     **Android package name** persis (huruf besar/kecil dan titik harus sama): `id.soulcoffeemate.ops.demo`.
-     Nickname bebas (misal "Soul Coffeemate"). Kolom SHA-1 boleh dikosongkan — tidak dipakai
-     aplikasi ini. Klik **Register app**, lalu klik **Download google-services.json** di step
-     berikutnya (boleh lewati/skip langkah SDK setelahnya, tidak diperlukan).
-   - Kalau **sudah ada** app Android terdaftar (kemungkinan ini kasus Anda): klik app itu di
-     daftar, lalu akan ada tombol **google-services.json** untuk mengunduhnya langsung — tidak
-     perlu daftar ulang.
-3. Kirim file `google-services.json` yang terunduh ke saya (lokasinya di komputer Anda, biasanya
-   folder Downloads) — saya taruh di root `soul_coffe.mobile/` dan build ulang APK-nya.
-
-Setelah `google-services.json` terpasang di APK dan server sudah bisa saya deploy (env di atas),
-tidak ada langkah manual lain: aplikasi mendaftarkan token-nya sendiri lewat `POST
+Setelah itu, tidak ada langkah manual lain: aplikasi mendaftarkan token-nya sendiri lewat `POST
 /api/v1/me/devices` saat login, dan `event_id` yang sama dipakai untuk membuang duplikat antara
 socket dan push (E15) sehingga satu kejadian tidak muncul dua kali.
 
