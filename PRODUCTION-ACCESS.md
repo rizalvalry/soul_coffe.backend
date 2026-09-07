@@ -1,4 +1,4 @@
-# Soul Coffeemate — Akses Build Produksi (v1.4.2)
+# Soul Coffeemate — Akses Build Produksi (v1.4.3)
 
 > **v1.4.0 — cara masuk berubah.** Sekali seorang pengguna membuat PIN 6 angka di menu
 > Pengaturan, **kata sandi tidak lagi bisa dipakai untuk masuk** — hanya PIN itu. Membuat PIN juga
@@ -80,32 +80,51 @@ keenam ini — belum ada API untuk membuat user baru (lihat bagian "Menambah aku
 
 ## APK
 
-**Berkas:** `dist/soul-coffeemate-v1.4.2.apk`
+**Berkas:** `dist/soul-coffeemate-v1.4.3.apk`
 
 **Unduh langsung:**
-`https://github.com/rizalvalry/soul_coffe.backend/raw/main/dist/soul-coffeemate-v1.4.2.apk`
+`https://github.com/rizalvalry/soul_coffe.backend/raw/main/dist/soul-coffeemate-v1.4.3.apk`
 
 | Properti | Nilai |
 |---|---|
-| Ukuran | 24.1 MB (25.309.104 byte) |
+| Ukuran | 24.1 MB (25.310.708 byte) |
 | Package | `id.soulcoffeemate.ops.demo` |
-| Versi | 1.4.2 (versionCode 16) |
+| Versi | 1.4.3 (versionCode 17) |
 | Min Android | **7.0** (API 24) |
 | Target | Android 16 (API 36) |
 | Arsitektur | `arm64-v8a`, `armeabi-v7a` |
-| SHA-256 | `4174c2961d3adcb6335b695012fd666f0b28b4bde4dc48c1e46cbc7c3d72c1ce` |
-| Tanda tangan | SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c` — **sama dengan v1.0.x–v1.4.1**, jadi cukup install di atas versi lama, tidak perlu uninstall |
+| SHA-256 | `fe04a3c19d0f1e16ff08536878868e39c53bb8a8d86127060a85fa3acc37e818` |
+| Tanda tangan | SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c` — **sama dengan v1.0.x–v1.4.2**, jadi cukup install di atas versi lama, tidak perlu uninstall |
 
 `npm run apk:verify` 13/13 lolos.
 
-**Beda dari v1.4.1:** satu refetch pada saat socket Pusher baru tersambung. Pusher tidak
-mengirim ulang event yang terjadi selagi socket putus, jadi tanpa ini layar bertahan menampilkan
-data lama sampai kebetulan ada event berikutnya. Timer polling 10 detik tetap ada dan tetap hanya
-hidup saat socket **tidak** tersambung — lihat bagian "Realtime (Pusher)" di bawah.
+**Beda dari v1.4.2 — lonceng notifikasi akhirnya ada isinya:** backend (`GET /notifications`),
+mapper, dan query hook-nya sudah lama ada tapi **tidak ada satu layar pun yang memanggilnya** —
+komentar di kode sendiri sudah menyebut ini ("Currently inert: no screen calls
+useNotifications() yet."). Sekarang ada ikon lonceng di header menu utama (dengan badge angka
+belum-dibaca) yang membuka daftar notifikasi lengkap, tap untuk menandai terbaca dan berpindah
+ke layar yang relevan.
 
-Perubahan yang menyertai rilis ini ada di sisi server dan **sudah live tanpa perlu update APK**:
-broadcast Pusher sekarang dikirim langsung setelah transaksi commit, bukan lewat antrean yang
-tidak pernah ada yang menjalankan.
+Sambil memperbaiki itu, ditemukan penyebab kedua kenapa notifikasi terasa tidak real-time: socket
+Pusher sebelumnya hanya tersambung selagi salah satu dari empat layar tertentu (Permintaan Refill
+barista, Approval Finance, Rider, Permintaan Refill staff) sedang dibuka — masing-masing membuka
+koneksinya sendiri. Kejadian yang terjadi saat pengguna berada di menu utama atau layar lain tidak
+sampai ke mana pun. Socket sekarang tersambung satu kali untuk seluruh sesi (`RealtimeProvider`,
+dipasang di layout utama), sehingga badge dan lonceng ikut hidup di layar mana pun.
+
+Perubahan yang menyertai rilis ini ada di sisi server dan **sudah live tanpa perlu update APK
+sebelumnya**: broadcast Pusher dikirim langsung setelah transaksi commit (bukan lewat antrean
+yang tidak pernah ada yang menjalankan), dan penugasan staff kini disalin otomatis dari hari
+sebelumnya — lihat bagian "Dashboard & Laporan" dan "Penugasan Staff Otomatis" di bawah.
+
+### v1.4.2 (sebelumnya)
+
+| Properti | Nilai |
+|---|---|
+| Versi | 1.4.2 (versionCode 16) |
+| SHA-256 | `4174c2961d3adcb6335b695012fd666f0b28b4bde4dc48c1e46cbc7c3d72c1ce` |
+
+**Beda dari v1.4.1:** satu refetch pada saat socket Pusher baru tersambung.
 
 ### v1.4.1 (sebelumnya)
 
@@ -198,7 +217,7 @@ Sama seperti build demo sebelumnya — lihat `DEMO-ACCESS.md` bagian "Izin yang 
 
 ### Cara memasang
 
-1. Buka repositori ini dari browser HP → folder `dist/` → unduh `soul-coffeemate-v1.4.2.apk`.
+1. Buka repositori ini dari browser HP → folder `dist/` → unduh `soul-coffeemate-v1.4.3.apk`.
 2. Izinkan **Install unknown apps** untuk browser yang dipakai.
 3. Buka berkas yang terunduh → **Install**.
 4. Play Protect akan memperingatkan karena APK ini tidak ditandatangani sertifikat Play Store —
@@ -298,6 +317,60 @@ Cron **tidak bisa dipasang lewat SSH** di hosting ini: shell-nya tidak punya per
 sama sekali (sudah dicoba). Satu-satunya jalur adalah UI hPanel → Advanced → Cron Jobs. Entri cron
 lama yang memanggil `queue:work` langsung jangan dipakai — kalau itu yang dipasang, worker jalan
 tapi jatah harian per gerobak tidak pernah terisi.
+
+---
+
+## Penugasan Staff Otomatis — ✅ AKTIF (butuh deploy)
+
+"Penugasan Staff" tidak lagi harus diketik ulang setiap hari. `StaffAssignmentCarryForwardService`
+berjalan pukul 00:00 lewat entri cron yang sama (`schedule:run`) dan menyalin penugasan kemarin
+(staff → gerobak → lokasi) ke hari ini untuk setiap staff yang belum punya baris hari ini.
+
+Yang **tidak** disalin, dengan sengaja:
+- Staff atau gerobak yang **sudah** punya penugasan hari ini — keputusan manual Administrator
+  tidak pernah ditimpa oleh proses otomatis ini.
+- Staff yang `is_active = false` — akun yang dinonaktifkan semalam tidak ikut ditugaskan lagi
+  besoknya.
+- Gerobak yang bukan `status = active` — gerobak yang sedang maintenance tidak diberi staff.
+
+`assigned_by` pada baris hasil salinan tetap menunjuk ke admin yang **aslinya** membuat penugasan
+itu, bukan aktor sistem — keputusan roster yang diulang tetap keputusan orang yang sama.
+
+Di halaman "Penugasan Staff" ada tombol **"Terapkan Penugasan Hari Ini"** untuk menjalankan proses
+yang sama secara manual, kapan saja — berguna untuk hari deploy pertama (belum ada "kemarin" yang
+sempat berjalan) atau kalau ingin penugasan hari ini langsung terisi tanpa menunggu jam 00:00.
+
+7 test di `tests/Feature/StaffAssignmentCarryForwardTest.php`.
+
+---
+
+## Dashboard & Laporan — ✅ AKTIF (butuh deploy)
+
+Dashboard admin (`/admin`, halaman utama setelah login) sekarang menampilkan:
+
+- **4 kartu ringkasan hari ini** — pendapatan (dengan perbandingan ke kemarin), jumlah refill
+  request (dirinci per status), staff yang sudah absen (dari total staff aktif), dan selisih kas.
+- **Tren pendapatan** — grafik garis, 14 hari terakhir.
+- **Volume refill request** — grafik batang, 14 hari terakhir.
+- **Distribusi status refill** — grafik donat, 30 hari terakhir.
+- **Tingkat kehadiran staff** — grafik garis (%), 14 hari terakhir.
+
+Semua angka dihitung oleh satu kelas (`DashboardMetricsService`), diuji langsung terhadap database
+(`tests/Feature/Reporting/DashboardMetricsServiceTest.php`, 8 test) — bukan lewat widget yang sulit
+diuji — supaya angka di layar dan angka yang diuji dijamin hasil query yang sama persis.
+
+**Ekspor Excel** ada di menu baru **"Laporan & Ekspor"**: satu form rentang tanggal (default 30
+hari terakhir), tiga tombol unduh — Refill Requests, Pendapatan, Kehadiran — masing-masing file
+`.xlsx` sungguhan (bukan CSV berkedok Excel), dibangun dengan `maatwebsite/excel`. Rentang tanggal
+terbalik ditolak sebagai galat isian, bukan diam-diam mengunduh file kosong.
+
+Baik dashboard maupun halaman laporan **hanya untuk Administrator** — mengikuti batas akses panel
+yang sudah ada (`AdminPanelAccessTest`), bukan aturan baru.
+
+**Dependensi baru:** `maatwebsite/excel` (menarik `phpoffice/phpspreadsheet`). Ini satu-satunya
+paket composer baru sejak awal proyek. Karena hosting ini tidak punya akses internet keluar untuk
+`composer require` (sudah dicoba, timeout), delta `vendor/` untuk paket ini disiapkan sebagai
+bagian dari tarball deploy, bukan diinstal di server.
 
 ---
 
