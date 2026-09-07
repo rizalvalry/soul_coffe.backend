@@ -104,12 +104,9 @@ cache sebelum request ke server selesai, bukan menunggu response, supaya lonceng
 puluhan notifikasi (satu shift sibuk, HP yang lupa di-logout semalaman) tidak memaksa pengguna
 tap satu-satu hanya untuk menghilangkan angkanya.
 
-⚠️ Butuh `POST /api/v1/notifications/read-all` di backend, yang **belum live di server** — masih
-menunggu SSH seperti perubahan backend lain di bawah. Sebelum server di-deploy, tombol ini tetap
-tampil dan badge tetap kosong seketika di HP (optimistic update-nya jalan di sisi aplikasi), tapi
-permintaan ke server akan gagal (404) dan status "sudah dibaca" itu **tidak tersimpan** — begitu
-layar dimuat ulang, notifikasi yang sama akan tampil belum dibaca lagi. Aman dicoba untuk demo
-tampilan, tapi belum bisa diandalkan sampai server ikut di-deploy.
+`POST /api/v1/notifications/read-all` sudah live di server (2026-09-07) — dicoba langsung lewat
+HTTPS sungguhan ke `soulcoffee.rafancloud.com`, mengembalikan 204 dan `read_at` benar-benar
+berubah di database. Status "sudah dibaca" tersimpan sepenuhnya, bukan cuma tampilan di HP.
 
 **Beda dari v1.4.3 — `google-services.json` terpasang, FCM aktif di sisi aplikasi.** Firebase
 project `soulcoffee-fb389`, app Android `id.soulcoffeemate.ops.demo` — dikonfirmasi langsung di
@@ -119,9 +116,9 @@ dalam APK yang sudah dibuild: `google_app_id` dan `project_id` di resource
 `app.config.js` sudah lama dirancang untuk memasangnya secara kondisional begitu file-nya ada,
 jadi tidak perlu perubahan kode apa pun untuk rilis ini.
 
-Push masih belum benar-benar terkirim: sisi server (`FCM_PROJECT_ID`, `FCM_CREDENTIALS_PATH`,
-file service-account) menunggu deploy — lihat bagian "FCM Push Notification" di bawah. Selama itu
-belum jalan, notifikasi tetap sampai lewat Pusher (dan lonceng di v1.4.3) saat aplikasi terbuka.
+Push sudah benar-benar terkirim — sisi server (`FCM_PROJECT_ID`, `FCM_CREDENTIALS_PATH`, file
+service-account) sudah di-deploy dan dibuktikan langsung ke perangkat Rider dan Staff (Mufit) yang
+sungguhan terdaftar; lihat bagian "FCM Push Notification" di bawah untuk buktinya.
 
 **Beda dari v1.4.2 — lonceng notifikasi akhirnya ada isinya:** backend (`GET /notifications`),
 mapper, dan query hook-nya sudah lama ada tapi **tidak ada satu layar pun yang memanggilnya** —
@@ -364,7 +361,7 @@ tapi jatah harian per gerobak tidak pernah terisi.
 
 ---
 
-## Penugasan Staff Otomatis — ✅ AKTIF (butuh deploy)
+## Penugasan Staff Otomatis — ✅ AKTIF
 
 "Penugasan Staff" tidak lagi harus diketik ulang setiap hari. `StaffAssignmentCarryForwardService`
 berjalan pukul 00:00 lewat entri cron yang sama (`schedule:run`) dan menyalin penugasan kemarin
@@ -384,11 +381,12 @@ Di halaman "Penugasan Staff" ada tombol **"Terapkan Penugasan Hari Ini"** untuk 
 yang sama secara manual, kapan saja — berguna untuk hari deploy pertama (belum ada "kemarin" yang
 sempat berjalan) atau kalau ingin penugasan hari ini langsung terisi tanpa menunggu jam 00:00.
 
-7 test di `tests/Feature/StaffAssignmentCarryForwardTest.php`.
+7 test di `tests/Feature/StaffAssignmentCarryForwardTest.php`. Sudah di-deploy dan dikonfirmasi
+terdaftar di scheduler produksi lewat `php artisan schedule:list` (2026-09-07).
 
 ---
 
-## Dashboard & Laporan — ✅ AKTIF (butuh deploy)
+## Dashboard & Laporan — ✅ AKTIF
 
 Dashboard admin (`/admin`, halaman utama setelah login) sekarang menampilkan:
 
@@ -411,6 +409,9 @@ terbalik ditolak sebagai galat isian, bukan diam-diam mengunduh file kosong.
 Baik dashboard maupun halaman laporan **hanya untuk Administrator** — mengikuti batas akses panel
 yang sudah ada (`AdminPanelAccessTest`), bukan aturan baru.
 
+Sudah di-deploy (2026-09-07) dan dikonfirmasi langsung: `https://soulcoffee.rafancloud.com/admin`
+dan `/admin/reports` merespons tanpa error (redirect ke login untuk tamu, seperti seharusnya).
+
 **Dependensi baru:** `maatwebsite/excel` (menarik `phpoffice/phpspreadsheet`). Ini satu-satunya
 paket composer baru sejak awal proyek. Karena hosting ini tidak punya akses internet keluar untuk
 `composer require` (sudah dicoba, timeout), delta `vendor/` untuk paket ini disiapkan sebagai
@@ -418,38 +419,39 @@ bagian dari tarball deploy, bukan diinstal di server.
 
 ---
 
-## FCM Push Notification — 🟡 Kedua file sudah ada, tinggal deploy server
+## FCM Push Notification — ✅ AKTIF (diverifikasi langsung ke perangkat nyata, 2026-09-07)
 
 Kode-nya sudah lengkap dan sudah ada test-nya (`tests/Feature/PushNotificationTest.php`).
 `PushNotifier` dipanggil inline setelah transaksi commit, jadi **tidak** butuh cron juga.
 
-**Sudah diterima dan terpasang (2026-09-07):**
-- Service-account JSON (untuk server mengirim push) — di `storage/app/private/fcm-service-account.json`,
-  di luar git. Diverifikasi langsung: berhasil menukar JWT-nya jadi OAuth access token asli dari
-  Google sebelum dipakai.
-- `google-services.json` (untuk aplikasi menerima push) — sudah masuk ke **APK v1.4.4**. Diverifikasi
-  langsung di dalam APK yang sudah dibuild: `google_app_id` dan `project_id` di resource yang
-  di-merge cocok persis dengan file aslinya.
-
 Project Firebase: `soulcoffee-fb389`. App Android: `1:1067852115776:android:8ed7dd8d7b8c79be8114a5`
 (package `id.soulcoffeemate.ops.demo`).
 
-**Satu-satunya yang tersisa — menunggu SSH bisa diakses lagi:**
-- Upload `fcm-service-account.json` ke server, path yang sama.
-- Tambah dua baris ke `.env` produksi:
-  ```
-  FCM_PROJECT_ID=soulcoffee-fb389
-  FCM_CREDENTIALS_PATH=/home/u253446757/domains/rafancloud.com/public_html/soulcoffee/storage/app/private/fcm-service-account.json
-  ```
-- `php artisan config:clear && php artisan config:cache`.
+**Terpasang di kedua sisi:**
+- Service-account JSON (server → Google) — `storage/app/private/fcm-service-account.json`, di luar
+  git, `FCM_PROJECT_ID`/`FCM_CREDENTIALS_PATH` di `.env` produksi.
+- `google-services.json` (aplikasi ← Google) — masuk ke APK sejak v1.4.4.
 
-Setelah itu, tidak ada langkah manual lain: aplikasi mendaftarkan token-nya sendiri lewat `POST
-/api/v1/me/devices` saat login, dan `event_id` yang sama dipakai untuk membuang duplikat antara
-socket dan push (E15) sehingga satu kejadian tidak muncul dua kali.
+**Bukan cuma "config-nya ada" — sudah dibuktikan ujung ke ujung ke perangkat sungguhan:**
+setelah deploy, `device_push_tokens` produksi berisi 2 token asli (Rider dan Staff Mufit, keduanya
+Android, terdaftar sendiri oleh APK). Satu pesan uji dikirim langsung lewat `FcmClient` ke token
+staff itu — Google FCM mengembalikan **`Sent`**, bukan cuma "diterima trigger-nya".
+`POST /notifications/read-all` juga sudah dicoba lewat HTTPS sungguhan ke
+`soulcoffee.rafancloud.com` dan mengembalikan 204 dengan `read_at` yang benar-benar berubah di
+database.
 
-Catatan: sampai FCM aktif, notifikasi hanya sampai saat aplikasi **sedang dibuka** (lewat Pusher).
-Notifikasi yang muncul saat aplikasi tertutup/di background memang tugas FCM, bukan Pusher — itu
-batas teknis, bukan bug.
+Aplikasi mendaftarkan token-nya sendiri lewat `POST /api/v1/me/devices` saat login — tidak ada
+langkah manual yang tersisa. `event_id` yang sama dipakai untuk membuang duplikat antara socket
+dan push (E15) sehingga satu kejadian tidak muncul dua kali.
+
+**Kalau setelah ini push masih belum muncul di HP tertentu**, tiga hal yang lazim menjadi
+penyebabnya di sisi perangkat (bukan di sisi server, yang sudah terbukti terkirim):
+- Izin notifikasi (`POST_NOTIFICATIONS`, Android 13+) ditolak saat pertama kali diminta —
+  cek Setelan Android → Aplikasi → Soul Coffeemate → Notifikasi.
+- Google Play Services tidak terpasang/aktif di perangkat itu (jarang, tapi mungkin di emulator
+  tanpa Play Store).
+- Optimasi baterai/"App tidur" pada beberapa merk Android (Xiaomi/Oppo/Vivo) yang membekukan
+  proses background aplikasi — perlu dikecualikan manual dari pengaturan baterai per merk.
 
 ---
 
