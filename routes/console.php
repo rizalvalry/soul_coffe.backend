@@ -18,6 +18,15 @@ Schedule::command('soul:seed-daily-allowances')
     ->dailyAt('00:00')
     ->withoutOverlapping();
 
+// Carries yesterday's staff→cart→location roster onto today, so an Administrator only ever
+// types "Penugasan Staff" once per pairing instead of every single operating day. A row is
+// skipped rather than overwritten the moment today already has one for that staff member or
+// that cart — see StaffAssignmentCarryForwardService for why a batch job must never clobber a
+// decision a human already made for the day.
+Schedule::command('soul:carry-forward-staff-assignments')
+    ->dailyAt('00:00')
+    ->withoutOverlapping();
+
 /*
  * Drains whatever the inline path could not deliver.
  *
