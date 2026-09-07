@@ -148,6 +148,7 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
     // ── Notifications & badges (requirement 3 support) ─────────────────────
     Route::get('notifications', [NotificationController::class, 'index']);
+    Route::post('notifications/read-all', [NotificationController::class, 'markAllRead']);
     Route::post('notifications/{notification}/read', [NotificationController::class, 'markRead']);
     Route::get('badges', [BadgeController::class, 'index']);
 });

@@ -39,4 +39,22 @@ class NotificationController extends Controller
 
         return response()->noContent();
     }
+
+    /**
+     * Clears the whole badge in one write instead of one PATCH per row — a bell that has
+     * accumulated dozens of unread rows (a busy shift, a phone left signed out for a day) must
+     * not force the user to tap each one just to make the count go away.
+     *
+     * Scoped to `$request->user()->id` at the query level, same as index() — there is no
+     * "mark everyone's notifications read" version of this endpoint.
+     */
+    public function markAllRead(Request $request): Response
+    {
+        AppNotification::query()
+            ->where('user_id', $request->user()->id)
+            ->whereNull('read_at')
+            ->update(['read_at' => now()]);
+
+        return response()->noContent();
+    }
 }
