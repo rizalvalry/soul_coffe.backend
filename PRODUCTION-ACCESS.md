@@ -413,9 +413,26 @@ Sudah di-deploy (2026-09-07) dan dikonfirmasi langsung: `https://soulcoffee.rafa
 dan `/admin/reports` merespons tanpa error (redirect ke login untuk tamu, seperti seharusnya).
 
 **Dependensi baru:** `maatwebsite/excel` (menarik `phpoffice/phpspreadsheet`). Ini satu-satunya
-paket composer baru sejak awal proyek. Karena hosting ini tidak punya akses internet keluar untuk
-`composer require` (sudah dicoba, timeout), delta `vendor/` untuk paket ini disiapkan sebagai
-bagian dari tarball deploy, bukan diinstal di server.
+paket composer baru sejak awal proyek.
+
+⚠️ **Koreksi (2026-09-08).** Catatan sebelumnya di sini mengklaim hosting ini tidak punya akses
+internet keluar sehingga `vendor/` harus dikirim manual lewat tarball. **Klaim itu salah** — yang
+timeout waktu itu adalah SSH-nya, bukan koneksi server ke packagist. Sudah diuji dari server:
+`repo.packagist.org` balas 200, dan `composer 2.9.8` tersedia.
+
+Yang lebih penting: **cara manual itu diam-diam rusak.** Menyalin folder `vendor/maatwebsite`
+lewat tarball tidak memperbarui `vendor/composer/installed.json` — dan itulah sumber data yang
+dipakai `composer dump-autoload`. Akibatnya file paketnya ada di disk, tapi autoloader tidak
+mengenalnya: `class_exists('Maatwebsite\Excel\Facades\Excel')` mengembalikan **false**, sehingga
+setiap tombol ekspor Excel (Laporan & Ekspor sejak 2026-09-07 dan Laporan Absensi) akan gagal
+begitu diklik, walau halamannya tampil normal. Cacat ini baru tertangkap oleh smoke test
+2026-09-08 dan sudah diperbaiki dengan `composer install --no-dev --optimize-autoloader` di
+server, lalu dibuktikan: kedua kelas resolve, dan ekspor absensi (7.008 byte) serta ekspor
+pendapatan (6.592 byte) menghasilkan `.xlsx` valid.
+
+**Aturan deploy sekarang:** kalau sebuah rilis mengubah `composer.json`/`composer.lock`, jalankan
+`composer install --no-dev --optimize-autoloader` di server setelah upload — jangan pernah
+menempelkan folder `vendor/` per paket.
 
 ---
 
@@ -452,6 +469,11 @@ ditanam di kode — jadi bisa berubah tanpa ubah program.
 Tombol **Ekspor Excel** menghasilkan `.xlsx` sungguhan dengan bentuk kolom yang sama seperti sheet
 aslinya (hari 1..31 lalu kolom rekap), supaya file-nya bisa langsung masuk ke proses payroll yang
 sudah ada. Presentase ditulis sebagai angka, bukan teks "88%", agar tetap bisa dipakai formula.
+
+Sudah di-deploy dan diuji langsung di produksi (2026-09-08): satu partner uji dibuat, lima sel
+diisi, rekapnya dihitung benar (`hadir=2 libur=1 jatah=4 lebih=-3 rate=7,7%`), satu sel dikosongkan
+dan barisnya benar-benar hilang, ekspor menghasilkan `.xlsx` valid 7.008 byte — lalu seluruh data
+uji dihapus lagi (`partners=0 entries=0`), jadi database produksi tidak meninggalkan sampah.
 
 ---
 
