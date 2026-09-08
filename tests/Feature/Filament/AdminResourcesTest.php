@@ -8,6 +8,7 @@ use App\Filament\Resources\Carts\CartResource;
 use App\Filament\Resources\CentralKitchens\CentralKitchenResource;
 use App\Filament\Resources\DailyTargets\DailyTargetResource;
 use App\Filament\Resources\Locations\LocationResource;
+use App\Filament\Resources\Partners\PartnerResource;
 use App\Filament\Resources\Products\ProductResource;
 use App\Filament\Resources\StaffAssignments\StaffAssignmentResource;
 use App\Filament\Resources\Users\UserResource;
@@ -47,6 +48,7 @@ class AdminResourcesTest extends TestCase
             'dapur pusat' => [CentralKitchenResource::class],
             'target harian' => [DailyTargetResource::class],
             'penugasan staff' => [StaffAssignmentResource::class],
+            'partner absensi' => [PartnerResource::class],
             'audit trail' => [AuditLogResource::class],
         ];
     }

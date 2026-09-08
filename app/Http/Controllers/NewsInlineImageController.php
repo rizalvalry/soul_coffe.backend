@@ -19,8 +19,9 @@ use Illuminate\Validation\ValidationException;
  * -shaped upload here — this endpoint is not a URL fetcher, it only ever receives bytes the browser
  * already resolved client-side.
  *
- * Scoped to the same two roles as `NewsPostResource` itself (§ AdministratorOnly is deliberately
- * NOT used here — CONTENT_CREATOR must be able to reach this, which is the entire point).
+ * Scoped to the same two roles as `NewsPostResource` itself, hardcoded rather than read from the
+ * access matrix for the same reason that resource is (CONTENT_CREATOR must be able to reach this,
+ * which is the entire point).
  */
 class NewsInlineImageController extends Controller
 {

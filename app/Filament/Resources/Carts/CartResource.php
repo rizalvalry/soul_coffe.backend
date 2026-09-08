@@ -10,7 +10,8 @@ use App\Filament\Resources\Carts\Tables\CartsTable;
 use App\Models\Cart;
 use BackedEnum;
 use UnitEnum;
-use App\Filament\Concerns\AdministratorOnly;
+use App\Enums\PanelModule;
+use App\Filament\Concerns\MatrixGoverned;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -18,7 +19,7 @@ use Filament\Tables\Table;
 
 class CartResource extends Resource
 {
-    use AdministratorOnly;
+    use MatrixGoverned;
 
     protected static ?string $model = Cart::class;
 
@@ -35,6 +36,11 @@ class CartResource extends Resource
     protected static ?int $navigationSort = 3;
 
     protected static ?string $recordTitleAttribute = 'code';
+
+    public static function panelModule(): PanelModule
+    {
+        return PanelModule::CARTS;
+    }
 
     public static function form(Schema $schema): Schema
     {

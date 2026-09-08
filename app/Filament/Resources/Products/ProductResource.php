@@ -11,7 +11,8 @@ use App\Filament\Resources\Products\Tables\ProductsTable;
 use App\Models\Product;
 use BackedEnum;
 use UnitEnum;
-use App\Filament\Concerns\AdministratorOnly;
+use App\Enums\PanelModule;
+use App\Filament\Concerns\MatrixGoverned;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -19,7 +20,7 @@ use Filament\Tables\Table;
 
 class ProductResource extends Resource
 {
-    use AdministratorOnly;
+    use MatrixGoverned;
 
     protected static ?string $model = Product::class;
 
@@ -36,6 +37,11 @@ class ProductResource extends Resource
     protected static ?int $navigationSort = 2;
 
     protected static ?string $recordTitleAttribute = 'name';
+
+    public static function panelModule(): PanelModule
+    {
+        return PanelModule::PRODUCTS;
+    }
 
     public static function form(Schema $schema): Schema
     {

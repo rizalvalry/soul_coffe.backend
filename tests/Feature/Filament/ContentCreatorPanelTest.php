@@ -15,7 +15,7 @@ use Tests\TestCase;
  *
  * Filament allows a resource by default when no policy exists, so before this role existed every
  * resource was protected only by the fact that nobody but an ADMINISTRATOR could get in. The
- * `AdministratorOnly` trait closed that; the enumerating test below is what keeps it closed, by
+ * `MatrixGoverned` trait closed that; the enumerating test below is what keeps it closed, by
  * failing the moment a new resource is added without it.
  */
 class ContentCreatorPanelTest extends TestCase
@@ -93,7 +93,7 @@ class ContentCreatorPanelTest extends TestCase
 
             $this->assertFalse(
                 $resource::canViewAny(),
-                "{$resource} is visible to CONTENT_CREATOR. Add the AdministratorOnly trait to it."
+                "{$resource} is visible to CONTENT_CREATOR. Add the MatrixGoverned trait to it."
             );
             $checked++;
         }

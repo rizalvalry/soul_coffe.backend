@@ -49,4 +49,10 @@ return [
     // — no data migration, and past records stay true to whichever rule applied at the time.
     'allowance_counts_toward_settlement' => (bool) env('SOUL_ALLOWANCE_COUNTS_TOWARD_SETTLEMENT', false),
 
+    // Divisor behind "Presentase Kehadiran" on the monthly absensi sheet: hadir ÷ this × 100.
+    // 26 is the payroll convention the reference sheet uses (verified against its own printed
+    // percentages — see PartnerAttendanceService), not the number of days in the month, which is
+    // why a partner who works through their days off can legitimately exceed 100%.
+    'attendance_working_days' => (int) env('SOUL_ATTENDANCE_WORKING_DAYS', 26),
+
 ];

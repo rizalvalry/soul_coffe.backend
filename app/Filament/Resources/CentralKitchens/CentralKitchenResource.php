@@ -10,7 +10,8 @@ use App\Filament\Resources\CentralKitchens\Tables\CentralKitchensTable;
 use App\Models\CentralKitchen;
 use BackedEnum;
 use UnitEnum;
-use App\Filament\Concerns\AdministratorOnly;
+use App\Enums\PanelModule;
+use App\Filament\Concerns\MatrixGoverned;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -18,7 +19,7 @@ use Filament\Tables\Table;
 
 class CentralKitchenResource extends Resource
 {
-    use AdministratorOnly;
+    use MatrixGoverned;
 
     protected static ?string $model = CentralKitchen::class;
 
@@ -35,6 +36,11 @@ class CentralKitchenResource extends Resource
     protected static ?int $navigationSort = 5;
 
     protected static ?string $recordTitleAttribute = 'name';
+
+    public static function panelModule(): PanelModule
+    {
+        return PanelModule::CENTRAL_KITCHENS;
+    }
 
     public static function form(Schema $schema): Schema
     {

@@ -9,7 +9,8 @@ use App\Filament\Resources\AuditLogs\Tables\AuditLogsTable;
 use App\Models\AuditLog;
 use BackedEnum;
 use UnitEnum;
-use App\Filament\Concerns\AdministratorOnly;
+use App\Enums\PanelModule;
+use App\Filament\Concerns\MatrixGoverned;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -18,7 +19,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class AuditLogResource extends Resource
 {
-    use AdministratorOnly;
+    use MatrixGoverned;
 
     protected static ?string $model = AuditLog::class;
 
@@ -33,6 +34,11 @@ class AuditLogResource extends Resource
     protected static ?string $pluralModelLabel = 'Audit Trail';
 
     protected static ?int $navigationSort = 1;
+
+    public static function panelModule(): PanelModule
+    {
+        return PanelModule::AUDIT_LOGS;
+    }
 
     public static function infolist(Schema $schema): Schema
     {

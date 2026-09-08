@@ -10,7 +10,8 @@ use App\Filament\Resources\DailyTargets\Tables\DailyTargetsTable;
 use App\Models\DailyTarget;
 use BackedEnum;
 use UnitEnum;
-use App\Filament\Concerns\AdministratorOnly;
+use App\Enums\PanelModule;
+use App\Filament\Concerns\MatrixGoverned;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -18,7 +19,7 @@ use Filament\Tables\Table;
 
 class DailyTargetResource extends Resource
 {
-    use AdministratorOnly;
+    use MatrixGoverned;
 
     protected static ?string $model = DailyTarget::class;
 
@@ -33,6 +34,11 @@ class DailyTargetResource extends Resource
     protected static ?string $pluralModelLabel = 'Target Harian';
 
     protected static ?int $navigationSort = 1;
+
+    public static function panelModule(): PanelModule
+    {
+        return PanelModule::DAILY_TARGETS;
+    }
 
     public static function form(Schema $schema): Schema
     {

@@ -18,7 +18,10 @@ use Illuminate\Support\Facades\Auth;
 use UnitEnum;
 
 /**
- * The only resource CONTENT_CREATOR can reach. Every other one carries `AdministratorOnly`.
+ * The only resource CONTENT_CREATOR can reach, and the only one whose authorisation is hardcoded
+ * rather than matrix-driven: this pairing of roles IS the feature (someone writes the feed, an
+ * administrator can pull a post down), so it is not something to leave switchable. Every other
+ * resource carries `MatrixGoverned`.
  *
  * Administrators keep full access, because someone has to be able to pull a published post down
  * at short notice without waiting for its author.

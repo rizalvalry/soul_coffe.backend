@@ -419,6 +419,75 @@ bagian dari tarball deploy, bukan diinstal di server.
 
 ---
 
+## Absensi Partner — ✅ AKTIF (menu baru, 2026-09-08)
+
+Reproduksi "Laporan Absensi Partner Soul Coffeemate" dari
+`docs/screenshots/bisnisproses/excel-absensi.jpeg`, tapi bisa diisi langsung di panel.
+
+Dua menu di grup **Absensi**:
+
+1. **Data Partner** — kolom kiri sheet itu sebagai master data: NIK, Nama Karyawan, SIZE, Jatah
+   Klibur per bulan, role, dan (opsional) tautan ke akun aplikasi. NIK boleh dikosongkan, karena
+   sheet aslinya memang memuat partner tanpa NIK (baris 24–27); menolak mereka justru mendorong
+   orang-orang itu kembali ke spreadsheet yang tidak bisa diaudit.
+2. **Laporan Absensi** — grid bulanannya. Kolomnya mengikuti jumlah hari bulan yang dipilih (28–31,
+   jadi Februari tidak pernah salah), baris = partner, dan tiap sel diisi lewat satu dropdown yang
+   **langsung tersimpan** tanpa tombol Simpan — persis ritme mengisi spreadsheet.
+
+Kode selnya sama seperti sheet: **M** hadir, **T** berangkat siang/tidak target (oranye), **L**
+libur (merah), **S** sakit (biru), kosong = belum diisi. Sel kosong disimpan sebagai *tidak ada
+baris*, bukan kode kelima, supaya "belum diisi" tak pernah tertukar dengan "sudah diputuskan".
+
+Kolom rekap di kanan **tidak dikarang** — rumusnya dibaca ulang dari angka yang tercetak di sheet
+itu sendiri, lalu diuji terhadap 8 baris aslinya (`PartnerAttendanceServiceTest`):
+
+| Kolom | Rumus | Bukti dari sheet |
+|---|---|---|
+| Lebih dari Jatah / Tidak Masuk | `Libur − Jatah Klibur` | AGUNG 5−4=1 · Endi 18−4=14 · RANGGA 30−4=26 · ADIT 2−4=**−2** (negatif memang muncul di sheet) |
+| Presentase Kehadiran | `Hadir ÷ 26 × 100%` | AGUNG 23/26=88% · Endi 13/26=50% · NOVAL 28/26=**108%** (di atas 100% sengaja tidak dipotong) |
+
+Pembagi 26 itu konvensi payroll, disimpan di `config/soul.php` (`attendance_working_days`), bukan
+ditanam di kode — jadi bisa berubah tanpa ubah program.
+
+Tombol **Ekspor Excel** menghasilkan `.xlsx` sungguhan dengan bentuk kolom yang sama seperti sheet
+aslinya (hari 1..31 lalu kolom rekap), supaya file-nya bisa langsung masuk ke proses payroll yang
+sudah ada. Presentase ditulis sebagai angka, bukan teks "88%", agar tetap bisa dipakai formula.
+
+---
+
+## Matriks Akses Peran — ✅ AKTIF (menu baru, 2026-09-08)
+
+Sebelum ini, hak akses panel ditanam di kode: `AdministratorOnly` di setiap resource. Sekarang ada
+tabel `role_permissions` dan satu halaman pengaturan (**Pengaturan → Matriks Akses Peran**) tempat
+Administrator menentukan, per peran, menu mana yang boleh dilihat/ditambah/diubah/dihapus.
+
+Dua sifat yang dijaga ketat:
+
+- **Administrator tidak bisa dibatasi dari sini** dan tidak muncul di daftar peran yang bisa
+  diedit. `PermissionMatrix` meloloskannya sebelum tabelnya dibaca sama sekali — peran yang
+  mengelola matriks tidak boleh punya cara mengunci dirinya sendiri keluar.
+- **Halaman matriksnya sendiri bukan bagian dari matriks** (hardcoded Administrator). Halaman yang
+  membagikan izin tidak boleh ikut dibagikan lewat izin yang ia atur.
+
+Peran tanpa centang apa pun tidak melihat menunya sama sekali — jadi tabel kosong = kondisi
+teraman. Mencentang Tambah/Ubah/Hapus otomatis menyertakan Lihat.
+
+**Pintu masuk panel sekarang mengikuti matriks:** peran operasional bisa masuk `/admin` begitu
+diberi minimal satu menu (Administrator dan Content Creator tetap seperti sebelumnya). Ini yang
+membuat izin dan pintu tidak saling bertentangan.
+
+**Default yang ikut terpasang:** `FINANCE` mendapat **Data Partner** dan **Laporan Absensi** penuh
+(lihat/tambah/ubah/hapus) — sesuai permintaan agar modul absensi bisa di-CRUD oleh Administrator
+*dan* Finance. Finance tidak diberi menu lain; sisanya diatur sendiri lewat halaman matriks.
+
+Menu yang sudah masuk matriks: Pengguna & Role, Produk, Gerobak, Lokasi, Dapur Pusat, Target
+Harian, Penugasan Staff, Data Partner, Laporan Absensi, Laporan & Ekspor, Audit Trail, Permintaan
+Reset PIN. Yang **belum** ikut matriks dan masih hardcoded: News Feed (khusus Content Creator,
+pasangan peran itu memang fiturnya), Pengaturan AI, dan widget Dashboard — ketiganya tetap
+Administrator seperti sebelumnya.
+
+---
+
 ## FCM Push Notification — ✅ AKTIF (diverifikasi langsung ke perangkat nyata, 2026-09-07)
 
 Kode-nya sudah lengkap dan sudah ada test-nya (`tests/Feature/PushNotificationTest.php`).
@@ -432,13 +501,14 @@ Project Firebase: `soulcoffee-fb389`. App Android: `1:1067852115776:android:8ed7
   git, `FCM_PROJECT_ID`/`FCM_CREDENTIALS_PATH` di `.env` produksi.
 - `google-services.json` (aplikasi ← Google) — masuk ke APK sejak v1.4.4.
 
-**Bukan cuma "config-nya ada" — sudah dibuktikan ujung ke ujung ke perangkat sungguhan:**
-setelah deploy, `device_push_tokens` produksi berisi 2 token asli (Rider dan Staff Mufit, keduanya
-Android, terdaftar sendiri oleh APK). Satu pesan uji dikirim langsung lewat `FcmClient` ke token
-staff itu — Google FCM mengembalikan **`Sent`**, bukan cuma "diterima trigger-nya".
-`POST /notifications/read-all` juga sudah dicoba lewat HTTPS sungguhan ke
-`soulcoffee.rafancloud.com` dan mengembalikan 204 dengan `read_at` yang benar-benar berubah di
-database.
+**Bukan cuma "config-nya ada" — sudah dibuktikan ujung ke ujung, dan notifikasinya benar-benar
+tampil di layar HP** (dikonfirmasi langsung oleh pemilik akun, 2026-09-07). Alurnya: deploy →
+`device_push_tokens` produksi berisi token asli (Rider dan Staff Mufit, keduanya Android,
+terdaftar sendiri oleh APK) → dua pesan uji dikirim lewat `EventPublisher` (jalur bisnis
+sesungguhnya, bukan jalur pintas) ke kedua token Mufit → Google FCM membalas `Sent` untuk
+semuanya → **notifikasi muncul di HP**. `POST /notifications/read-all` juga sudah dicoba lewat
+HTTPS sungguhan ke `soulcoffee.rafancloud.com` dan mengembalikan 204 dengan `read_at` yang
+benar-benar berubah di database.
 
 Aplikasi mendaftarkan token-nya sendiri lewat `POST /api/v1/me/devices` saat login — tidak ada
 langkah manual yang tersisa. `event_id` yang sama dipakai untuk membuang duplikat antara socket

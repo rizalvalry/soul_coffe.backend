@@ -2,7 +2,8 @@
 
 namespace App\Filament\Resources\PinResetRequests;
 
-use App\Filament\Concerns\AdministratorOnly;
+use App\Enums\PanelModule;
+use App\Filament\Concerns\MatrixGoverned;
 use App\Filament\Resources\PinResetRequests\Pages\ListPinResetRequests;
 use App\Filament\Resources\PinResetRequests\Tables\PinResetRequestsTable;
 use App\Models\PinResetRequest;
@@ -28,7 +29,7 @@ use UnitEnum;
  */
 class PinResetRequestResource extends Resource
 {
-    use AdministratorOnly;
+    use MatrixGoverned;
 
     protected static ?string $model = PinResetRequest::class;
 
@@ -44,6 +45,11 @@ class PinResetRequestResource extends Resource
 
     protected static ?int $navigationSort = 0;
 
+    public static function panelModule(): PanelModule
+    {
+        return PanelModule::PIN_RESET_REQUESTS;
+    }
+
     public static function table(Table $table): Table
     {
         return PinResetRequestsTable::configure($table);
@@ -52,9 +58,9 @@ class PinResetRequestResource extends Resource
     /** Pending count, shown beside the menu item. Null hides the badge entirely when clear. */
     public static function getNavigationBadge(): ?string
     {
-        // Only an administrator ever sees this resource (AdministratorOnly), but the badge is
-        // resolved for the navigation of whoever is signed in — CONTENT_CREATOR included — so the
-        // query is guarded rather than assumed.
+        // Whether anyone but an administrator sees this resource is now a matrix decision
+        // (MatrixGoverned), but the badge is resolved for the navigation of whoever is signed in
+        // — CONTENT_CREATOR included — so the query is guarded rather than assumed.
         if (! static::canViewAny()) {
             return null;
         }

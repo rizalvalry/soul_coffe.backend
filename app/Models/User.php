@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\Role;
+use App\Services\Access\PermissionMatrix;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -68,12 +69,25 @@ class User extends Authenticatable implements FilamentUser, HasName
      */
     public function canAccessPanel(Panel $panel): bool
     {
-        // CONTENT_CREATOR reaches the panel too, but sees only the news feed: every other
-        // resource gates on ADMINISTRATOR in its own `canViewAny()`. Panel access is the door;
-        // it is not the authorisation, and it never grants sight of a refill, a price, or a
-        // settlement.
-        return $this->is_active
-            && in_array($this->role, [Role::ADMINISTRATOR, Role::CONTENT_CREATOR], true);
+        if (! $this->is_active) {
+            return false;
+        }
+
+        // ADMINISTRATOR runs the panel; CONTENT_CREATOR is let in for the news feed alone, which
+        // is hardcoded rather than matrix-driven (see NewsPostResource).
+        if (in_array($this->role, [Role::ADMINISTRATOR, Role::CONTENT_CREATOR], true)) {
+            return true;
+        }
+
+        // Every other role gets in only once the access matrix has actually granted it a menu —
+        // FINANCE ships with the absensi module, so it reaches the panel and sees nothing else.
+        // Deriving the door from the matrix is what stops the two from disagreeing: a granted
+        // module that cannot be reached, or a role in the building with nowhere to go.
+        //
+        // Panel access is still not the authorisation. Each resource re-checks the matrix in its
+        // own `canViewAny()`, so being through the door never implies sight of a refill, a price,
+        // or a settlement.
+        return PermissionMatrix::hasAnyModule($this->role);
     }
 
     public function getFilamentName(): string
