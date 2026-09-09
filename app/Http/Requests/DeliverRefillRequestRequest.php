@@ -12,9 +12,15 @@ use Illuminate\Validation\Rule;
  * once so the rest of validation and the controller both see a plain array.
  *
  * `stroke_count >= 3` (E24) is deliberately NOT enforced here: it must be
- * skipped for `pin_fallback`, and that condition lives with the request's
- * business meaning in RefillRequestStateMachine::deliver(), not as a static
- * rule duplicated per signature_method.
+ * skipped for `pin_fallback` and for a delivery with no signature at all, and that condition
+ * lives with the request's business meaning in RefillRequestStateMachine::deliver(), not as a
+ * static rule duplicated per signature_method.
+ *
+ * WHAT CHANGED ON 2026-09-10: the handover PHOTO is required and the SIGNATURE is optional. It
+ * used to be the other way round. A signature field with `required` on it meant a rider standing
+ * in the street with a crate in one hand could not close a delivery that had plainly happened,
+ * while the artefact that would actually settle a dispute — a picture of the cups being handed
+ * over — was not collected at all.
  */
 class DeliverRefillRequestRequest extends FormRequest
 {
@@ -44,8 +50,18 @@ class DeliverRefillRequestRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'signature' => ['required', 'file', 'mimes:png', 'max:5120'],
-            'signature_method' => ['required', Rule::in(['staff_signature', 'pin_fallback'])],
+            // The required artefact since 2026-09-10. A photograph of the handover shows the
+            // cups, the cart and the person receiving them; a finger-drawn squiggle proves only
+            // that somebody drew a squiggle. See the migration that added handover_photo_id.
+            'handover_photo' => ['required', 'file', 'mimes:jpg,jpeg,png', 'max:8192'],
+            'handover_photo_taken_at' => ['required', 'date'],
+
+            // Now optional — a rider who has the staff member's signature may still record it,
+            // and a rider who does not is no longer blocked from completing a delivery that
+            // demonstrably happened. Absent means "no signature was taken", which is a fact the
+            // row records rather than a gap to be filled with a placeholder.
+            'signature' => ['nullable', 'file', 'mimes:png', 'max:5120'],
+            'signature_method' => ['nullable', Rule::in(['staff_signature', 'pin_fallback'])],
             'staff_pin' => ['nullable', 'string', 'required_if:signature_method,pin_fallback'],
             'staff_id' => ['nullable', 'integer', 'exists:users,id'],
             'stroke_count' => ['required', 'integer', 'min:0'],

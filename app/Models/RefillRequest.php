@@ -71,6 +71,7 @@ class RefillRequest extends Model
         'delivered_at',
         'signature_id',
         'signature_method',
+        'handover_photo_id',
         'total_cost_minor',
         'price_version_id',
         'out_of_hours',
@@ -145,6 +146,12 @@ class RefillRequest extends Model
     public function signature(): BelongsTo
     {
         return $this->belongsTo(Media::class, 'signature_id');
+    }
+
+    /** The photo taken as the cups changed hands — required since 2026-09-10. */
+    public function handoverPhoto(): BelongsTo
+    {
+        return $this->belongsTo(Media::class, 'handover_photo_id');
     }
 
     public function finance(): BelongsTo

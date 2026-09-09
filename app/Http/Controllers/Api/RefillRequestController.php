@@ -23,7 +23,7 @@ class RefillRequestController extends Controller
 {
     private const EAGER = [
         'cart', 'staff', 'kitchen', 'finance', 'barista', 'rider',
-        'lines.product', 'evidencePhoto', 'signature',
+        'lines.product', 'evidencePhoto', 'signature', 'handoverPhoto',
     ];
 
     public function __construct(private readonly RefillRequestStateMachine $stateMachine) {}

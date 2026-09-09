@@ -25,6 +25,7 @@ enum PanelModule: string
     case STAFF_ASSIGNMENTS = 'staff_assignments';
     case CENTRAL_STOCK = 'central_stock';
     case SALES = 'sales';
+    case DELIVERY_INCIDENTS = 'delivery_incidents';
     case STAFF_ACTIVITY = 'staff_activity';
     case ATTENDANCE = 'attendance';
     case REPORTS = 'reports';
@@ -45,6 +46,7 @@ enum PanelModule: string
             self::STAFF_ASSIGNMENTS => 'Penugasan Staff',
             self::CENTRAL_STOCK => 'Stok Terpusat',
             self::SALES => 'Penjualan Gerobak',
+            self::DELIVERY_INCIDENTS => 'Insiden Pengiriman',
             self::STAFF_ACTIVITY => 'Aktivitas Staff',
             self::ATTENDANCE => 'Laporan Absensi',
             self::REPORTS => 'Laporan & Ekspor',

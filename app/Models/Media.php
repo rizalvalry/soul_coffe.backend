@@ -48,4 +48,14 @@ class Media extends Model
     {
         return $this->hasMany(RefillRequest::class, 'signature_id');
     }
+
+    public function refillRequestsAsHandoverPhoto(): HasMany
+    {
+        return $this->hasMany(RefillRequest::class, 'handover_photo_id');
+    }
+
+    public function deliveryIncidents(): HasMany
+    {
+        return $this->hasMany(DeliveryIncident::class, 'photo_media_id');
+    }
 }

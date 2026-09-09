@@ -25,7 +25,7 @@ class RefillTransitionController extends Controller
 {
     private const EAGER = [
         'cart', 'staff', 'kitchen', 'finance', 'barista', 'rider',
-        'lines.product', 'evidencePhoto', 'signature',
+        'lines.product', 'evidencePhoto', 'signature', 'handoverPhoto',
     ];
 
     public function __construct(private readonly RefillRequestStateMachine $stateMachine) {}
@@ -112,6 +112,9 @@ class RefillTransitionController extends Controller
             $refill,
             $request->user(),
             $request->validated(),
+            // Required since 2026-09-10; the signature that used to be required is now whatever
+            // the rider was able to collect, or nothing.
+            $request->file('handover_photo'),
             $request->file('signature'),
         );
 

@@ -516,17 +516,40 @@ class RefillRequestStateMachine
     // ── DELIVER (R5, R13, E7, E8, E19, E24) ─────────────────────────────────
 
     /**
+     * Completes a delivery.
+     *
+     * THE EVIDENCE RULE CHANGED ON 2026-09-10. The handover PHOTO is now the required artefact
+     * and the SIGNATURE is optional, because a photograph of the cups being handed over is what
+     * anyone would actually want when a delivery is disputed, and because a required signature
+     * meant a rider holding a crate in the street could be unable to close a delivery that
+     * plainly happened.
+     *
+     * So there are three shapes a completed delivery may take, all of them legitimate:
+     *   photo only                — no signature was taken; the row says so rather than storing
+     *                               a placeholder that would read as one.
+     *   photo + staff signature   — E24 still applies: three strokes minimum, a single
+     *                               accidental dot is not a signature.
+     *   photo + PIN fallback (E7) — the staff member's PIN stands in for their hand. The PIN is
+     *                               still verified; a signature FILE is no longer needed for it,
+     *                               which retires the 1x1 placeholder image.
+     *
      * @param  array{
      *     lines: array<int, array{line_id: int, qty_received: int}>,
-     *     signature_method: string, staff_pin?: string|null, staff_id?: int|null,
-     *     stroke_count: int, gps_lat?: float|null, gps_lng?: float|null,
+     *     handover_photo_taken_at: string,
+     *     signature_method?: string|null, staff_pin?: string|null, staff_id?: int|null,
+     *     stroke_count?: int, gps_lat?: float|null, gps_lng?: float|null,
      *     gps_unavailable?: bool, device_id?: string|null,
      * }  $data
      * @return array{refill: RefillRequest, ledger_posted: bool}
      */
-    public function deliver(RefillRequest $refill, User $rider, array $data, UploadedFile $signatureFile): array
-    {
-        $delivered = DB::transaction(function () use ($refill, $rider, $data, $signatureFile): RefillRequest {
+    public function deliver(
+        RefillRequest $refill,
+        User $rider,
+        array $data,
+        UploadedFile $handoverPhoto,
+        ?UploadedFile $signatureFile = null,
+    ): array {
+        $delivered = DB::transaction(function () use ($refill, $rider, $data, $handoverPhoto, $signatureFile): RefillRequest {
             $locked = RefillRequest::query()->whereKey($refill->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->status !== RefillStatus::PICKED_UP) {
@@ -545,7 +568,16 @@ class RefillRequestStateMachine
                 abort(403, 'Staff tidak sesuai dengan pemohon');
             }
 
-            $method = SignatureMethod::from($data['signature_method']);
+            // The one thing a delivery may not be completed without.
+            $photo = $this->media->storeHandoverPhoto(
+                $handoverPhoto,
+                Carbon::parse($data['handover_photo_taken_at']),
+                $rider,
+            );
+
+            $method = isset($data['signature_method']) && $data['signature_method'] !== null
+                ? SignatureMethod::from($data['signature_method'])
+                : null;
 
             if ($method === SignatureMethod::PIN_FALLBACK) {
                 $staff = $locked->staff;
@@ -554,7 +586,13 @@ class RefillRequestStateMachine
                     // E7.
                     throw ValidationException::withMessages(['staff_pin' => ['PIN staff tidak sesuai']]);
                 }
-            } else {
+            } elseif ($method === SignatureMethod::STAFF_SIGNATURE) {
+                if (! $signatureFile) {
+                    throw ValidationException::withMessages([
+                        'signature' => ['Tanda tangan belum diambil. Kosongkan metode jika tidak memakai tanda tangan.'],
+                    ]);
+                }
+
                 $strokeCount = (int) ($data['stroke_count'] ?? 0);
 
                 if ($strokeCount < 3) {
@@ -563,8 +601,13 @@ class RefillRequestStateMachine
                 }
             }
 
-            // R13 is skipped only for the PIN-fallback placeholder — see MediaService::storeSignature().
-            $signature = $this->media->storeSignature($signatureFile, $rider, $method !== SignatureMethod::PIN_FALLBACK);
+            // Stored only when there is something to store. R13's no-reuse rule applies to a real
+            // signature; it is skipped for the legacy PIN-fallback placeholder, which older APKs
+            // still send and which is the same 1x1 PNG every time — see
+            // MediaService::storeSignature().
+            $signature = $signatureFile
+                ? $this->media->storeSignature($signatureFile, $rider, $method !== SignatureMethod::PIN_FALLBACK)
+                : null;
 
             $lines = $locked->lines()->get()->keyBy('id');
 
@@ -593,8 +636,9 @@ class RefillRequestStateMachine
             $locked->status = RefillStatus::DELIVERED;
             $locked->version += 1;
             $locked->delivered_at = now();
-            $locked->signature_id = $signature->id;
+            $locked->signature_id = $signature?->id;
             $locked->signature_method = $method;
+            $locked->handover_photo_id = $photo->id;
             $locked->gps_lat = $data['gps_lat'] ?? $locked->gps_lat;
             $locked->gps_lng = $data['gps_lng'] ?? $locked->gps_lng;
             $locked->gps_unavailable = (bool) ($data['gps_unavailable'] ?? $locked->gps_unavailable);

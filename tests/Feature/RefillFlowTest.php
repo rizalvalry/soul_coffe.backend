@@ -427,6 +427,154 @@ class RefillFlowTest extends TestCase
         $this->assertSame('PICKED_UP', $refill->fresh()->status->value);
     }
 
+    // ── handover evidence (2026-09-10: photo required, signature optional) ─
+
+    /**
+     * The shape a delivery now normally takes: a photograph and nothing else.
+     *
+     * This is the test that proves the requirement, so it asserts both halves — the delivery
+     * completes, AND the row honestly records that no signature was taken rather than storing a
+     * placeholder that would later read as one.
+     */
+    public function test_a_delivery_with_a_photo_and_no_signature_succeeds(): void
+    {
+        $refill = $this->driveToPickedUp(5);
+        $line = $refill->lines()->first();
+
+        $response = $this->deliver($refill, [
+            ['line_id' => $line->id, 'qty_received' => 5],
+        ], [
+            'signature' => null,
+            'signature_method' => null,
+            'stroke_count' => 0,
+        ]);
+
+        $this->assertContains($response->status(), [200, 202]);
+
+        $refill->refresh();
+        $this->assertContains($refill->status->value, ['DELIVERED', 'CLOSED']);
+        $this->assertNotNull($refill->handover_photo_id);
+        $this->assertNull($refill->signature_id);
+        $this->assertNull($refill->signature_method);
+        $this->assertSame('handover', $refill->handoverPhoto->kind);
+    }
+
+    public function test_a_delivery_without_a_photo_is_refused(): void
+    {
+        $refill = $this->driveToPickedUp(5);
+        $line = $refill->lines()->first();
+
+        $response = $this->actingAs($this->rider)
+            ->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->withHeader('Accept', 'application/json')
+            ->post("/api/v1/refills/{$refill->id}/deliver", [
+                'handover_photo_taken_at' => now()->toIso8601String(),
+                'lines' => json_encode([['line_id' => $line->id, 'qty_received' => 5]]),
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('handover_photo');
+
+        $this->assertSame('PICKED_UP', $refill->fresh()->status->value);
+    }
+
+    /** E6's rule, applied to the handover photo: a picture from an hour ago proves nothing. */
+    public function test_a_stale_handover_photo_is_refused(): void
+    {
+        $refill = $this->driveToPickedUp(5);
+        $line = $refill->lines()->first();
+
+        $response = $this->deliver($refill, [
+            ['line_id' => $line->id, 'qty_received' => 5],
+        ], [
+            'handover_photo_taken_at' => now()->subHours(2)->toIso8601String(),
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('handover_photo_taken_at');
+    }
+
+    /** A signature is still held to E24 when the rider chooses to take one. */
+    public function test_a_signature_that_is_a_single_dot_is_still_refused(): void
+    {
+        $refill = $this->driveToPickedUp(5);
+        $line = $refill->lines()->first();
+
+        $response = $this->deliver($refill, [
+            ['line_id' => $line->id, 'qty_received' => 5],
+        ], ['stroke_count' => 1]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('stroke_count');
+    }
+
+    /** Naming a signature method without sending one is a mistake worth reporting. */
+    public function test_claiming_a_staff_signature_without_the_file_is_refused(): void
+    {
+        $refill = $this->driveToPickedUp(5);
+        $line = $refill->lines()->first();
+
+        $response = $this->deliver($refill, [
+            ['line_id' => $line->id, 'qty_received' => 5],
+        ], [
+            'signature' => null,
+            'signature_method' => 'staff_signature',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('signature');
+    }
+
+    /** E7 still works, and no longer needs the 1x1 placeholder image an older APK sent. */
+    public function test_pin_fallback_needs_no_signature_file(): void
+    {
+        $refill = $this->driveToPickedUp(5);
+        $line = $refill->lines()->first();
+
+        $response = $this->deliver($refill, [
+            ['line_id' => $line->id, 'qty_received' => 5],
+        ], [
+            'signature' => null,
+            'signature_method' => 'pin_fallback',
+            'staff_pin' => '123456',
+            'stroke_count' => 0,
+        ]);
+
+        $this->assertContains($response->status(), [200, 202]);
+        $this->assertSame('pin_fallback', $refill->fresh()->signature_method->value);
+        $this->assertNull($refill->fresh()->signature_id);
+    }
+
+    /** The same photo may not be spent on two deliveries. */
+    public function test_reusing_a_handover_photo_is_refused(): void
+    {
+        $first = $this->driveToPickedUp(5);
+        $photo = UploadedFile::fake()->image('handover-reused.jpg', 640, 480);
+
+        $this->submitDelivery($first, $photo);
+
+        $second = $this->driveToPickedUp(5);
+        $response = $this->submitDelivery($second, $photo);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('handover_photo');
+    }
+
+    /** The minimum a delivery needs: a photo, when it was taken, and what arrived. */
+    private function submitDelivery(RefillRequest $refill, UploadedFile $photo)
+    {
+        $line = $refill->lines()->first();
+
+        return $this->actingAs($this->rider)
+            ->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->withHeader('Accept', 'application/json')
+            ->post("/api/v1/refills/{$refill->id}/deliver", [
+                'handover_photo' => $photo,
+                'handover_photo_taken_at' => now()->toIso8601String(),
+                'lines' => json_encode([['line_id' => $line->id, 'qty_received' => $line->qty_prepared]]),
+            ]);
+    }
+
     // ── role isolation ───────────────────────────────────────────────────
 
     public function test_staff_token_calling_approve_is_forbidden(): void
@@ -450,9 +598,14 @@ class RefillFlowTest extends TestCase
      */
     private function deliver(RefillRequest $refill, array $lines, array $overrides = [])
     {
-        $signature = UploadedFile::fake()->image('signature.png', 100, 60);
+        // Unique bytes per call: a handover photo's hash may not repeat, the same way a
+        // signature's may not, so a fixed fake image would make the second delivery in a test
+        // fail for a reason that has nothing to do with what the test is about.
+        $photo = UploadedFile::fake()->image('handover-'.Str::uuid().'.jpg', 640, 480);
+        $signature = UploadedFile::fake()->image('signature-'.Str::uuid().'.png', 100, 60);
 
         $payload = array_merge([
+            'handover_photo_taken_at' => now()->toIso8601String(),
             'signature_method' => 'staff_signature',
             'staff_id' => $refill->staff_id,
             'stroke_count' => 5,
@@ -467,11 +620,21 @@ class RefillFlowTest extends TestCase
             $payload['lines'] = json_encode($payload['lines']);
         }
 
+        $files = ['handover_photo' => $photo];
+
+        // A caller may pass `signature => null` to exercise the photo-only delivery, which is
+        // the normal shape since 2026-09-10.
+        if (! array_key_exists('signature', $overrides)) {
+            $files['signature'] = $signature;
+        } elseif ($overrides['signature'] !== null) {
+            $files['signature'] = $overrides['signature'];
+        }
+
+        unset($payload['signature']);
+
         return $this->actingAs($this->rider)
             ->withHeader('Idempotency-Key', (string) Str::uuid())
             ->withHeader('Accept', 'application/json')
-            ->post("/api/v1/refills/{$refill->id}/deliver", array_merge($payload, [
-                'signature' => $signature,
-            ]));
+            ->post("/api/v1/refills/{$refill->id}/deliver", array_merge($payload, $files));
     }
 }

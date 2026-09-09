@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BadgeController;
 use App\Http\Controllers\Api\CartController;
+use App\Http\Controllers\Api\DeliveryIncidentController;
 use App\Http\Controllers\Api\DeviceController;
 use App\Http\Controllers\Api\LocationController;
 use App\Http\Controllers\Api\LocationPingController;
@@ -109,7 +110,18 @@ Route::middleware('auth:sanctum')->group(function (): void {
             Route::post('ready', [RefillTransitionController::class, 'markReady']);
             Route::post('claim', [RefillTransitionController::class, 'claim']);
             Route::post('deliver', [RefillTransitionController::class, 'deliver']);
+            // Cups damaged on the way. Only while the request is in transit, only by the rider
+            // carrying it — see DeliveryIncidentService.
+            Route::post('incident', [DeliveryIncidentController::class, 'store']);
         });
+
+    // ── Insiden pengiriman ─────────────────────────────────────────────────
+    // The rider reports (above); Finance or an Administrator decides here. Scoped by query for
+    // everyone else, so a rider sees their own reports and a staff member the ones on their own
+    // deliveries.
+    Route::get('incidents', [DeliveryIncidentController::class, 'index']);
+    Route::post('incidents/{incident}/resolve', [DeliveryIncidentController::class, 'resolve'])
+        ->middleware(['role:FINANCE,ADMINISTRATOR', 'idempotent:require']);
 
     // ── News feed (authored in the Filament panel by CONTENT_CREATOR) ──────
     // Read-only from the client. The only writes are the reader's own receipt and reaction,

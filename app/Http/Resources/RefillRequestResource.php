@@ -78,6 +78,12 @@ class RefillRequestResource extends JsonResource
                 fn () => $this->signature ? Storage::disk('public')->url($this->signature->path) : null,
             ),
             'signature_method' => $this->signature_method?->value,
+            // The required artefact of a delivery. Null on anything delivered before
+            // 2026-09-10, which is history rather than a missing photo.
+            'handover_photo_url' => $this->whenLoaded(
+                'handoverPhoto',
+                fn () => $this->handoverPhoto ? Storage::disk('public')->url($this->handoverPhoto->path) : null,
+            ),
 
             'gps_lat' => $this->gps_lat !== null ? (float) $this->gps_lat : null,
             'gps_lng' => $this->gps_lng !== null ? (float) $this->gps_lng : null,
