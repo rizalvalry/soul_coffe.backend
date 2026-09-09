@@ -477,6 +477,47 @@ uji dihapus lagi (`partners=0 entries=0`), jadi database produksi tidak meningga
 
 ---
 
+## Tema panel: BSI Black & White — ✅ AKTIF (2026-09-09)
+
+⚠️ **Baca ini sebelum menyentuh Blade di `resources/views/filament/`.**
+
+Versi pertama halaman Absensi dan Matriks Akses tampil **hancur** — tanpa garis, tanpa padding,
+dua kolom identitas saling tumpuk. Penyebabnya bukan CSS yang salah, tapi CSS yang **tidak pernah
+aktif**: kedua view ditulis dengan class utility Tailwind (`bg-gray-50`, `sticky`, `left-10`,
+`divide-y`, …), sedangkan project ini **tidak punya build step** untuk panel. Filament mengirim
+stylesheet yang **sudah dikompilasi** dan hanya memuat class yang dipakai Filament sendiri —
+dibuktikan dengan grep ke `public/css/filament/filament/app.css` (617 KB): **nol dari sepuluh**
+utility yang dipakai kedua view itu ada di sana.
+
+Jadi styling sekarang ditulis tangan sebagai CSS biasa di **`public/css/bsi-bw.css`**, dimuat
+lewat render hook `HEAD_END` di `AdminPanelProvider`. Tanpa npm, tanpa Vite: file CSS-nya adalah
+artefaknya sendiri, jadi tidak bisa lagi diam-diam gagal ter-compile.
+
+**Aturan untuk perubahan tampilan berikutnya:** pakai class `bsi-*` dari file itu, atau tambahkan
+class baru di sana. **Jangan** menulis utility Tailwind di Blade panel — tidak akan berefek.
+Setelah mengubah `bsi-bw.css`, naikkan `AdminPanelProvider::THEME_VERSION` (cache-buster) dan
+jalankan `php artisan optimize:clear` di server.
+
+Sistem yang dipakai (skill `bsi-blackandwhite-design`): satu ramp abu-abu hangat, tinta off-black
+(bukan `#000`), struktur digambar dengan garis 0,5px alih-alih shadow, Instrument Sans untuk
+seluruh panel, Geist Mono untuk label kapital dan semua angka, dan satu sentuhan Instrument Serif
+italic per halaman (periode yang ditampilkan). Warna primer panel dipindah dari Amber ke Stone,
+karena aksen sistem ini adalah *tinta terbalik*, bukan warna.
+
+Empat kode absensi di sheet asli dibedakan lewat warna (merah/oranye/biru); sistem ini tidak punya
+warna untuk itu, jadi kodenya dikodekan sebagai **tangga ketebalan tinta**: kanvas kosong (M) →
+abu muda (T) → abu kuat (S) → tinta penuh terbalik (L). Artinya "makin gelap sel, makin jauh dari
+hari kerja penuh", dan L tetap paling dominan seperti blok merah di sheet aslinya. Merah bahaya —
+satu-satunya warna yang sistem ini izinkan — hanya dipakai untuk satu angka: libur di atas jatah.
+
+Terverifikasi di produksi (2026-09-09): `https://soulcoffee.rafancloud.com/css/bsi-bw.css`
+mengembalikan HTTP 200 `text/css` (18.332 byte), halaman live memuat `--font-family: 'Instrument
+Sans'`, kedua halaman merender 77 dan 97 kemunculan class `bsi-*` dengan **nol** sisa class
+Tailwind, dan URL asset keluar sebagai `https://` yang benar (dicek karena di belakang Cloudflare
+skema `http://` akan diblokir browser sebagai mixed content — ternyata tidak terjadi di sini).
+
+---
+
 ## Matriks Akses Peran — ✅ AKTIF (menu baru, 2026-09-08)
 
 Sebelum ini, hak akses panel ditanam di kode: `AdministratorOnly` di setiap resource. Sekarang ada
