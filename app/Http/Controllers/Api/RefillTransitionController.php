@@ -112,9 +112,9 @@ class RefillTransitionController extends Controller
             $refill,
             $request->user(),
             $request->validated(),
-            // Required since 2026-09-10; the signature that used to be required is now whatever
-            // the rider was able to collect, or nothing.
-            $request->file('handover_photo'),
+            // The handover photo travels as `handover_media_id` in the validated data — it was
+            // uploaded a moment earlier (POST /media/handover). What may still arrive as a file
+            // here is the signature, and since 2026-09-10 that is optional.
             $request->file('signature'),
         );
 

@@ -109,8 +109,10 @@ class MediaService
             uploader: $uploader,
             kind: 'handover',
             directory: 'handover',
-            staleField: 'handover_photo_taken_at',
-            reuseField: 'handover_photo',
+            // Field names as POST /media/handover sends them, so the error lands on the input
+            // the rider can actually do something about.
+            staleField: 'taken_at',
+            reuseField: 'file',
             message: 'Foto serah terima wajib diambil langsung dari kamera',
             isAlreadySpent: fn (Media $media): bool => $media->refillRequestsAsHandoverPhoto()->exists(),
         );

@@ -535,7 +535,7 @@ class RefillRequestStateMachine
      *
      * @param  array{
      *     lines: array<int, array{line_id: int, qty_received: int}>,
-     *     handover_photo_taken_at: string,
+     *     handover_media_id: int,
      *     signature_method?: string|null, staff_pin?: string|null, staff_id?: int|null,
      *     stroke_count?: int, gps_lat?: float|null, gps_lng?: float|null,
      *     gps_unavailable?: bool, device_id?: string|null,
@@ -546,10 +546,9 @@ class RefillRequestStateMachine
         RefillRequest $refill,
         User $rider,
         array $data,
-        UploadedFile $handoverPhoto,
         ?UploadedFile $signatureFile = null,
     ): array {
-        $delivered = DB::transaction(function () use ($refill, $rider, $data, $handoverPhoto, $signatureFile): RefillRequest {
+        $delivered = DB::transaction(function () use ($refill, $rider, $data, $signatureFile): RefillRequest {
             $locked = RefillRequest::query()->whereKey($refill->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->status !== RefillStatus::PICKED_UP) {
@@ -568,12 +567,30 @@ class RefillRequestStateMachine
                 abort(403, 'Staff tidak sesuai dengan pemohon');
             }
 
-            // The one thing a delivery may not be completed without.
-            $photo = $this->media->storeHandoverPhoto(
-                $handoverPhoto,
-                Carbon::parse($data['handover_photo_taken_at']),
-                $rider,
-            );
+            // The one thing a delivery may not be completed without. Uploaded moments ago via
+            // POST /media/handover, which is where freshness and byte-level reuse were already
+            // checked; what is checked HERE is that this particular row belongs to this rider
+            // and has not already been spent on another delivery.
+            $photo = Media::query()
+                ->where('id', $data['handover_media_id'])
+                ->where('kind', 'handover')
+                ->first();
+
+            if (! $photo || $photo->uploaded_by !== $rider->id) {
+                throw ValidationException::withMessages([
+                    'handover_media_id' => ['Foto serah terima tidak ditemukan atau tidak valid.'],
+                ]);
+            }
+
+            if (RefillRequest::query()
+                ->where('handover_photo_id', $photo->id)
+                ->whereKeyNot($locked->id)
+                ->exists()
+            ) {
+                throw ValidationException::withMessages([
+                    'handover_media_id' => ['Foto serah terima sudah dipakai untuk pengiriman lain.'],
+                ]);
+            }
 
             $method = isset($data['signature_method']) && $data['signature_method'] !== null
                 ? SignatureMethod::from($data['signature_method'])

@@ -468,30 +468,62 @@ class RefillFlowTest extends TestCase
             ->withHeader('Idempotency-Key', (string) Str::uuid())
             ->withHeader('Accept', 'application/json')
             ->post("/api/v1/refills/{$refill->id}/deliver", [
-                'handover_photo_taken_at' => now()->toIso8601String(),
                 'lines' => json_encode([['line_id' => $line->id, 'qty_received' => 5]]),
             ]);
 
         $response->assertStatus(422);
-        $response->assertJsonValidationErrors('handover_photo');
+        $response->assertJsonValidationErrors('handover_media_id');
 
         $this->assertSame('PICKED_UP', $refill->fresh()->status->value);
     }
 
     /** E6's rule, applied to the handover photo: a picture from an hour ago proves nothing. */
-    public function test_a_stale_handover_photo_is_refused(): void
+    public function test_a_stale_handover_photo_is_refused_at_upload(): void
+    {
+        $this->actingAs($this->rider)
+            ->withHeader('Accept', 'application/json')
+            ->post('/api/v1/media/handover', [
+                'file' => UploadedFile::fake()->image('handover-lama.jpg', 640, 480),
+                'taken_at' => now()->subHours(2)->toIso8601String(),
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('taken_at');
+    }
+
+    /** Only the rider on the road uploads one of these. */
+    public function test_a_staff_member_cannot_upload_a_handover_photo(): void
+    {
+        $this->actingAs($this->staff)
+            ->withHeader('Accept', 'application/json')
+            ->post('/api/v1/media/handover', [
+                'file' => UploadedFile::fake()->image('handover-salah.jpg', 640, 480),
+                'taken_at' => now()->toIso8601String(),
+            ])
+            ->assertStatus(403);
+    }
+
+    /** A photo uploaded by one rider may not be referenced by another. */
+    public function test_another_riders_handover_photo_is_refused(): void
     {
         $refill = $this->driveToPickedUp(5);
         $line = $refill->lines()->first();
 
+        $otherRider = User::factory()->role(Role::RIDER)->create();
+        $foreign = $this->actingAs($otherRider)
+            ->withHeader('Accept', 'application/json')
+            ->post('/api/v1/media/handover', [
+                'file' => UploadedFile::fake()->image('handover-orang-lain.jpg', 640, 480),
+                'taken_at' => now()->toIso8601String(),
+            ])
+            ->assertCreated()
+            ->json('data.id');
+
         $response = $this->deliver($refill, [
             ['line_id' => $line->id, 'qty_received' => 5],
-        ], [
-            'handover_photo_taken_at' => now()->subHours(2)->toIso8601String(),
-        ]);
+        ], ['handover_media_id' => (int) $foreign]);
 
         $response->assertStatus(422);
-        $response->assertJsonValidationErrors('handover_photo_taken_at');
+        $response->assertJsonValidationErrors('handover_media_id');
     }
 
     /** A signature is still held to E24 when the rider chooses to take one. */
@@ -549,19 +581,52 @@ class RefillFlowTest extends TestCase
     public function test_reusing_a_handover_photo_is_refused(): void
     {
         $first = $this->driveToPickedUp(5);
-        $photo = UploadedFile::fake()->image('handover-reused.jpg', 640, 480);
+        $mediaId = $this->uploadHandoverPhoto();
 
-        $this->submitDelivery($first, $photo);
+        $this->submitDelivery($first, $mediaId)->assertSuccessful();
 
         $second = $this->driveToPickedUp(5);
-        $response = $this->submitDelivery($second, $photo);
+        $response = $this->submitDelivery($second, $mediaId);
 
         $response->assertStatus(422);
-        $response->assertJsonValidationErrors('handover_photo');
+        $response->assertJsonValidationErrors('handover_media_id');
     }
 
-    /** The minimum a delivery needs: a photo, when it was taken, and what arrived. */
-    private function submitDelivery(RefillRequest $refill, UploadedFile $photo)
+    /** And neither may the same BYTES, re-uploaded as a fresh row. */
+    public function test_re_uploading_spent_photo_bytes_is_refused(): void
+    {
+        $first = $this->driveToPickedUp(5);
+
+        $mediaId = $this->uploadHandoverPhoto(UploadedFile::fake()->image('handover-sama.jpg', 640, 480));
+        $this->submitDelivery($first, $mediaId)->assertSuccessful();
+
+        // The same file again, after it has been spent: a reuse, not a retry.
+        $this->actingAs($this->rider)
+            ->withHeader('Accept', 'application/json')
+            ->post('/api/v1/media/handover', [
+                'file' => UploadedFile::fake()->image('handover-sama.jpg', 640, 480),
+                'taken_at' => now()->toIso8601String(),
+            ])
+            ->assertStatus(422);
+    }
+
+    /** Uploads a handover photo as the rider and returns its media id. */
+    private function uploadHandoverPhoto(?UploadedFile $photo = null): int
+    {
+        $response = $this->actingAs($this->rider)
+            ->withHeader('Accept', 'application/json')
+            ->post('/api/v1/media/handover', [
+                'file' => $photo ?? UploadedFile::fake()->image('handover-'.Str::uuid().'.jpg', 640, 480),
+                'taken_at' => now()->toIso8601String(),
+            ]);
+
+        $response->assertCreated();
+
+        return (int) $response->json('data.id');
+    }
+
+    /** The minimum a delivery needs: the photo it references, and what arrived. */
+    private function submitDelivery(RefillRequest $refill, int $handoverMediaId)
     {
         $line = $refill->lines()->first();
 
@@ -569,8 +634,7 @@ class RefillFlowTest extends TestCase
             ->withHeader('Idempotency-Key', (string) Str::uuid())
             ->withHeader('Accept', 'application/json')
             ->post("/api/v1/refills/{$refill->id}/deliver", [
-                'handover_photo' => $photo,
-                'handover_photo_taken_at' => now()->toIso8601String(),
+                'handover_media_id' => $handoverMediaId,
                 'lines' => json_encode([['line_id' => $line->id, 'qty_received' => $line->qty_prepared]]),
             ]);
     }
@@ -598,14 +662,16 @@ class RefillFlowTest extends TestCase
      */
     private function deliver(RefillRequest $refill, array $lines, array $overrides = [])
     {
-        // Unique bytes per call: a handover photo's hash may not repeat, the same way a
-        // signature's may not, so a fixed fake image would make the second delivery in a test
-        // fail for a reason that has nothing to do with what the test is about.
-        $photo = UploadedFile::fake()->image('handover-'.Str::uuid().'.jpg', 640, 480);
+        // Two requests, the way the app does it: the photo is uploaded first and referenced by
+        // id, so the delivery itself carries at most one file (the optional signature). Unique
+        // bytes per call, because a handover photo's hash may not repeat.
+        $handoverId = $overrides['handover_media_id'] ?? $this->uploadHandoverPhoto();
+        unset($overrides['handover_media_id']);
+
         $signature = UploadedFile::fake()->image('signature-'.Str::uuid().'.png', 100, 60);
 
         $payload = array_merge([
-            'handover_photo_taken_at' => now()->toIso8601String(),
+            'handover_media_id' => $handoverId,
             'signature_method' => 'staff_signature',
             'staff_id' => $refill->staff_id,
             'stroke_count' => 5,
@@ -620,7 +686,7 @@ class RefillFlowTest extends TestCase
             $payload['lines'] = json_encode($payload['lines']);
         }
 
-        $files = ['handover_photo' => $photo];
+        $files = [];
 
         // A caller may pass `signature => null` to exercise the photo-only delivery, which is
         // the normal shape since 2026-09-10.

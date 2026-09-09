@@ -93,6 +93,11 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('media/evidence', [MediaController::class, 'storeEvidence'])
         ->middleware('throttle:30,1');
 
+    // The rider's handover photo, uploaded just before the delivery it belongs to — see
+    // StoreHandoverMediaRequest for why it is not a part of the deliver request itself.
+    Route::post('media/handover', [MediaController::class, 'storeHandover'])
+        ->middleware('throttle:30,1');
+
     // ── Flow B — refill request (requirements 2-7) ─────────────────────────
     Route::get('refills', [RefillRequestController::class, 'index']);
     Route::get('refills/{refill}', [RefillRequestController::class, 'show']);

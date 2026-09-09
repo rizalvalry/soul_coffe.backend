@@ -45,6 +45,17 @@ class DeliverRefillRequestRequest extends FormRequest
     }
 
     /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'handover_media_id.required' => 'Foto serah terima wajib diambil langsung dari kamera.',
+            'handover_media_id.exists' => 'Foto serah terima tidak ditemukan atau tidak valid.',
+        ];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function rules(): array
@@ -53,8 +64,13 @@ class DeliverRefillRequestRequest extends FormRequest
             // The required artefact since 2026-09-10. A photograph of the handover shows the
             // cups, the cart and the person receiving them; a finger-drawn squiggle proves only
             // that somebody drew a squiggle. See the migration that added handover_photo_id.
-            'handover_photo' => ['required', 'file', 'mimes:jpg,jpeg,png', 'max:8192'],
-            'handover_photo_taken_at' => ['required', 'date'],
+            //
+            // Referenced by id rather than uploaded here, exactly as a refill references its
+            // evidence photo: this request may also carry a signature file, and the mobile
+            // client streams one file per request on purpose (see its uploadFileWithStatus
+            // docblock for the cellular failure that forced that). Ownership and freshness are
+            // checked in RefillRequestStateMachine::deliver().
+            'handover_media_id' => ['required', 'integer', Rule::exists('media', 'id')->where('kind', 'handover')],
 
             // Now optional — a rider who has the staff member's signature may still record it,
             // and a rider who does not is no longer blocked from completing a delivery that
