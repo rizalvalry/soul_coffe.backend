@@ -3,6 +3,7 @@
 namespace App\Filament\Pages;
 
 use App\Enums\PanelModule;
+use App\Filament\Concerns\RenameableModule;
 use App\Services\Access\PermissionMatrix;
 use App\Services\Reporting\StockOverviewService;
 use BackedEnum;
@@ -24,6 +25,8 @@ use UnitEnum;
  */
 class CentralStock extends Page
 {
+    use RenameableModule;
+
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedArchiveBox;
 
     protected static string|UnitEnum|null $navigationGroup = 'Operasional';

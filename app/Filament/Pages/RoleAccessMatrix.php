@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Services\Access\PermissionMatrix;
+use App\Services\Menu\MenuLabels;
 use BackedEnum;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
@@ -34,6 +35,27 @@ class RoleAccessMatrix extends Page
     protected static string|UnitEnum|null $navigationGroup = 'Pengaturan';
 
     protected static ?string $navigationLabel = 'Management Users Role';
+
+    /**
+     * Renameable under the key `role_matrix`, like every other menu.
+     *
+     * The page is hardcoded to Administrator and stays that way — but its NAME is copy like any
+     * other, and the request was that every name in the panel be changeable.
+     */
+    public static function getNavigationLabel(): string
+    {
+        return MenuLabels::for('role_matrix');
+    }
+
+    public static function getNavigationGroup(): string|UnitEnum|null
+    {
+        return MenuLabels::group('Pengaturan');
+    }
+
+    public function getTitle(): string
+    {
+        return MenuLabels::for('role_matrix');
+    }
 
     protected static ?string $title = 'Management Users Role';
 

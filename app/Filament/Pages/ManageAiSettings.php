@@ -3,6 +3,7 @@
 namespace App\Filament\Pages;
 
 use App\Enums\PanelModule;
+use App\Filament\Concerns\RenameableModule;
 use App\Services\Access\PermissionMatrix;
 use App\Models\AiSetting;
 use BackedEnum;
@@ -29,6 +30,8 @@ use UnitEnum;
  */
 class ManageAiSettings extends Page
 {
+    use RenameableModule;
+
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedCog6Tooth;
 
     protected static string|UnitEnum|null $navigationGroup = 'Pengaturan';

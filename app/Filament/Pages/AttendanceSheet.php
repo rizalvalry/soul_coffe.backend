@@ -4,6 +4,7 @@ namespace App\Filament\Pages;
 
 use App\Enums\AttendanceCode;
 use App\Enums\PanelModule;
+use App\Filament\Concerns\RenameableModule;
 use App\Enums\Role;
 use App\Exports\AttendanceSheetExport;
 use App\Models\User;
@@ -36,6 +37,8 @@ use UnitEnum;
  */
 class AttendanceSheet extends Page
 {
+    use RenameableModule;
+
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedTableCells;
 
     protected static string|UnitEnum|null $navigationGroup = 'Absensi';

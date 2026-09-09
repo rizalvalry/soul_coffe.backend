@@ -22,6 +22,11 @@ use Illuminate\Support\Facades\Auth;
  */
 trait MatrixGoverned
 {
+    // A menu the matrix governs is a menu that can be renamed. Both hang off the same
+    // `panelModule()` key, so there is no second place to register anything — see
+    // App\Filament\Concerns\RenameableModule.
+    use RenameableModule;
+
     public static function canViewAny(): bool
     {
         return PermissionMatrix::can(Auth::user(), static::panelModule(), 'view');

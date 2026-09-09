@@ -9,6 +9,7 @@ use App\Filament\Resources\NewsPosts\Pages\ListNewsPosts;
 use App\Filament\Resources\NewsPosts\Schemas\NewsPostForm;
 use App\Filament\Resources\NewsPosts\Tables\NewsPostsTable;
 use App\Models\NewsPost;
+use App\Services\Menu\MenuLabels;
 use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
@@ -35,6 +36,29 @@ class NewsPostResource extends Resource
     protected static string|UnitEnum|null $navigationGroup = 'Konten';
 
     protected static ?string $navigationLabel = 'News Feed';
+
+    /**
+     * Renameable like every other menu, under the key `news_feed`.
+     *
+     * This resource sits outside the access matrix on purpose — its Administrator + Content
+     * Creator pairing is the feature itself — but being outside the matrix was never a reason to
+     * be the one menu in the panel whose name cannot be changed.
+     */
+    public static function getNavigationLabel(): string
+    {
+        return MenuLabels::for('news_feed');
+    }
+
+    public static function getNavigationGroup(): string|UnitEnum|null
+    {
+        $group = static::$navigationGroup;
+
+        if ($group === null) {
+            return null;
+        }
+
+        return MenuLabels::group($group instanceof UnitEnum ? (string) $group->value : (string) $group);
+    }
 
     protected static ?string $modelLabel = 'Artikel';
 

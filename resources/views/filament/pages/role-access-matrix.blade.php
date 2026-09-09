@@ -63,7 +63,8 @@
                         @php $offered = $this->abilitiesFor($module); @endphp
                         <tr>
                             <td>
-                                <span class="bsi-matrix__module">{{ $module->label() }}</span>
+                                {{-- The renamed name, so this screen and the sidebar never disagree about what a menu is called. --}}
+                                <span class="bsi-matrix__module">{{ \App\Services\Menu\MenuLabels::for($module) }}</span>
                                 @if ($module->isReadOnly())
                                     <span class="bsi-matrix__hint">hanya baca</span>
                                 @endif
@@ -76,7 +77,7 @@
                                             type="checkbox"
                                             class="bsi-check"
                                             wire:model="grants.{{ $module->value }}.{{ $ability }}"
-                                            aria-label="{{ $module->label() }} — {{ $label }}"
+                                            aria-label="{{ \App\Services\Menu\MenuLabels::for($module) }} — {{ $label }}"
                                         >
                                     @else
                                         <span class="bsi-na" aria-hidden="true">–</span>

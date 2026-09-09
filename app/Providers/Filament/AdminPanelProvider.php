@@ -3,6 +3,7 @@
 namespace App\Providers\Filament;
 
 use App\Filament\Auth\Login;
+use App\Services\Menu\MenuLabels;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -27,7 +28,7 @@ class AdminPanelProvider extends PanelProvider
      * The file is served straight from public/ with no build hash, so a browser that has
      * yesterday's copy would keep it. Bump this whenever public/css/bsi-bw.css changes.
      */
-    private const THEME_VERSION = '2026-09-10b';
+    private const THEME_VERSION = '2026-09-10c';
 
     public function panel(Panel $panel): Panel
     {
@@ -54,15 +55,10 @@ class AdminPanelProvider extends PanelProvider
                 PanelsRenderHook::HEAD_END,
                 fn (): string => '<link rel="stylesheet" href="'.asset('css/bsi-bw.css').'?v='.static::THEME_VERSION.'">',
             )
-            ->navigationGroups([
-                'Master Data',
-                'Operasional',
-                'Absensi',
-                'Laporan',
-                'Riwayat',
-                'Konten',
-                'Pengaturan',
-            ])
+            // Headings come from the naming screen, in the order declared in MenuLabels::GROUPS.
+            // Resolved through a service that falls back to the built-in names if the table is
+            // missing, so a panel boot during a fresh migration cannot fail on a cosmetic table.
+            ->navigationGroups(MenuLabels::groups())
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([

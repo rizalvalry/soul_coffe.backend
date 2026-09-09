@@ -958,6 +958,19 @@
   color: var(--bsi-ink-3);
 }
 
+/* The immutable key beside a renameable label: mono, quiet, clearly not editable. */
+.bsi-key {
+  font-family: var(--bsi-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--bsi-ink-3);
+  background: var(--bsi-surface);
+  border: 0.5px solid var(--bsi-hairline);
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
 /* ── Mobile ────────────────────────────────────────────────────────────── */
 
 @media (max-width: 640px) {

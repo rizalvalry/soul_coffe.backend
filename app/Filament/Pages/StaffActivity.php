@@ -3,6 +3,7 @@
 namespace App\Filament\Pages;
 
 use App\Enums\PanelModule;
+use App\Filament\Concerns\RenameableModule;
 use App\Models\User;
 use App\Services\Access\PermissionMatrix;
 use App\Services\Reporting\SalesActivityService;
@@ -41,6 +42,8 @@ use UnitEnum;
  */
 class StaffActivity extends Page
 {
+    use RenameableModule;
+
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedMapPin;
 
     protected static string|UnitEnum|null $navigationGroup = 'Operasional';
