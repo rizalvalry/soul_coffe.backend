@@ -436,85 +436,91 @@ menempelkan folder `vendor/` per paket.
 
 ---
 
-## Absensi Partner — ✅ AKTIF (menu baru, 2026-09-08)
+## Absensi — ✅ AKTIF (satu menu, 2026-09-09)
 
-Reproduksi "Laporan Absensi Partner Soul Coffeemate" dari
-`docs/screenshots/bisnisproses/excel-absensi.jpeg`, tapi bisa diisi langsung di panel.
+Reproduksi "Laporan Absensi" dari `docs/screenshots/bisnisproses/excel-absensi.jpeg`, tapi bisa
+diisi langsung di panel: **Absensi → Laporan Absensi** (`/admin/attendance-sheet`).
 
-Dua menu di grup **Absensi**:
+⚠️ **Koreksi besar dari versi 2026-09-08.** Versi itu punya dua cacat rancangan yang ditemukan
+saat review, dan keduanya sudah dibongkar:
 
-1. **Data Partner** — kolom kiri sheet itu sebagai master data: NIK, Nama Karyawan, SIZE, Jatah
-   Klibur per bulan, role, dan (opsional) tautan ke akun aplikasi. NIK boleh dikosongkan, karena
-   sheet aslinya memang memuat partner tanpa NIK (baris 24–27); menolak mereka justru mendorong
-   orang-orang itu kembali ke spreadsheet yang tidak bisa diaudit.
-2. **Laporan Absensi** — grid bulanannya. Kolomnya mengikuti jumlah hari bulan yang dipilih (28–31,
-   jadi Februari tidak pernah salah), baris = partner, dan tiap sel diisi lewat satu dropdown yang
-   **langsung tersimpan** tanpa tombol Simpan — persis ritme mengisi spreadsheet.
+1. **Ada menu "Data Partner" berisi roster kedua.** Barisnya menggambarkan orang yang sudah ada
+   di menu Pengguna, jadi Dimas dan Mufit harus diketik dua kali sebelum laporannya memuat
+   mereka — produksi waktu itu berisi 6 pengguna dan 0 partner, bentuk tabel yang tidak mungkin
+   dipakai. Menu itu **dihapus total**, dan kolom profil kepegawaian (**NIK, SIZE, Jatah
+   Klibur**) sekarang jadi kolom di **Master Data → Pengguna & Role**, karena itu memang sifat
+   orang yang sudah diwakili baris tersebut.
+2. **Laporannya mengabaikan absen dari aplikasi.** Tabel `attendances` sudah memuat absen
+   sungguhan sejak alur absen mobile jalan, tapi grid itu hanya membaca tabel isian manualnya
+   sendiri — jadi staff yang sudah absen dari HP tetap tampil sel kosong, dan kantor mengetik
+   ulang fakta yang sistemnya sudah punya.
 
-Kode selnya sama seperti sheet: **M** hadir, **T** berangkat siang/tidak target (oranye), **L**
-libur (merah), **S** sakit (biru), kosong = belum diisi. Sel kosong disimpan sebagai *tidak ada
-baris*, bukan kode kelima, supaya "belum diisi" tak pernah tertukar dengan "sudah diputuskan".
+Kata **"partner" juga dibebaskan** — bisnis ini membutuhkannya untuk arti yang sebenarnya (mitra,
+investor, franchise, perusahaan luar yang bergabung), bukan untuk "karyawan yang punya NIK".
+Seluruh kelas dan tabelnya kini bernama `Attendance*` / `attendance_marks`.
 
-Kolom rekap di kanan **tidak dikarang** — rumusnya dibaca ulang dari angka yang tercetak di sheet
-itu sendiri, lalu diuji terhadap 8 baris aslinya (`PartnerAttendanceServiceTest`):
+### Dari mana angka tiap sel berasal
+
+| Sumber | Kapan dipakai | Tanda di layar |
+|---|---|---|
+| **Absen aplikasi** (`attendances`) | Barista & Staff yang menekan absen sendiri — jam server, R16 | titik tinta kecil di sudut sel; hover memperlihatkan jamnya |
+| **Isian manual** (`attendance_marks`) | L/S/T untuk siapa pun, dan **semua** sel role yang tak bisa absen di app | tanpa titik |
+
+Isian manual **menimpa** absen aplikasi, karena libur/sakit/berangkat-siang adalah penilaian yang
+tidak bisa dilaporkan sendiri oleh siapa pun. Sebaliknya, **mengosongkan isian manual tidak
+menghapus absennya** — selnya kembali menampilkan M dari aplikasi. Fakta absennya bisa dianotasi,
+tidak bisa dihapus dari sini.
+
+Catatan penting: **RIDER tidak bisa absen dari aplikasi sama sekali** (`CLOCKING_ROLES` hanya
+Barista dan Staff), dan sheet acuan Anda justru sheet RIDER — itulah alasan lembar manual ini
+tetap perlu ada.
+
+Kode selnya sama seperti sheet: **M** hadir, **T** berangkat siang/tidak target, **L** libur,
+**S** sakit, kosong = belum diisi. Sel kosong disimpan sebagai *tidak ada baris*, bukan kode
+kelima, supaya "belum diisi" tak pernah tertukar dengan "sudah diputuskan".
+
+### Kolom rekap
+
+Rumusnya **tidak dikarang** — dibaca ulang dari angka yang tercetak di sheet itu sendiri, lalu
+diuji terhadap 6 baris aslinya (`AttendanceSheetServiceTest`):
 
 | Kolom | Rumus | Bukti dari sheet |
 |---|---|---|
 | Lebih dari Jatah / Tidak Masuk | `Libur − Jatah Klibur` | AGUNG 5−4=1 · Endi 18−4=14 · RANGGA 30−4=26 · ADIT 2−4=**−2** (negatif memang muncul di sheet) |
-| Presentase Kehadiran | `Hadir ÷ 26 × 100%` | AGUNG 23/26=88% · Endi 13/26=50% · NOVAL 28/26=**108%** (di atas 100% sengaja tidak dipotong) |
+| Presentase Kehadiran | `Hadir ÷ 26 × 100%` | AGUNG 23/26=88% · Endi 13/26=50% · AZIS 30/26=**115%** (di atas 100% sengaja tidak dipotong) |
 
 Pembagi 26 itu konvensi payroll, disimpan di `config/soul.php` (`attendance_working_days`), bukan
-ditanam di kode — jadi bisa berubah tanpa ubah program.
+ditanam di kode. **Jatah klibur kini per orang** (kolom di menu Pengguna), jadi dua orang di satu
+lembar boleh berbeda.
 
-Tombol **Ekspor Excel** menghasilkan `.xlsx` sungguhan dengan bentuk kolom yang sama seperti sheet
-aslinya (hari 1..31 lalu kolom rekap), supaya file-nya bisa langsung masuk ke proses payroll yang
-sudah ada. Presentase ditulis sebagai angka, bukan teks "88%", agar tetap bisa dipakai formula.
+Tombol **Ekspor Excel** menghasilkan `.xlsx` sungguhan dengan bentuk kolom sama seperti sheet
+aslinya. Kode yang berasal dari absen aplikasi ditulis **huruf kecil** (`m`), yang manual huruf
+besar (`M`) — jadi asal-usul angkanya ikut terbawa ke file, tidak diratakan hilang. Presentase
+ditulis sebagai angka, bukan teks "88%", agar tetap bisa dipakai formula.
 
-Sudah di-deploy dan diuji langsung di produksi (2026-09-08): satu partner uji dibuat, lima sel
-diisi, rekapnya dihitung benar (`hadir=2 libur=1 jatah=4 lebih=-3 rate=7,7%`), satu sel dikosongkan
-dan barisnya benar-benar hilang, ekspor menghasilkan `.xlsx` valid 7.008 byte — lalu seluruh data
-uji dihapus lagi (`partners=0 entries=0`), jadi database produksi tidak meninggalkan sampah.
+### Siapa boleh apa
 
----
+**FINANCE sengaja TIDAK diberi menu Pengguna.** Kolom profil pindah ke layar yang juga mengubah
+role, kata sandi, dan PIN — memberi Finance hak ubah di sana hanya supaya bisa menyetel jatah
+klibur berarti memberi Finance kemampuan menjadikan dirinya Administrator. Finance mencatat
+harinya; Administrator yang merawat profilnya.
 
-## Tema panel: BSI Black & White — ✅ AKTIF (2026-09-09)
+### Terverifikasi di produksi (2026-09-09)
 
-⚠️ **Baca ini sebelum menyentuh Blade di `resources/views/filament/`.**
+Setelah deploy, absen nyata yang sudah ada langsung muncul di laporan tanpa satu pun isian manual:
 
-Versi pertama halaman Absensi dan Matriks Akses tampil **hancur** — tanpa garis, tanpa padding,
-dua kolom identitas saling tumpuk. Penyebabnya bukan CSS yang salah, tapi CSS yang **tidak pernah
-aktif**: kedua view ditulis dengan class utility Tailwind (`bg-gray-50`, `sticky`, `left-10`,
-`divide-y`, …), sedangkan project ini **tidak punya build step** untuk panel. Filament mengirim
-stylesheet yang **sudah dikompilasi** dan hanya memuat class yang dipakai Filament sendiri —
-dibuktikan dengan grep ke `public/css/filament/filament/app.css` (617 KB): **nol dari sepuluh**
-utility yang dipakai kedua view itu ada di sana.
+```
+BARISTA  Dimas Barista   tgl 7 = M (app 10:36)   hadir=1
+STAFF    Mufit           tgl 7 = M (app 13:19)   hadir=1
+RIDER    Agus Rider      (kosong)                hadir=0   <- rider tak bisa absen di app
+marks manual di DB : 0
+```
 
-Jadi styling sekarang ditulis tangan sebagai CSS biasa di **`public/css/bsi-bw.css`**, dimuat
-lewat render hook `HEAD_END` di `AdminPanelProvider`. Tanpa npm, tanpa Vite: file CSS-nya adalah
-artefaknya sendiri, jadi tidak bisa lagi diam-diam gagal ter-compile.
-
-**Aturan untuk perubahan tampilan berikutnya:** pakai class `bsi-*` dari file itu, atau tambahkan
-class baru di sana. **Jangan** menulis utility Tailwind di Blade panel — tidak akan berefek.
-Setelah mengubah `bsi-bw.css`, naikkan `AdminPanelProvider::THEME_VERSION` (cache-buster) dan
-jalankan `php artisan optimize:clear` di server.
-
-Sistem yang dipakai (skill `bsi-blackandwhite-design`): satu ramp abu-abu hangat, tinta off-black
-(bukan `#000`), struktur digambar dengan garis 0,5px alih-alih shadow, Instrument Sans untuk
-seluruh panel, Geist Mono untuk label kapital dan semua angka, dan satu sentuhan Instrument Serif
-italic per halaman (periode yang ditampilkan). Warna primer panel dipindah dari Amber ke Stone,
-karena aksen sistem ini adalah *tinta terbalik*, bukan warna.
-
-Empat kode absensi di sheet asli dibedakan lewat warna (merah/oranye/biru); sistem ini tidak punya
-warna untuk itu, jadi kodenya dikodekan sebagai **tangga ketebalan tinta**: kanvas kosong (M) →
-abu muda (T) → abu kuat (S) → tinta penuh terbalik (L). Artinya "makin gelap sel, makin jauh dari
-hari kerja penuh", dan L tetap paling dominan seperti blok merah di sheet aslinya. Merah bahaya —
-satu-satunya warna yang sistem ini izinkan — hanya dipakai untuk satu angka: libur di atas jatah.
-
-Terverifikasi di produksi (2026-09-09): `https://soulcoffee.rafancloud.com/css/bsi-bw.css`
-mengembalikan HTTP 200 `text/css` (18.332 byte), halaman live memuat `--font-family: 'Instrument
-Sans'`, kedua halaman merender 77 dan 97 kemunculan class `bsi-*` dengan **nol** sisa class
-Tailwind, dan URL asset keluar sebagai `https://` yang benar (dicek karena di belakang Cloudflare
-skema `http://` akan diblokir browser sebagai mixed content — ternyata tidak terjadi di sini).
+Migrasinya **menolak menghapus** tabel lama selama masih berisi baris, jadi tidak mungkin diam-diam
+membuang pekerjaan orang di environment lain. Di produksi keduanya kosong — diperiksa lebih dulu
+(`partners=0 entries=0`) — lalu `partners` dan `partner_attendance_entries` dihapus, `users.nik`
+ditambahkan, dan baris izin FINANCE otomatis dipindahkan ke nama modul baru
+(`FINANCE->attendance:view,create,edit,delete`).
 
 ---
 
@@ -539,15 +545,16 @@ teraman. Mencentang Tambah/Ubah/Hapus otomatis menyertakan Lihat.
 diberi minimal satu menu (Administrator dan Content Creator tetap seperti sebelumnya). Ini yang
 membuat izin dan pintu tidak saling bertentangan.
 
-**Default yang ikut terpasang:** `FINANCE` mendapat **Data Partner** dan **Laporan Absensi** penuh
+**Default yang ikut terpasang:** `FINANCE` mendapat **Laporan Absensi** penuh
 (lihat/tambah/ubah/hapus) — sesuai permintaan agar modul absensi bisa di-CRUD oleh Administrator
-*dan* Finance. Finance tidak diberi menu lain; sisanya diatur sendiri lewat halaman matriks.
+*dan* Finance. Finance **tidak** diberi menu lain, terutama bukan Pengguna & Role: lihat alasannya
+di bagian Absensi di atas. Sisanya diatur sendiri lewat halaman matriks.
 
 Menu yang sudah masuk matriks: Pengguna & Role, Produk, Gerobak, Lokasi, Dapur Pusat, Target
-Harian, Penugasan Staff, Data Partner, Laporan Absensi, Laporan & Ekspor, Audit Trail, Permintaan
-Reset PIN. Yang **belum** ikut matriks dan masih hardcoded: News Feed (khusus Content Creator,
-pasangan peran itu memang fiturnya), Pengaturan AI, dan widget Dashboard — ketiganya tetap
-Administrator seperti sebelumnya.
+Harian, Penugasan Staff, Laporan Absensi, Laporan & Ekspor, Audit Trail, Permintaan Reset PIN.
+Yang **belum** ikut matriks dan masih hardcoded: News Feed (khusus Content Creator, pasangan peran
+itu memang fiturnya), Pengaturan AI, dan widget Dashboard — ketiganya tetap Administrator seperti
+sebelumnya.
 
 ---
 
