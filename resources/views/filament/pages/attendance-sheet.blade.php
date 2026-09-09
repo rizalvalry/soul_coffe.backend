@@ -1,20 +1,12 @@
 {{--
     The absensi sheet, in the BSI Black & White system (see public/css/bsi-bw.css).
 
-    Two things this view must get right, both of which the first version got wrong:
+    Every class here is a `bsi-` class from our own stylesheet. This project has no panel build
+    step and Filament ships pre-compiled CSS, so a Tailwind utility written here would simply
+    never apply — which is exactly how the first version of this screen shipped unstyled.
 
-    1. **Every class here is a `bsi-` class from our own stylesheet.** The first
-       version used Tailwind utilities, and this project has no panel build step —
-       Filament's shipped CSS does not contain them, so the whole screen rendered
-       as bare HTML. Nothing here depends on a compile step.
-
-    2. **The pinned columns derive their offsets from their widths.** The first
-       version pinned NIK at `left-10` (40px) against a column that was not 40px
-       wide, so the two identity columns overlapped. Widths and offsets now come
-       from the same two CSS variables (--bsi-col-no, --bsi-col-nik).
-
-    The day columns are the days of the selected month, so their count changes with
-    the month — that is why this is a hand-built table rather than a Filament table.
+    Rows come from `users`; there is no separate roster. A cell filled by the employee's own
+    clock-in is marked with a small ink dot so the sheet says where each number came from.
 --}}
 <x-filament-panels::page>
     @php
@@ -25,23 +17,12 @@
         $codes = $this->codeOptions();
 
         // Fill classes mirror the legend marks exactly, so the key and the grid agree.
-        $cellClass = [
-            'M' => '',
-            'T' => 'bsi-cell--t',
-            'S' => 'bsi-cell--s',
-            'L' => 'bsi-cell--l',
-        ];
-        $markClass = [
-            'M' => '',
-            'T' => 'bsi-mark--t',
-            'S' => 'bsi-mark--s',
-            'L' => 'bsi-mark--l',
-        ];
+        $cellClass = ['M' => '', 'T' => 'bsi-cell--t', 'S' => 'bsi-cell--s', 'L' => 'bsi-cell--l'];
+        $markClass = ['M' => '', 'T' => 'bsi-mark--t', 'S' => 'bsi-mark--s', 'L' => 'bsi-mark--l'];
         $roleLabel = $this->role === '' ? 'Semua Role' : \App\Enums\Role::from($this->role)->label();
     @endphp
 
     <div class="bsi">
-        {{-- Controls --}}
         <div class="bsi-toolbar">
             <div class="bsi-field">
                 <label class="bsi-label" for="bsi-month">Bulan</label>
@@ -72,7 +53,6 @@
             </button>
         </div>
 
-        {{-- The key. Without it the ink levels are decoration; with it they are a scale. --}}
         <div class="bsi-legend">
             <span class="bsi-kicker">Keterangan</span>
             @foreach ($codes as $code)
@@ -85,6 +65,31 @@
                 <span class="bsi-mark bsi-mark--empty">–</span>
                 Belum diisi
             </span>
+            <span class="bsi-legend__item">
+                <span class="bsi-mark bsi-mark--dotted">M</span>
+                Dari absen aplikasi
+            </span>
+        </div>
+
+        <div class="bsi-note">
+            <span class="bsi-kicker">Dari mana angkanya</span>
+            @if ($this->roleClocksIn())
+                <p>
+                    <strong>M terisi sendiri</strong> begitu {{ strtolower($roleLabel) }} menekan absen
+                    di aplikasi — jam yang dipakai jam server, bukan jam HP. Sel bertanda titik berasal
+                    dari absen itu; hover untuk melihat jamnya.
+                </p>
+                <p>
+                    Isian manual menimpa angka tersebut (mis. menandai sakit atau libur), dan yang
+                    manual ditampilkan tanpa titik. Mengosongkan isian manual tidak menghapus absennya
+                    — selnya kembali menampilkan M dari aplikasi.
+                </p>
+            @else
+                <p>
+                    Role ini <strong>tidak punya absen di aplikasi</strong> (hanya Barista dan Staff yang
+                    bisa), jadi seluruh selnya diisi manual di sini.
+                </p>
+            @endif
         </div>
 
         @unless ($editable)
@@ -101,7 +106,7 @@
             <div class="bsi-sheet__head">
                 <div class="bsi-sheet__head-left">
                     <span class="bsi-kicker">{{ $roleLabel }}</span>
-                    <h2 class="bsi-title">Laporan Absensi Partner</h2>
+                    <h2 class="bsi-title">Laporan absensi</h2>
                 </div>
                 {{-- The single serif-italic flourish for this view: the period it covers. --}}
                 <span class="bsi-serif">{{ $month->translatedFormat('F Y') }}</span>
@@ -133,33 +138,47 @@
                     <tbody>
                         @forelse ($rows as $index => $row)
                             @php
-                                $partner = $row['partner'];
+                                $user = $row['user'];
                                 $summary = $row['summary'];
                             @endphp
                             <tr>
                                 <td class="bsi-pin-1 bsi-num bsi-num--quiet">{{ $index + 1 }}</td>
-                                <td class="bsi-pin-2">{{ $partner->nik ?? '–' }}</td>
-                                <td class="bsi-name">{{ $partner->name }}</td>
-                                <td class="bsi-num bsi-num--quiet">{{ $partner->size ?? '–' }}</td>
+                                <td class="bsi-pin-2">{{ $user->nik ?? '–' }}</td>
+                                <td class="bsi-name">{{ $user->name }}</td>
+                                <td class="bsi-num bsi-num--quiet">{{ $user->uniform_size ?? '–' }}</td>
 
                                 @for ($day = 1; $day <= $daysInMonth; $day++)
-                                    @php $cell = $row['codes'][$day] ?? null; @endphp
-                                    <td class="bsi-day bsi-cell {{ $cell ? ($cellClass[$cell->value] ?? '') : '' }}">
+                                    @php
+                                        $cell = $row['cells'][$day] ?? ['code' => null, 'source' => null, 'time' => null];
+                                        $code = $cell['code'];
+                                        $fromApp = $cell['source'] === 'app';
+                                    @endphp
+                                    <td
+                                        class="bsi-day bsi-cell {{ $code ? ($cellClass[$code->value] ?? '') : '' }} {{ $fromApp ? 'bsi-cell--sourced' : '' }}"
+                                        @if ($fromApp) title="Absen dari aplikasi pukul {{ $cell['time'] }}" @endif
+                                    >
                                         @if ($editable)
                                             {{-- Saves on change: a month gets filled in without
                                                  ever reaching for a Save button. --}}
+                                            {{-- One control, no overlay. When the cell is filled by
+                                                 the employee's own clock-in and nobody has
+                                                 overridden it, the "no manual entry" option is
+                                                 what is selected — so it is LABELLED with the code
+                                                 that clock-in produced. Picking that option again
+                                                 later clears an override and hands the cell back
+                                                 to the app, which is exactly what it reads as. --}}
                                             <select
                                                 class="bsi-cell__select"
-                                                aria-label="{{ $partner->name }} tanggal {{ $day }}"
-                                                wire:change="setCell({{ $partner->id }}, {{ $day }}, $event.target.value)"
+                                                aria-label="{{ $user->name }} tanggal {{ $day }}{{ $fromApp ? ' (absen aplikasi pukul '.$cell['time'].')' : '' }}"
+                                                wire:change="setCell({{ $user->id }}, {{ $day }}, $event.target.value)"
                                             >
-                                                <option value="" @selected($cell === null)>–</option>
-                                                @foreach ($codes as $code)
-                                                    <option value="{{ $code->value }}" @selected($cell === $code)>{{ $code->value }}</option>
+                                                <option value="" @selected($cell['source'] !== 'manual')>{{ $fromApp ? 'M' : '–' }}</option>
+                                                @foreach ($codes as $option)
+                                                    <option value="{{ $option->value }}" @selected($cell['source'] === 'manual' && $code === $option)>{{ $option->value }}</option>
                                                 @endforeach
                                             </select>
                                         @else
-                                            <span class="bsi-cell__static">{{ $cell?->value ?? '' }}</span>
+                                            <span class="bsi-cell__static">{{ $code?->value ?? '' }}</span>
                                         @endif
                                     </td>
                                 @endfor
@@ -178,8 +197,8 @@
                             <tr>
                                 <td colspan="{{ 4 + $daysInMonth + 7 }}">
                                     <div class="bsi-empty">
-                                        <p class="bsi-empty__title">Belum ada partner aktif untuk role ini</p>
-                                        <p>Tambahkan lewat menu Absensi → Data Partner, lalu kembali ke sini untuk mengisi absensinya.</p>
+                                        <p class="bsi-empty__title">Belum ada pegawai aktif untuk role ini</p>
+                                        <p>Tambahkan lewat menu Master Data → Pengguna &amp; Role, lengkapi NIK dan jatah kliburnya, lalu kembali ke sini.</p>
                                     </div>
                                 </td>
                             </tr>

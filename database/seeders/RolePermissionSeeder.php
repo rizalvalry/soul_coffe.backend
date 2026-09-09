@@ -8,7 +8,13 @@ use App\Services\Access\PermissionMatrix;
 use Illuminate\Database\Seeder;
 
 /**
- * The only grants that ship out of the box: FINANCE gets the absensi module.
+ * The only grant that ships out of the box: FINANCE gets the absensi report.
+ *
+ * Note what it does NOT get: `users`. The employment profile the sheet reads (NIK, size, jatah
+ * klibur) lives on the user record now, and the Users menu is also where roles, passwords and
+ * PINs are changed — so handing Finance edit rights there to let them set a quota would hand
+ * them the ability to change who is an Administrator. Filling the sheet needs neither. An
+ * Administrator maintains the profile fields; Finance records the days.
  *
  * That pairing is the requirement this module was built for ("bisa di CRUD oleh administrator dan
  * finance"), so it is a default rather than something an administrator has to discover and switch
@@ -22,7 +28,6 @@ class RolePermissionSeeder extends Seeder
     {
         $full = ['view', 'create', 'edit', 'delete'];
 
-        PermissionMatrix::set(Role::FINANCE, PanelModule::PARTNERS, $full);
-        PermissionMatrix::set(Role::FINANCE, PanelModule::PARTNER_ATTENDANCE, $full);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::ATTENDANCE, $full);
     }
 }

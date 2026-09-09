@@ -60,16 +60,16 @@ class RoleAccessMatrixPanelTest extends TestCase
 
         Livewire::test(RoleAccessMatrix::class)
             ->set('role', Role::BARISTA->value)
-            ->set('grants.'.PanelModule::PARTNERS->value.'.view', true)
-            ->set('grants.'.PanelModule::PARTNERS->value.'.edit', true)
+            ->set('grants.'.PanelModule::STAFF_ASSIGNMENTS->value.'.view', true)
+            ->set('grants.'.PanelModule::STAFF_ASSIGNMENTS->value.'.edit', true)
             ->call('save')
             ->assertHasNoErrors();
 
         PermissionMatrix::forget();
 
-        $this->assertSame(['view', 'edit'], PermissionMatrix::abilitiesFor(Role::BARISTA, PanelModule::PARTNERS));
+        $this->assertSame(['view', 'edit'], PermissionMatrix::abilitiesFor(Role::BARISTA, PanelModule::STAFF_ASSIGNMENTS));
         // The role that was on screen is the only one touched.
-        $this->assertSame([], PermissionMatrix::abilitiesFor(Role::RIDER, PanelModule::PARTNERS));
+        $this->assertSame([], PermissionMatrix::abilitiesFor(Role::RIDER, PanelModule::STAFF_ASSIGNMENTS));
         $this->assertSame($admin->id, \App\Models\RolePermission::query()->first()->updated_by);
     }
 
@@ -80,14 +80,14 @@ class RoleAccessMatrixPanelTest extends TestCase
 
         Livewire::test(RoleAccessMatrix::class)
             ->set('role', Role::RIDER->value)
-            ->set('grants.'.PanelModule::PARTNER_ATTENDANCE->value.'.edit', true)
+            ->set('grants.'.PanelModule::ATTENDANCE->value.'.edit', true)
             ->call('save');
 
         PermissionMatrix::forget();
 
         $this->assertEqualsCanonicalizing(
             ['edit', 'view'],
-            PermissionMatrix::abilitiesFor(Role::RIDER, PanelModule::PARTNER_ATTENDANCE),
+            PermissionMatrix::abilitiesFor(Role::RIDER, PanelModule::ATTENDANCE),
         );
     }
 
@@ -95,18 +95,18 @@ class RoleAccessMatrixPanelTest extends TestCase
     {
         $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create());
 
-        PermissionMatrix::set(Role::FINANCE, PanelModule::PARTNERS, ['view', 'edit']);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::STAFF_ASSIGNMENTS, ['view', 'edit']);
         PermissionMatrix::forget();
 
         Livewire::test(RoleAccessMatrix::class)
             ->set('role', Role::FINANCE->value)
-            ->set('grants.'.PanelModule::PARTNERS->value.'.view', false)
-            ->set('grants.'.PanelModule::PARTNERS->value.'.edit', false)
+            ->set('grants.'.PanelModule::STAFF_ASSIGNMENTS->value.'.view', false)
+            ->set('grants.'.PanelModule::STAFF_ASSIGNMENTS->value.'.edit', false)
             ->call('save');
 
         PermissionMatrix::forget();
 
-        $this->assertSame([], PermissionMatrix::abilitiesFor(Role::FINANCE, PanelModule::PARTNERS));
+        $this->assertSame([], PermissionMatrix::abilitiesFor(Role::FINANCE, PanelModule::STAFF_ASSIGNMENTS));
     }
 
     /**

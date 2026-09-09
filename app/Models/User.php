@@ -33,6 +33,12 @@ class User extends Authenticatable implements FilamentUser, HasName
         'pin_hash',
         'login_pin_hash',
         'is_active',
+        // Employment profile, read by the monthly absensi sheet. These live here rather than in
+        // a separate roster because they describe the same person this row already describes —
+        // see the move_employment_profile_onto_users migration.
+        'nik',
+        'uniform_size',
+        'monthly_libur_quota',
     ];
 
     /**
@@ -56,6 +62,7 @@ class User extends Authenticatable implements FilamentUser, HasName
             'role' => Role::class,
             'is_active' => 'boolean',
             'login_pin_locked_until' => 'datetime',
+            'monthly_libur_quota' => 'integer',
         ];
     }
 

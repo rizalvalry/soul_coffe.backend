@@ -2,10 +2,10 @@
 
 namespace App\Exports;
 
-use App\Enums\PartnerAttendanceCode;
+use App\Enums\AttendanceCode;
 use App\Enums\Role;
-use App\Models\Partner;
-use App\Services\PartnerAttendanceService;
+use App\Models\User;
+use App\Services\AttendanceSheetService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromCollection;
@@ -14,13 +14,13 @@ use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithTitle;
 
 /**
- * The absensi grid as a real .xlsx — the same shape as the sheet this module was built from, so
- * the file can go straight into whatever payroll process already consumes it.
+ * The absensi sheet as a real .xlsx — same column shape as the sheet this module was built from,
+ * so the file can go straight into whatever payroll process already consumes it.
  *
- * One row per partner, one column per day, then the summary columns. Day headers are plain day
- * numbers (1..31) exactly as on the reference sheet.
+ * A lowercase code marks a cell that came from the employee's own clock-in rather than from the
+ * office, so the provenance the screen shows survives the export instead of being flattened away.
  */
-class PartnerAttendanceExport implements FromCollection, ShouldAutoSize, WithHeadings, WithTitle
+class AttendanceSheetExport implements FromCollection, ShouldAutoSize, WithHeadings, WithTitle
 {
     public function __construct(
         private readonly Carbon $month,
@@ -48,20 +48,30 @@ class PartnerAttendanceExport implements FromCollection, ShouldAutoSize, WithHea
 
     public function collection(): Collection
     {
-        $rows = app(PartnerAttendanceService::class)->monthlySheet($this->month, $this->role);
+        $rows = app(AttendanceSheetService::class)->monthlySheet($this->month, $this->role);
 
         return $rows->values()->map(function (array $row, int $index): array {
-            /** @var Partner $partner */
-            $partner = $row['partner'];
+            /** @var User $user */
+            $user = $row['user'];
             $summary = $row['summary'];
 
             $codes = array_map(
-                fn (?PartnerAttendanceCode $code): string => $code?->value ?? '',
-                $row['codes'],
+                function (array $cell): string {
+                    $code = $cell['code'] ?? null;
+
+                    if (! $code instanceof AttendanceCode) {
+                        return '';
+                    }
+
+                    return $cell['source'] === 'app'
+                        ? strtolower($code->value)
+                        : $code->value;
+                },
+                $row['cells'],
             );
 
             return array_merge(
-                [$index + 1, $partner->nik, $partner->name, $partner->size],
+                [$index + 1, $user->nik, $user->name, $user->uniform_size],
                 array_values($codes),
                 [
                     $summary['libur'],

@@ -16,6 +16,11 @@ class UsersTable
     {
         return $table
             ->columns([
+                TextColumn::make('nik')
+                    ->label('NIK')
+                    ->placeholder('—')
+                    ->searchable()
+                    ->sortable(),
                 TextColumn::make('name')
                     ->label('Nama')
                     ->searchable()
@@ -33,6 +38,14 @@ class UsersTable
                     ->label('Dapur')
                     ->placeholder('—')
                     ->toggleable(),
+                TextColumn::make('uniform_size')
+                    ->label('SIZE')
+                    ->placeholder('—')
+                    ->toggleable(),
+                TextColumn::make('monthly_libur_quota')
+                    ->label('Jatah klibur')
+                    ->alignCenter()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 IconColumn::make('is_active')
                     ->label('Aktif')
                     ->boolean()

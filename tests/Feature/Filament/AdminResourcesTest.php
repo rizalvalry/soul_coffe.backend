@@ -48,7 +48,6 @@ class AdminResourcesTest extends TestCase
             'dapur pusat' => [CentralKitchenResource::class],
             'target harian' => [DailyTargetResource::class],
             'penugasan staff' => [StaffAssignmentResource::class],
-            'partner absensi' => [PartnerResource::class],
             'audit trail' => [AuditLogResource::class],
         ];
     }

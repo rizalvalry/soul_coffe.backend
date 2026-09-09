@@ -52,6 +52,31 @@ class UserForm
                     ->required()
                     ->live(),
 
+                // ── Employment profile ────────────────────────────────────────────────
+                // Read by the monthly absensi sheet (Absensi → Laporan Absensi). Kept on the
+                // person's own record rather than in a second roster, so nobody is typed twice.
+                TextInput::make('nik')
+                    ->label('NIK')
+                    ->maxLength(32)
+                    // Nullable on purpose: someone can start work before a NIK is issued, and
+                    // refusing to record them would push that name back into a spreadsheet.
+                    ->unique(ignoreRecord: true)
+                    ->helperText('Nomor induk karyawan. Boleh dikosongkan bila belum ada.'),
+
+                Select::make('uniform_size')
+                    ->label('SIZE (seragam)')
+                    ->options(['S' => 'S', 'M' => 'M', 'L' => 'L', 'XL' => 'XL', 'XXL' => 'XXL'])
+                    ->native(false),
+
+                TextInput::make('monthly_libur_quota')
+                    ->label('Jatah Klibur / bulan')
+                    ->numeric()
+                    ->minValue(0)
+                    ->maxValue(31)
+                    ->default(4)
+                    ->required()
+                    ->helperText('Hari libur berbayar per bulan. Libur di atas angka ini muncul sebagai "Lebih dari Jatah" di laporan absensi.'),
+
                 Select::make('kitchen_id')
                     ->label('Dapur Pusat')
                     ->relationship('kitchen', 'name')

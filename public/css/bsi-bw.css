@@ -337,6 +337,25 @@
   color: var(--bsi-ink-3);
 }
 
+/* Provenance, not a fifth code: a small ink dot marks a cell the employee filled themselves by
+   clocking in, as opposed to one the office typed. Monochrome, so it reads as an annotation on
+   the mark rather than a different mark. */
+.bsi-mark--dotted::after,
+.bsi-cell--sourced::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--bsi-ink-2);
+}
+
+.bsi-mark--dotted {
+  position: relative;
+}
+
 /* ── The sheet ─────────────────────────────────────────────────────────── */
 
 .bsi-sheet {
@@ -501,6 +520,7 @@
 
 .bsi-cell {
   padding: 0 !important;
+  position: relative; /* anchors the provenance dot of .bsi-cell--sourced */
 }
 
 .bsi-cell__select {

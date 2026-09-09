@@ -19,8 +19,7 @@ enum PanelModule: string
     case CENTRAL_KITCHENS = 'central_kitchens';
     case DAILY_TARGETS = 'daily_targets';
     case STAFF_ASSIGNMENTS = 'staff_assignments';
-    case PARTNERS = 'partners';
-    case PARTNER_ATTENDANCE = 'partner_attendance';
+    case ATTENDANCE = 'attendance';
     case REPORTS = 'reports';
     case AUDIT_LOGS = 'audit_logs';
     case PIN_RESET_REQUESTS = 'pin_reset_requests';
@@ -38,8 +37,7 @@ enum PanelModule: string
             self::CENTRAL_KITCHENS => 'Dapur Pusat',
             self::DAILY_TARGETS => 'Target Harian',
             self::STAFF_ASSIGNMENTS => 'Penugasan Staff',
-            self::PARTNERS => 'Data Partner (Absensi)',
-            self::PARTNER_ATTENDANCE => 'Laporan Absensi Partner',
+            self::ATTENDANCE => 'Laporan Absensi',
             self::REPORTS => 'Laporan & Ekspor',
             self::AUDIT_LOGS => 'Audit Trail',
             self::PIN_RESET_REQUESTS => 'Permintaan Reset PIN',

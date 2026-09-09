@@ -70,12 +70,12 @@ class PermissionMatrixTest extends TestCase
     {
         $finance = User::factory()->role(Role::FINANCE)->create();
 
-        PermissionMatrix::set(Role::FINANCE, PanelModule::PARTNERS, ['view', 'edit']);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::STAFF_ASSIGNMENTS, ['view', 'edit']);
         PermissionMatrix::forget();
 
-        $this->assertTrue(PermissionMatrix::can($finance, PanelModule::PARTNERS, 'view'));
-        $this->assertTrue(PermissionMatrix::can($finance, PanelModule::PARTNERS, 'edit'));
-        $this->assertFalse(PermissionMatrix::can($finance, PanelModule::PARTNERS, 'delete'));
+        $this->assertTrue(PermissionMatrix::can($finance, PanelModule::STAFF_ASSIGNMENTS, 'view'));
+        $this->assertTrue(PermissionMatrix::can($finance, PanelModule::STAFF_ASSIGNMENTS, 'edit'));
+        $this->assertFalse(PermissionMatrix::can($finance, PanelModule::STAFF_ASSIGNMENTS, 'delete'));
         // A grant on one module says nothing about another.
         $this->assertFalse(PermissionMatrix::can($finance, PanelModule::USERS, 'view'));
     }
@@ -92,14 +92,14 @@ class PermissionMatrixTest extends TestCase
 
     public function test_a_guest_is_refused(): void
     {
-        $this->assertFalse(PermissionMatrix::can(null, PanelModule::PARTNERS, 'view'));
+        $this->assertFalse(PermissionMatrix::can(null, PanelModule::STAFF_ASSIGNMENTS, 'view'));
     }
 
     public function test_has_any_module_reflects_whether_a_role_was_given_anything(): void
     {
         $this->assertFalse(PermissionMatrix::hasAnyModule(Role::RIDER));
 
-        PermissionMatrix::set(Role::RIDER, PanelModule::PARTNER_ATTENDANCE, ['view']);
+        PermissionMatrix::set(Role::RIDER, PanelModule::ATTENDANCE, ['view']);
         PermissionMatrix::forget();
 
         $this->assertTrue(PermissionMatrix::hasAnyModule(Role::RIDER));
@@ -112,11 +112,13 @@ class PermissionMatrixTest extends TestCase
 
         $finance = User::query()->where('role', Role::FINANCE)->firstOrFail();
 
-        $this->assertTrue(PermissionMatrix::can($finance, PanelModule::PARTNERS, 'delete'));
-        $this->assertTrue(PermissionMatrix::can($finance, PanelModule::PARTNER_ATTENDANCE, 'edit'));
+        $this->assertTrue(PermissionMatrix::can($finance, PanelModule::ATTENDANCE, 'view'));
+        $this->assertTrue(PermissionMatrix::can($finance, PanelModule::ATTENDANCE, 'edit'));
 
-        // The rest of the panel is untouched by that default.
+        // The rest of the panel is untouched by that default — `users` above all, since that is
+        // where roles and passwords are changed.
         $this->assertFalse(PermissionMatrix::can($finance, PanelModule::USERS, 'view'));
+        $this->assertFalse(PermissionMatrix::can($finance, PanelModule::STAFF_ASSIGNMENTS, 'view'));
         $this->assertFalse(PermissionMatrix::can($finance, PanelModule::PRODUCTS, 'view'));
         $this->assertFalse(PermissionMatrix::can($finance, PanelModule::AUDIT_LOGS, 'view'));
     }

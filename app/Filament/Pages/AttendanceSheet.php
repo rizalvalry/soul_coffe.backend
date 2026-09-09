@@ -2,13 +2,13 @@
 
 namespace App\Filament\Pages;
 
+use App\Enums\AttendanceCode;
 use App\Enums\PanelModule;
-use App\Enums\PartnerAttendanceCode;
 use App\Enums\Role;
-use App\Exports\PartnerAttendanceExport;
-use App\Models\Partner;
+use App\Exports\AttendanceSheetExport;
+use App\Models\User;
 use App\Services\Access\PermissionMatrix;
-use App\Services\PartnerAttendanceService;
+use App\Services\AttendanceSheetService;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
@@ -22,20 +22,19 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use UnitEnum;
 
 /**
- * "Laporan Absensi Partner Soul Coffeemate" — the monthly grid from
- * docs/screenshots/bisnisproses/excel-absensi.jpeg, editable in place.
+ * "Laporan Absensi" — the monthly sheet from docs/screenshots/bisnisproses/excel-absensi.jpeg,
+ * filled in place.
+ *
+ * Rows are employees straight out of `users`; there is no second roster to maintain. Presence
+ * arrives on its own from the mobile absen flow and a hand-entered code overrides it — see
+ * AttendanceSheetService for why the two live in different tables.
  *
  * Built as a custom page rather than a Filament resource table because the columns ARE the days
  * of the selected month: 28 to 31 of them, changing with the month. A resource table has a fixed
  * column list, so reproducing this shape there would mean 31 conditionally-hidden columns and a
  * different bug every February.
- *
- * Editing is one click per cell and saves immediately — no separate Save button. That is what the
- * spreadsheet it replaces does, and an admin filling in a whole month wants the same rhythm.
- * Every write re-checks the matrix, so a role granted only "Lihat" gets a read-only grid rather
- * than a grid whose writes fail silently.
  */
-class PartnerAttendance extends Page
+class AttendanceSheet extends Page
 {
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedTableCells;
 
@@ -43,11 +42,11 @@ class PartnerAttendance extends Page
 
     protected static ?string $navigationLabel = 'Laporan Absensi';
 
-    protected static ?string $title = 'Laporan Absensi Partner Soul Coffeemate';
+    protected static ?string $title = 'Laporan Absensi';
 
-    protected static ?int $navigationSort = 2;
+    protected static ?int $navigationSort = 1;
 
-    protected string $view = 'filament.pages.partner-attendance';
+    protected string $view = 'filament.pages.attendance-sheet';
 
     /** Selected month, as `Y-m` — a month input's native value. */
     public string $month = '';
@@ -57,7 +56,7 @@ class PartnerAttendance extends Page
 
     public static function panelModule(): PanelModule
     {
-        return PanelModule::PARTNER_ATTENDANCE;
+        return PanelModule::ATTENDANCE;
     }
 
     public static function canAccess(): bool
@@ -96,19 +95,25 @@ class PartnerAttendance extends Page
     /** @return Collection<int, array<string, mixed>> */
     public function rows(): Collection
     {
-        return app(PartnerAttendanceService::class)->monthlySheet(
+        return app(AttendanceSheetService::class)->monthlySheet(
             $this->selectedMonth(),
             $this->role === '' ? null : Role::from($this->role),
         );
     }
 
-    /** @return array<int, PartnerAttendanceCode> */
+    /** @return array<int, AttendanceCode> */
     public function codeOptions(): array
     {
-        return PartnerAttendanceCode::cases();
+        return AttendanceCode::cases();
     }
 
-    public function setCell(int $partnerId, int $day, string $code): void
+    /** Whether the role on screen can absen from the app at all — see AttendanceService. */
+    public function roleClocksIn(): bool
+    {
+        return in_array($this->role, [Role::BARISTA->value, Role::STAFF->value], true);
+    }
+
+    public function setCell(int $userId, int $day, string $code): void
     {
         if (! $this->canEditCells()) {
             Notification::make()
@@ -120,18 +125,18 @@ class PartnerAttendance extends Page
             return;
         }
 
-        $partner = Partner::query()->find($partnerId);
+        $user = User::query()->find($userId);
 
-        if (! $partner) {
+        if (! $user) {
             return;
         }
 
         $date = $this->selectedMonth()->copy()->setDay($day);
 
-        app(PartnerAttendanceService::class)->setCode(
-            $partner,
+        app(AttendanceSheetService::class)->setCode(
+            $user,
             $date,
-            $code === '' ? null : PartnerAttendanceCode::from($code),
+            $code === '' ? null : AttendanceCode::from($code),
             Auth::user(),
         );
     }
@@ -143,8 +148,8 @@ class PartnerAttendance extends Page
                 ->label('Ekspor Excel')
                 ->icon('heroicon-o-arrow-down-tray')
                 ->action(fn (): BinaryFileResponse => Excel::download(
-                    new PartnerAttendanceExport($this->selectedMonth(), $this->role === '' ? null : Role::from($this->role)),
-                    sprintf('absensi-partner_%s.xlsx', $this->selectedMonth()->format('Y-m')),
+                    new AttendanceSheetExport($this->selectedMonth(), $this->role === '' ? null : Role::from($this->role)),
+                    sprintf('absensi_%s.xlsx', $this->selectedMonth()->format('Y-m')),
                 )),
         ];
     }
