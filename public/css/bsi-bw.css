@@ -792,6 +792,172 @@
   outline-offset: 2px;
 }
 
+/* ── Aktivitas Staff ───────────────────────────────────────────────────── */
+
+/* Segmented control for the grid range. The active segment is INVERTED INK,
+   which is this system's only form of emphasis — there is no accent hue to
+   reach for. */
+.bsi-seg {
+  display: inline-flex;
+  border: 0.5px solid var(--bsi-hairline);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--bsi-canvas);
+}
+
+.bsi-seg__btn {
+  font-family: var(--bsi-font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--bsi-ink-2);
+  background: transparent;
+  border: none;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: background-color 140ms var(--bsi-ease), color 140ms var(--bsi-ease);
+}
+
+.bsi-seg__btn + .bsi-seg__btn {
+  border-left: 0.5px solid var(--bsi-hairline);
+}
+
+.bsi-seg__btn:hover {
+  background: var(--bsi-surface);
+  color: var(--bsi-ink);
+}
+
+.bsi-seg__btn--on,
+.bsi-seg__btn--on:hover {
+  background: var(--bsi-ink);
+  color: var(--bsi-ink-inverse);
+}
+
+.bsi-seg__btn:focus-visible {
+  outline: 2px solid var(--bsi-ink);
+  outline-offset: -2px;
+}
+
+/* The one place danger red is spent on this screen: a flagged transaction
+   waiting for someone to look at it. */
+.bsi-stat--alarm .bsi-stat__value {
+  color: var(--bsi-danger);
+}
+
+.bsi-stat__of {
+  font-size: 60%;
+  color: var(--bsi-ink-3);
+  letter-spacing: 0;
+}
+
+/* Filled = reporting now, hollow = last known position. Same distinction the
+   map markers make, so the table and the map read the same way. */
+.bsi-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid var(--bsi-ink);
+  margin-right: 6px;
+  vertical-align: baseline;
+}
+
+.bsi-dot--live {
+  background: var(--bsi-ink);
+}
+
+.bsi-dot--stale {
+  background: transparent;
+  opacity: 0.55;
+}
+
+.bsi-dot--sale {
+  background: var(--bsi-ink);
+  width: 6px;
+  height: 6px;
+}
+
+.bsi-link {
+  font-family: var(--bsi-font-sans);
+  font-size: 13px;
+  color: var(--bsi-ink);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-thickness: 0.5px;
+  text-underline-offset: 3px;
+}
+
+.bsi-link:hover {
+  color: var(--bsi-ink-2);
+}
+
+.bsi-link:focus-visible {
+  outline: 2px solid var(--bsi-ink);
+  outline-offset: 2px;
+}
+
+.bsi-grid tbody tr.bsi-row--on td {
+  background: var(--bsi-surface-2);
+}
+
+.bsi-map__canvas--tall {
+  height: 460px;
+}
+
+/* Heat grid: intensity is ink at low alpha, never a colour ramp. The alpha is
+   computed in the view and capped there, so the figure on the darkest cell is
+   still readable. */
+.bsi-heat td.bsi-num[style] {
+  background: rgba(var(--bsi-heat-ink), var(--bsi-heat, 0));
+}
+
+:root {
+  --bsi-heat-ink: 19, 18, 17;
+}
+
+.dark {
+  --bsi-heat-ink: 241, 240, 237;
+}
+
+/* Leaflet popup contents. Leaflet draws its own frame, so this styles only the
+   text inside it. */
+.bsi-pop {
+  font-family: var(--bsi-font-sans);
+  font-size: 13px;
+  color: var(--bsi-ink);
+  display: block;
+  min-width: 180px;
+}
+
+.bsi-pop strong {
+  display: block;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 0.5px solid var(--bsi-hairline);
+}
+
+.bsi-pop__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.bsi-pop__row em {
+  font-family: var(--bsi-font-mono);
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--bsi-ink-3);
+}
+
 /* ── Mobile ────────────────────────────────────────────────────────────── */
 
 @media (max-width: 640px) {
@@ -807,5 +973,9 @@
 
   .bsi-grid .bsi-name {
     min-width: 140px;
+  }
+
+  .bsi-map__canvas--tall {
+    height: 320px;
   }
 }

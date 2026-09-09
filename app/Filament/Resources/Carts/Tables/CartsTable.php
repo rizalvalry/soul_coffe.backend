@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Carts\Tables;
 
 use Filament\Actions\EditAction;
+use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -41,6 +42,11 @@ class CartsTable
                     ->label('Dapur')
                     ->placeholder('-')
                     ->sortable(),
+                IconColumn::make('high_volume_zone')
+                    ->label('Zona ramai')
+                    ->boolean()
+                    ->tooltip('Transaksi besar dari gerobak ini tidak ditandai sebagai perlu ditinjau.')
+                    ->toggleable(),
             ])
             ->defaultSort('code')
             ->filters([

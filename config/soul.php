@@ -51,8 +51,36 @@ return [
 
     // Divisor behind "Presentase Kehadiran" on the monthly absensi sheet: hadir ÷ this × 100.
     // 26 is the payroll convention the reference sheet uses (verified against its own printed
-    // percentages — see PartnerAttendanceService), not the number of days in the month, which is
+    // percentages — see AttendanceSheetService), not the number of days in the month, which is
     // why a partner who works through their days off can legitimately exceed 100%.
     'attendance_working_days' => (int) env('SOUL_ATTENDANCE_WORKING_DAYS', 26),
+
+    // A single sale above this many cups is FLAGGED for Administrator and Finance — never
+    // refused (see SaleService). Carts standing in a genuinely busy zone can be exempted per
+    // cart (`carts.high_volume_zone`), because a flag that fires every hour is a flag nobody
+    // reads.
+    'sale_suspect_qty_threshold' => (int) env('SOUL_SALE_SUSPECT_QTY_THRESHOLD', 15),
+
+    // ── Aktivitas staff (GPS trail) ────────────────────────────────────────────────────────────
+    //
+    // A background ping is kept when either this much time has passed since the last stored one,
+    // or the phone has moved at least this far. Both filters exist so that a phone standing at a
+    // cart for four hours writes a readable trail instead of thousands of identical rows — and
+    // so that a phone actually moving is still recorded at street resolution.
+    'location_ping_min_interval_seconds' => (int) env('SOUL_LOCATION_PING_MIN_INTERVAL', 45),
+    'location_ping_min_move_m' => (int) env('SOUL_LOCATION_PING_MIN_MOVE_M', 25),
+
+    // Cap on one batch upload. The app queues fixes while offline, and a device returning from a
+    // long dead spot must not be able to post an unbounded array.
+    'location_ping_max_batch' => (int) env('SOUL_LOCATION_PING_MAX_BATCH', 50),
+
+    // How recent a ping must be for the map to call a staff member "live" rather than showing a
+    // last known position. Anything older is labelled, never silently presented as current.
+    'location_stale_minutes' => (int) env('SOUL_LOCATION_STALE_MINUTES', 10),
+
+    // Retention for the trail, enforced by `soul:prune-location-pings`. Long enough for a
+    // monthly engagement review, short enough that the table stays small on shared hosting.
+    // Note this prunes only the raw trail: the sales it helped explain are kept forever.
+    'location_ping_retention_days' => (int) env('SOUL_LOCATION_PING_RETENTION_DAYS', 45),
 
 ];

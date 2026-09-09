@@ -24,6 +24,8 @@ enum PanelModule: string
     case DAILY_TARGETS = 'daily_targets';
     case STAFF_ASSIGNMENTS = 'staff_assignments';
     case CENTRAL_STOCK = 'central_stock';
+    case SALES = 'sales';
+    case STAFF_ACTIVITY = 'staff_activity';
     case ATTENDANCE = 'attendance';
     case REPORTS = 'reports';
     case AUDIT_LOGS = 'audit_logs';
@@ -42,6 +44,8 @@ enum PanelModule: string
             self::DAILY_TARGETS => 'Target Harian',
             self::STAFF_ASSIGNMENTS => 'Penugasan Staff',
             self::CENTRAL_STOCK => 'Stok Terpusat',
+            self::SALES => 'Penjualan Gerobak',
+            self::STAFF_ACTIVITY => 'Aktivitas Staff',
             self::ATTENDANCE => 'Laporan Absensi',
             self::REPORTS => 'Laporan & Ekspor',
             self::AUDIT_LOGS => 'Audit Trail',
@@ -53,9 +57,23 @@ enum PanelModule: string
     /**
      * Modules that are read-only by nature — there is nothing to create or edit, so the matrix
      * editor offers them only as "Lihat", never "Kelola".
+     *
+     * SALES is on this list on purpose. A sale is a thing that happened at a cart, recorded by
+     * the person who made it; letting the panel edit or delete one would put a second, invisible
+     * hand on the revenue figures and on the stock ledger they moved. A mistake is corrected the
+     * same way every other stock mistake is — with an adjustment that says who made it and why.
+     *
+     * STAFF_ACTIVITY likewise: the GPS trail is evidence. Evidence that can be edited is not.
      */
     public function isReadOnly(): bool
     {
-        return in_array($this, [self::DASHBOARD, self::REPORTS, self::AUDIT_LOGS, self::CENTRAL_STOCK], true);
+        return in_array($this, [
+            self::DASHBOARD,
+            self::REPORTS,
+            self::AUDIT_LOGS,
+            self::CENTRAL_STOCK,
+            self::SALES,
+            self::STAFF_ACTIVITY,
+        ], true);
     }
 }

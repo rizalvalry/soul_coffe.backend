@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\BadgeController;
 use App\Http\Controllers\Api\CartController;
 use App\Http\Controllers\Api\DeviceController;
 use App\Http\Controllers\Api\LocationController;
+use App\Http\Controllers\Api\LocationPingController;
 use App\Http\Controllers\Api\LoginPinController;
 use App\Http\Controllers\Api\MeController;
 use App\Http\Controllers\Api\MediaController;
@@ -16,6 +17,7 @@ use App\Http\Controllers\Api\PinResetRequestController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\RefillRequestController;
 use App\Http\Controllers\Api\RefillTransitionController;
+use App\Http\Controllers\Api\SaleController;
 use App\Http\Controllers\Api\ShowcaseStockController;
 use Illuminate\Support\Facades\Route;
 
@@ -135,6 +137,19 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::post('showcase/hand-to-cart', [ShowcaseStockController::class, 'handToCart']);
         Route::post('showcase/close-out', [ShowcaseStockController::class, 'closeOut']);
     });
+
+    // ── Penjualan gerobak (staff) ──────────────────────────────────────────
+    // The movement that closes the loop: cups mapped to a cart in the morning leave it here.
+    // `idempotent:require` for the same reason Flow B has it (R12) — a retried tap in a queue
+    // must not sell the same cups twice.
+    Route::get('sales', [SaleController::class, 'index']);
+    Route::post('sales', [SaleController::class, 'store'])
+        ->middleware('idempotent:require');
+
+    // ── Aktivitas: where the phone is ──────────────────────────────────────
+    // Batched, staff-only, and never a precondition for anything else (E10). See
+    // LocationPingController.
+    Route::post('me/location', [LocationPingController::class, 'store']);
 
     // ── Absen (barista & staff) ────────────────────────────────────────────
     // `status` is what the app reads to decide whether the absen button is pressable, so the

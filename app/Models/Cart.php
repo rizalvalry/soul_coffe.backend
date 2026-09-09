@@ -15,8 +15,16 @@ class Cart extends Model
         'code',
         'plate',
         'status',
+        'high_volume_zone',
         'kitchen_id',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'high_volume_zone' => 'boolean',
+        ];
+    }
 
     public function kitchen(): BelongsTo
     {
