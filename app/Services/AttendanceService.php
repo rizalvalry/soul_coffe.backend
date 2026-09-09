@@ -20,7 +20,10 @@ use RuntimeException;
  */
 class AttendanceService
 {
-    public function __construct(private readonly EventPublisher $events) {}
+    public function __construct(
+        private readonly EventPublisher $events,
+        private readonly AbsenGeofence $geofence,
+    ) {}
 
     /**
      * Roles that clock in at all. Everyone else (Finance, Rider, Administrator, Content Creator)
@@ -35,7 +38,7 @@ class AttendanceService
      * thing that must never happen is a person's start-of-work time silently moving later
      * because they pressed the button twice.
      */
-    public function clockIn(User $user, ?Carbon $operatingDate = null): Attendance
+    public function clockIn(User $user, ?Carbon $operatingDate = null, array $gps = ['lat' => null, 'lng' => null]): Attendance
     {
         $date = ($operatingDate ?? Carbon::today())->toDateString();
 
@@ -54,11 +57,22 @@ class AttendanceService
             ->whereDate('operating_date', $date)
             ->first();
 
+        // Checked AFTER the replay case above: someone who already clocked in and taps again has
+        // not moved anywhere that matters, and refusing them a second time over a GPS reading
+        // would look like the first tap failed.
         if ($existing) {
             return $existing;
         }
 
-        return DB::transaction(function () use ($user, $date): Attendance {
+        // The one place in this system where a missing or distant GPS fix stops an action. See
+        // AbsenGeofence for why absen is the exception to E10, and for the three ways out.
+        $check = $this->geofence->check($user, $gps, $operatingDate);
+
+        if (! $check['allowed']) {
+            throw new RuntimeException((string) $check['message']);
+        }
+
+        return DB::transaction(function () use ($user, $date, $gps, $check): Attendance {
             $attendance = Attendance::query()->create([
                 'operating_date' => $date,
                 'user_id' => $user->id,
@@ -66,6 +80,13 @@ class AttendanceService
                 'role' => $user->role,
                 // Server clock (R16).
                 'clocked_in_at' => now(),
+                // The record now carries its own evidence of where it was made, including on the
+                // days no geofence applied — 'untagged' and '3 m from the kitchen' are different
+                // facts and a report should be able to tell them apart.
+                'gps_lat' => $gps['lat'] ?? null,
+                'gps_lng' => $gps['lng'] ?? null,
+                'distance_m' => $check['distance_m'],
+                'geofence_basis' => $check['basis'],
             ]);
 
             // Only the FIRST clock-in of the day publishes — the early return above means a

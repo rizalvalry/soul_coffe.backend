@@ -28,6 +28,7 @@ enum PanelModule: string
     case DELIVERY_INCIDENTS = 'delivery_incidents';
     case STAFF_ACTIVITY = 'staff_activity';
     case ATTENDANCE = 'attendance';
+    case ABSEN_EXEMPTIONS = 'absen_exemptions';
     case REPORTS = 'reports';
     case AUDIT_LOGS = 'audit_logs';
     case PIN_RESET_REQUESTS = 'pin_reset_requests';
@@ -49,6 +50,7 @@ enum PanelModule: string
             self::DELIVERY_INCIDENTS => 'Insiden Pengiriman',
             self::STAFF_ACTIVITY => 'Aktivitas Staff',
             self::ATTENDANCE => 'Laporan Absensi',
+            self::ABSEN_EXEMPTIONS => 'Izin Absen Luar Lokasi',
             self::REPORTS => 'Laporan & Ekspor',
             self::AUDIT_LOGS => 'Audit Trail',
             self::PIN_RESET_REQUESTS => 'Permintaan Reset PIN',

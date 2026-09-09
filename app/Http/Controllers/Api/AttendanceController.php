@@ -6,6 +6,7 @@ use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\AttendanceResource;
 use App\Models\Attendance;
+use App\Services\AbsenGeofence;
 use App\Services\AttendanceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -41,8 +42,19 @@ class AttendanceController extends Controller implements HasMiddleware
      */
     public function store(Request $request): JsonResponse
     {
+        $data = $request->validate([
+            // Required in practice by the geofence, not by this rule: a kitchen with no map pin
+            // still accepts an absen without coordinates, and AbsenGeofence is the single place
+            // that decides. Validating them as nullable here keeps that decision in one file.
+            'gps_lat' => ['nullable', 'numeric', 'between:-90,90'],
+            'gps_lng' => ['nullable', 'numeric', 'between:-180,180'],
+        ]);
+
         try {
-            $attendance = $this->service->clockIn($request->user());
+            $attendance = $this->service->clockIn($request->user(), null, [
+                'lat' => $data['gps_lat'] ?? null,
+                'lng' => $data['gps_lng'] ?? null,
+            ]);
         } catch (RuntimeException $e) {
             // 422 rather than 403: the caller is allowed to absen in principle, the day just
             // isn't ready for them yet, and the message says so.
@@ -81,6 +93,10 @@ class AttendanceController extends Controller implements HasMiddleware
         $hasClockedIn = $this->service->hasClockedIn($user);
         $windowOpen = $this->service->isStaffWindowOpen();
 
+        // The absen rule that applies to THIS person today, so the app can show the target and
+        // the distance rather than letting someone discover the rule by being refused.
+        $rule = app(AbsenGeofence::class)->rule($user);
+
         $isBarista = $user->role === Role::BARISTA;
         $isStaff = $user->role === Role::STAFF;
 
@@ -116,6 +132,19 @@ class AttendanceController extends Controller implements HasMiddleware
                     ! $isBarista && ! $isStaff => 'Role ini tidak memiliki absen.',
                     default => null,
                 },
+
+                // Everything the app needs to draw the rule: whether it applies, the point to
+                // stand near, how close, and — when an exemption is in force — why the rule looks
+                // different from what a colleague sees.
+                'geofence' => [
+                    'enforced' => $rule['enforced'],
+                    'basis' => $rule['basis'],
+                    'lat' => $rule['lat'],
+                    'lng' => $rule['lng'],
+                    'radius_m' => $rule['radius_m'],
+                    'label' => $rule['label'],
+                    'exemption_reason' => $rule['exemption_reason'],
+                ],
             ],
         ]);
     }

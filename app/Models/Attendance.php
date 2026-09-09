@@ -16,6 +16,11 @@ class Attendance extends Model
         'user_id',
         'role',
         'clocked_in_at',
+        // Where the clock-in was made, and under which rule it was allowed — see AbsenGeofence.
+        'gps_lat',
+        'gps_lng',
+        'distance_m',
+        'geofence_basis',
     ];
 
     protected function casts(): array
@@ -24,6 +29,9 @@ class Attendance extends Model
             'operating_date' => 'date',
             'role' => Role::class,
             'clocked_in_at' => 'datetime',
+            'gps_lat' => 'decimal:7',
+            'gps_lng' => 'decimal:7',
+            'distance_m' => 'integer',
         ];
     }
 

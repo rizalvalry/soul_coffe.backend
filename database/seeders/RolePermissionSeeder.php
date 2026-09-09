@@ -8,7 +8,8 @@ use App\Services\Access\PermissionMatrix;
 use Illuminate\Database\Seeder;
 
 /**
- * The only grant that ships out of the box: FINANCE gets the absensi report.
+ * The two grants that ship out of the box, both to FINANCE: the absensi report, and the absen
+ * exemptions that go with it.
  *
  * Note what it does NOT get: `users`. The employment profile the sheet reads (NIK, size, jatah
  * klibur) lives on the user record now, and the Users menu is also where roles, passwords and
@@ -29,5 +30,11 @@ class RolePermissionSeeder extends Seeder
         $full = ['view', 'create', 'edit', 'delete'];
 
         PermissionMatrix::set(Role::FINANCE, PanelModule::ATTENDANCE, $full);
+
+        // "Administrator atau finance berhak melakukan modifikasi" — the people who reconcile the
+        // money are the people who know which cart is at an event this week, so Finance gets the
+        // exemption menu with the attendance report rather than having to be granted it later by
+        // somebody who has not yet realised it exists.
+        PermissionMatrix::set(Role::FINANCE, PanelModule::ABSEN_EXEMPTIONS, $full);
     }
 }

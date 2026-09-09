@@ -61,6 +61,19 @@ return [
     // reads.
     'sale_suspect_qty_threshold' => (int) env('SOUL_SALE_SUSPECT_QTY_THRESHOLD', 15),
 
+    // ── Absen berbasis lokasi ──────────────────────────────────────────────────────────────────
+    //
+    // How close to the Dapur Pusat someone must be to clock in, in metres. Used when a kitchen
+    // has been tagged on the map but left its own radius blank; each kitchen may override it,
+    // because a yard and a shophouse are not the same size.
+    'absen_geofence_m' => (int) env('SOUL_ABSEN_GEOFENCE_M', 10),
+
+    // The master switch for the whole rule. Absen is the ONE place in this system where a missing
+    // GPS fix stops an action (everywhere else E10 applies and a fix is only evidence), so there
+    // has to be a way to turn it off without a deploy — a fleet of handsets that cannot hold a
+    // fix would otherwise mean nobody can start their shift.
+    'absen_requires_gps' => (bool) env('SOUL_ABSEN_REQUIRES_GPS', true),
+
     // ── Aktivitas staff (GPS trail) ────────────────────────────────────────────────────────────
     //
     // A background ping is kept when either this much time has passed since the last stored one,
