@@ -2,7 +2,8 @@
 
 namespace App\Filament\Widgets;
 
-use App\Enums\Role;
+use App\Enums\PanelModule;
+use App\Services\Access\PermissionMatrix;
 use App\Services\Reporting\DashboardMetricsService;
 use Filament\Widgets\BarChartWidget;
 use Illuminate\Support\Carbon;
@@ -16,7 +17,7 @@ class RefillVolumeWidget extends BarChartWidget
 
     public static function canView(): bool
     {
-        return Auth::user()?->role === Role::ADMINISTRATOR;
+        return PermissionMatrix::can(Auth::user(), PanelModule::DASHBOARD, 'view');
     }
 
     public function getHeading(): string

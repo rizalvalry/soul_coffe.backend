@@ -2,7 +2,8 @@
 
 namespace App\Filament\Widgets;
 
-use App\Enums\Role;
+use App\Enums\PanelModule;
+use App\Services\Access\PermissionMatrix;
 use App\Services\Reporting\DashboardMetricsService;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
@@ -22,10 +23,10 @@ class OperationsOverviewWidget extends StatsOverviewWidget
 
     public static function canView(): bool
     {
-        // Belt-and-suspenders: the panel itself already refuses every non-Administrator at the
-        // door (AdminPanelAccessTest), but a widget checking its own visibility means this stays
-        // correct even if the panel's role list is ever widened for another resource.
-        return Auth::user()?->role === Role::ADMINISTRATOR;
+        // The dashboard is a matrix module like any other, so an Administrator can hand the
+        // overview to Finance without handing over the menus behind it. Each widget checks for
+        // itself rather than trusting the page, because a widget can be placed anywhere.
+        return PermissionMatrix::can(Auth::user(), PanelModule::DASHBOARD, 'view');
     }
 
     protected function getStats(): array

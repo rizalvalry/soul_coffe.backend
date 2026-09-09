@@ -33,9 +33,9 @@ class RoleAccessMatrix extends Page
 
     protected static string|UnitEnum|null $navigationGroup = 'Pengaturan';
 
-    protected static ?string $navigationLabel = 'Matriks Akses Peran';
+    protected static ?string $navigationLabel = 'Management Users Role';
 
-    protected static ?string $title = 'Matriks Akses Peran';
+    protected static ?string $title = 'Management Users Role';
 
     protected static ?int $navigationSort = 1;
 
@@ -116,7 +116,7 @@ class RoleAccessMatrix extends Page
 
         Notification::make()
             ->success()
-            ->title('Matriks akses tersimpan')
+            ->title('Hak akses tersimpan')
             ->body(sprintf('Hak akses untuk peran %s sudah diperbarui.', $role->label()))
             ->send();
     }

@@ -572,6 +572,63 @@
   font-weight: 500;
 }
 
+/* ── Stat tiles & table footers (Stok Terpusat) ────────────────────────── */
+
+.bsi-stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.bsi-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--bsi-surface);
+  border: 0.5px solid var(--bsi-hairline);
+  border-radius: 16px;
+  box-shadow: var(--bsi-shadow-card);
+  padding: 20px 24px;
+}
+
+/* Big number, mono, tight — a figure to read at a glance, not a sentence. */
+.bsi-stat__value {
+  font-family: var(--bsi-font-mono);
+  font-size: 35px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  color: var(--bsi-ink);
+}
+
+.bsi-stat__hint {
+  font-size: 12px;
+  color: var(--bsi-ink-2);
+}
+
+.bsi-th-unit {
+  font-family: var(--bsi-font-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--bsi-ink-3);
+}
+
+.bsi-grid tfoot td {
+  background: var(--bsi-surface);
+  border-top: 0.5px solid var(--bsi-strong);
+}
+
+.bsi-foot {
+  font-weight: 500;
+}
+
+/* The grand total takes the system's emphasis: inverted ink, never a colour. */
+.bsi-grid tfoot tr.bsi-foot-total td {
+  background: var(--bsi-ink);
+  color: var(--bsi-ink-inverse);
+  font-weight: 500;
+}
+
 /* ── Empty state: a designed sentence, not "No data" ───────────────────── */
 
 .bsi-empty {
@@ -590,6 +647,57 @@
 
 .bsi-empty p {
   margin: 0;
+}
+
+/* ── Map picker (Lokasi form) ──────────────────────────────────────────── */
+
+.bsi-map {
+  font-family: var(--bsi-font-sans);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bsi-map__bar {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.bsi-map__bar .bsi-input {
+  flex: 1 1 auto;
+}
+
+.bsi-map__bar .bsi-btn {
+  flex: none;
+}
+
+/* Hairline frame, 16px radius: the map is content in a card, like a screenshot would be. */
+.bsi-map__canvas {
+  height: 340px;
+  border: 0.5px solid var(--bsi-hairline);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--bsi-surface-2);
+  z-index: 0; /* keeps Leaflet's panes under Filament's dropdowns and modals */
+}
+
+.bsi-map__hint,
+.bsi-map__msg {
+  margin: 0;
+  font-size: 12px;
+  color: var(--bsi-ink-2);
+}
+
+.bsi-map__msg {
+  font-family: var(--bsi-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--bsi-ink);
+}
+
+[x-cloak] {
+  display: none !important;
 }
 
 /* ── Matrix table ──────────────────────────────────────────────────────── */

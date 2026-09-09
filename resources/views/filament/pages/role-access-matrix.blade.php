@@ -2,11 +2,11 @@
     The access matrix, in the BSI Black & White system (see public/css/bsi-bw.css).
 
     One role at a time, on purpose: the full 6-roles × 12-modules × 4-abilities grid
-    is 288 checkboxes on one screen, which is a screen nobody reads carefully.
+    is 300+ checkboxes on one screen, which is a screen nobody reads carefully.
     Picking the role first turns the same job into a short, checkable list.
 
     Every class here is a `bsi-` class from our own stylesheet — see the note at the
-    top of partner-attendance.blade.php for why no Tailwind utility appears.
+    top of attendance-sheet.blade.php for why no Tailwind utility appears.
 --}}
 <x-filament-panels::page>
     <div class="bsi">
@@ -43,7 +43,7 @@
             <div class="bsi-sheet__head">
                 <div class="bsi-sheet__head-left">
                     <span class="bsi-kicker">Hak akses menu</span>
-                    <h2 class="bsi-title">Matriks akses peran</h2>
+                    <h2 class="bsi-title">Management users role</h2>
                 </div>
                 {{-- The one serif-italic moment: whose access is on screen. --}}
                 <span class="bsi-serif">{{ \App\Enums\Role::from($this->role)->label() }}</span>
@@ -93,7 +93,7 @@
             {{-- Emphasis is inverted ink, never a colour. --}}
             <button type="button" class="bsi-btn bsi-btn--ink" wire:click="save">
                 <svg class="bsi-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
-                Simpan matriks
+                Simpan hak akses
             </button>
         </div>
     </div>

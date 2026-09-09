@@ -39,6 +39,22 @@ class User extends Authenticatable implements FilamentUser, HasName
         'nik',
         'uniform_size',
         'monthly_libur_quota',
+        // Biodata. All optional by design — see the add_employee_profile_to_users migration for
+        // why nothing here may ever block saving a person.
+        'email',
+        'national_id',
+        'birth_date',
+        'birth_place',
+        'gender',
+        'marital_status',
+        'address',
+        'joined_at',
+        'emergency_contact_name',
+        'emergency_contact_phone',
+        'bank_name',
+        'bank_account_number',
+        'bank_account_holder',
+        'notes',
     ];
 
     /**
@@ -63,6 +79,8 @@ class User extends Authenticatable implements FilamentUser, HasName
             'is_active' => 'boolean',
             'login_pin_locked_until' => 'datetime',
             'monthly_libur_quota' => 'integer',
+            'birth_date' => 'date',
+            'joined_at' => 'date',
         ];
     }
 

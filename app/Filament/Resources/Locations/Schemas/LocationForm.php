@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Locations\Schemas;
 
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\ViewField;
 use Filament\Schemas\Schema;
 
 class LocationForm
@@ -17,10 +18,21 @@ class LocationForm
                     ->required()
                     ->maxLength(255),
 
+                // The point is picked on the map; the two numeric fields below are the record of
+                // what was picked, and stay editable for anyone who already has exact
+                // coordinates. See resources/views/filament/forms/map-picker.blade.php.
+                ViewField::make('map')
+                    ->label('Titik Lokasi')
+                    ->view('filament.forms.map-picker')
+                    ->viewData(['latPath' => 'data.lat', 'lngPath' => 'data.lng'])
+                    ->dehydrated(false)
+                    ->columnSpanFull(),
+
                 TextInput::make('lat')
                     ->label('Latitude')
                     ->numeric()
                     ->required()
+                    ->helperText('Terisi otomatis dari peta di atas.')
                     // decimal(10,7) cannot hold anything outside this range anyway, and a
                     // swapped lat/lng pair is the classic way a geofence ends up in the sea.
                     ->minValue(-90)

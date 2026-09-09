@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Products\Schemas;
 
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -19,6 +20,26 @@ class ProductForm
                     ->maxLength(255)
                     ->unique(ignoreRecord: true)
                     ->helperText('Dipakai sistem sebagai identitas tetap produk, mis. SOUL-COFFEE.'),
+
+                // The tile the mobile "Request Cups" screen shows. Until this existed those
+                // images were bundled in the APK, so adding a product meant shipping a release —
+                // see the add_image_to_products migration.
+                FileUpload::make('image_path')
+                    ->label('Gambar Produk')
+                    ->image()
+                    ->imageEditor()
+                    // Square, because that is the shape of the tile in the app; cropping here
+                    // beats letting the phone letterbox a wide photo into a small square.
+                    ->imageCropAspectRatio('1:1')
+                    ->imageResizeTargetWidth(720)
+                    ->imageResizeTargetHeight(720)
+                    ->imageResizeMode('cover')
+                    ->maxSize(4096)
+                    ->disk('public')
+                    ->directory('products')
+                    ->visibility('public')
+                    ->helperText('Persegi, maksimal 4 MB. Dipakai di layar Request Cups aplikasi. Boleh dikosongkan.')
+                    ->columnSpanFull(),
 
                 TextInput::make('name')
                     ->label('Nama Produk')

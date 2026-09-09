@@ -2,7 +2,8 @@
 
 namespace App\Filament\Pages;
 
-use App\Enums\Role;
+use App\Enums\PanelModule;
+use App\Services\Access\PermissionMatrix;
 use App\Models\AiSetting;
 use BackedEnum;
 use Filament\Actions\Action;
@@ -39,9 +40,14 @@ class ManageAiSettings extends Page
     /** @var array<string, mixed> */
     public array $data = [];
 
+    public static function panelModule(): PanelModule
+    {
+        return PanelModule::AI_SETTINGS;
+    }
+
     public static function canAccess(): bool
     {
-        return Auth::user()?->role === Role::ADMINISTRATOR;
+        return PermissionMatrix::can(Auth::user(), static::panelModule(), 'view');
     }
 
     public function mount(): void

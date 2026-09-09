@@ -27,7 +27,7 @@ class AdminPanelProvider extends PanelProvider
      * The file is served straight from public/ with no build hash, so a browser that has
      * yesterday's copy would keep it. Bump this whenever public/css/bsi-bw.css changes.
      */
-    private const THEME_VERSION = '2026-09-09';
+    private const THEME_VERSION = '2026-09-10';
 
     public function panel(Panel $panel): Panel
     {
