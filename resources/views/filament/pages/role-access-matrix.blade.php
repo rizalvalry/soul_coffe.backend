@@ -1,85 +1,100 @@
 {{--
-    One role at a time, on purpose: the full 6-roles × 15-modules × 4-abilities grid is 360
-    checkboxes on one screen, which is a screen nobody reads carefully. Picking the role first
-    turns the same job into a short, checkable list.
+    The access matrix, in the BSI Black & White system (see public/css/bsi-bw.css).
+
+    One role at a time, on purpose: the full 6-roles × 12-modules × 4-abilities grid
+    is 288 checkboxes on one screen, which is a screen nobody reads carefully.
+    Picking the role first turns the same job into a short, checkable list.
+
+    Every class here is a `bsi-` class from our own stylesheet — see the note at the
+    top of partner-attendance.blade.php for why no Tailwind utility appears.
 --}}
 <x-filament-panels::page>
-    <div class="max-w-xl">
-        <label for="role" class="block text-sm font-medium text-gray-950 dark:text-white">Peran</label>
-        <select
-            id="role"
-            wire:model.live="role"
-            class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm dark:border-white/20 dark:bg-white/5 dark:text-white sm:text-sm"
-        >
-            @foreach ($this->editableRoles() as $roleCase)
-                <option value="{{ $roleCase->value }}">{{ $roleCase->label() }}</option>
-            @endforeach
-        </select>
-    </div>
-
-    <div class="rounded-lg bg-gray-50 p-4 text-sm text-gray-600 dark:bg-white/5 dark:text-gray-300">
-        <p>
-            <strong class="text-gray-950 dark:text-white">Administrator tidak ada dalam daftar ini.</strong>
-            Peran itu selalu punya akses penuh ke seluruh menu dan tidak bisa dibatasi dari sini —
-            supaya tidak ada cara untuk mengunci diri sendiri keluar dari halaman ini.
-        </p>
-        <p class="mt-2">
-            Peran yang tidak diberi centang apa pun tidak melihat menu tersebut sama sekali.
-            Mencentang <em>Tambah</em>, <em>Ubah</em>, atau <em>Hapus</em> otomatis menyertakan
-            <em>Lihat</em>.
-        </p>
-        <p class="mt-2">
-            Catatan: selain Administrator, hanya <em>Content Creator</em> (khusus News Feed) yang
-            saat ini bisa masuk ke panel ini. Memberi centang di bawah kepada peran operasional
-            (Finance, Barista, Rider, Staff) menyiapkan hak menunya, tetapi pintu masuk panel untuk
-            peran tersebut masih perlu dibuka terpisah.
-        </p>
-    </div>
-
-    <div class="overflow-x-auto rounded-xl border border-gray-200 bg-white dark:border-white/10 dark:bg-gray-900">
-        <table class="w-full text-sm">
-            <thead>
-                <tr class="bg-gray-50 dark:bg-white/5">
-                    <th class="px-4 py-3 text-left font-medium text-gray-950 dark:text-white">Menu</th>
-                    @foreach (\App\Filament\Pages\RoleAccessMatrix::ABILITIES as $key => $label)
-                        <th class="px-4 py-3 text-center font-medium text-gray-950 dark:text-white">{{ $label }}</th>
+    <div class="bsi">
+        <div class="bsi-toolbar">
+            <div class="bsi-field">
+                <label class="bsi-label" for="bsi-role-select">Peran</label>
+                <select id="bsi-role-select" class="bsi-select" wire:model.live="role">
+                    @foreach ($this->editableRoles() as $roleCase)
+                        <option value="{{ $roleCase->value }}">{{ $roleCase->label() }}</option>
                     @endforeach
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-200 dark:divide-white/10">
-                @foreach ($this->modules() as $module)
-                    @php $offered = $this->abilitiesFor($module); @endphp
-                    <tr>
-                        <td class="px-4 py-3">
-                            <span class="font-medium text-gray-950 dark:text-white">{{ $module->label() }}</span>
-                            @if ($module->isReadOnly())
-                                <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">(hanya baca)</span>
-                            @endif
-                        </td>
+                </select>
+            </div>
+        </div>
 
-                        @foreach (\App\Filament\Pages\RoleAccessMatrix::ABILITIES as $ability => $label)
-                            <td class="px-4 py-3 text-center">
-                                @if (array_key_exists($ability, $offered))
-                                    <input
-                                        type="checkbox"
-                                        wire:model="grants.{{ $module->value }}.{{ $ability }}"
-                                        aria-label="{{ $module->label() }} — {{ $label }}"
-                                        class="h-5 w-5 cursor-pointer rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-white/20 dark:bg-white/5"
-                                    />
-                                @else
-                                    <span class="text-gray-300 dark:text-gray-600">—</span>
-                                @endif
-                            </td>
+        <div class="bsi-note">
+            <span class="bsi-kicker">Yang perlu diketahui</span>
+            <p>
+                <strong>Administrator tidak ada dalam daftar ini.</strong> Peran itu selalu punya
+                akses penuh ke seluruh menu dan tidak bisa dibatasi dari sini — supaya tidak ada
+                cara untuk mengunci diri sendiri keluar dari halaman ini.
+            </p>
+            <p>
+                Peran tanpa centang apa pun tidak melihat menu tersebut sama sekali. Mencentang
+                <strong>Tambah</strong>, <strong>Ubah</strong>, atau <strong>Hapus</strong>
+                otomatis menyertakan <strong>Lihat</strong>.
+            </p>
+            <p>
+                Peran operasional otomatis bisa masuk panel begitu diberi minimal satu menu.
+                Content Creator tetap khusus News Feed dan tidak diatur dari sini.
+            </p>
+        </div>
+
+        <div class="bsi-sheet">
+            <div class="bsi-sheet__head">
+                <div class="bsi-sheet__head-left">
+                    <span class="bsi-kicker">Hak akses menu</span>
+                    <h2 class="bsi-title">Matriks akses peran</h2>
+                </div>
+                {{-- The one serif-italic moment: whose access is on screen. --}}
+                <span class="bsi-serif">{{ \App\Enums\Role::from($this->role)->label() }}</span>
+            </div>
+
+            <table class="bsi-matrix">
+                <thead>
+                    <tr>
+                        <th>Menu</th>
+                        @foreach (\App\Filament\Pages\RoleAccessMatrix::ABILITIES as $label)
+                            <th>{{ $label }}</th>
                         @endforeach
                     </tr>
-                @endforeach
-            </tbody>
-        </table>
-    </div>
+                </thead>
+                <tbody>
+                    @foreach ($this->modules() as $module)
+                        @php $offered = $this->abilitiesFor($module); @endphp
+                        <tr>
+                            <td>
+                                <span class="bsi-matrix__module">{{ $module->label() }}</span>
+                                @if ($module->isReadOnly())
+                                    <span class="bsi-matrix__hint">hanya baca</span>
+                                @endif
+                            </td>
 
-    <div>
-        <x-filament::button wire:click="save" icon="heroicon-o-check">
-            Simpan Matriks
-        </x-filament::button>
+                            @foreach (\App\Filament\Pages\RoleAccessMatrix::ABILITIES as $ability => $label)
+                                <td>
+                                    @if (array_key_exists($ability, $offered))
+                                        <input
+                                            type="checkbox"
+                                            class="bsi-check"
+                                            wire:model="grants.{{ $module->value }}.{{ $ability }}"
+                                            aria-label="{{ $module->label() }} — {{ $label }}"
+                                        >
+                                    @else
+                                        <span class="bsi-na" aria-hidden="true">–</span>
+                                    @endif
+                                </td>
+                            @endforeach
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+
+        <div>
+            {{-- Emphasis is inverted ink, never a colour. --}}
+            <button type="button" class="bsi-btn bsi-btn--ink" wire:click="save">
+                <svg class="bsi-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
+                Simpan matriks
+            </button>
+        </div>
     </div>
 </x-filament-panels::page>
