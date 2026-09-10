@@ -36,5 +36,9 @@ class RolePermissionSeeder extends Seeder
         // exemption menu with the attendance report rather than having to be granted it later by
         // somebody who has not yet realised it exists.
         PermissionMatrix::set(Role::FINANCE, PanelModule::ABSEN_EXEMPTIONS, $full);
+
+        // The deposits Finance itself records on the phone. Read-only by nature (see
+        // PanelModule::isReadOnly), so this grant is the report, not a second way to edit one.
+        PermissionMatrix::set(Role::FINANCE, PanelModule::SETTLEMENTS, ['view']);
     }
 }

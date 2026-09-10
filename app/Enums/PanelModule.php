@@ -25,6 +25,7 @@ enum PanelModule: string
     case STAFF_ASSIGNMENTS = 'staff_assignments';
     case CENTRAL_STOCK = 'central_stock';
     case SALES = 'sales';
+    case SETTLEMENTS = 'settlements';
     case DELIVERY_INCIDENTS = 'delivery_incidents';
     case STAFF_ACTIVITY = 'staff_activity';
     case ATTENDANCE = 'attendance';
@@ -47,6 +48,7 @@ enum PanelModule: string
             self::STAFF_ASSIGNMENTS => 'Penugasan Staff',
             self::CENTRAL_STOCK => 'Stok Terpusat',
             self::SALES => 'Penjualan Gerobak',
+            self::SETTLEMENTS => 'Setoran Harian',
             self::DELIVERY_INCIDENTS => 'Insiden Pengiriman',
             self::STAFF_ACTIVITY => 'Aktivitas Staff',
             self::ATTENDANCE => 'Laporan Absensi',
@@ -77,6 +79,10 @@ enum PanelModule: string
             self::AUDIT_LOGS,
             self::CENTRAL_STOCK,
             self::SALES,
+            // Deposits are taken on the phone at the desk, with the money in hand. The panel is
+            // where they are read and reported on — editing one here would be rewriting a
+            // reconciliation after the fact, with nobody standing there to disagree.
+            self::SETTLEMENTS,
             self::STAFF_ACTIVITY,
         ], true);
     }

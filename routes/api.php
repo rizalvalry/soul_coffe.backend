@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\RefillRequestController;
 use App\Http\Controllers\Api\RefillTransitionController;
 use App\Http\Controllers\Api\SaleController;
+use App\Http\Controllers\Api\SettlementController;
 use App\Http\Controllers\Api\ShowcaseStockController;
 use Illuminate\Support\Facades\Route;
 
@@ -167,6 +168,17 @@ Route::middleware('auth:sanctum')->group(function (): void {
     // Batched, staff-only, and never a precondition for anything else (E10). See
     // LocationPingController.
     Route::post('me/location', [LocationPingController::class, 'store']);
+
+    // ── Setoran (finance) ──────────────────────────────────────────────────
+    // The end of a cart's day at the Finance desk: the queue, the numbers the system already
+    // knows, the money, and then the cups. Finance/Administrator only — see SettlementController.
+    Route::get('settlements/queue', [SettlementController::class, 'queue']);
+    Route::get('settlements/draft/{cart}', [SettlementController::class, 'draft']);
+    Route::get('settlements', [SettlementController::class, 'index']);
+    Route::post('settlements', [SettlementController::class, 'store'])
+        ->middleware('idempotent:require');
+    Route::post('settlements/{settlement}/approve', [SettlementController::class, 'approve'])
+        ->middleware('idempotent:require');
 
     // ── Absen (barista & staff) ────────────────────────────────────────────
     // `status` is what the app reads to decide whether the absen button is pressable, so the
