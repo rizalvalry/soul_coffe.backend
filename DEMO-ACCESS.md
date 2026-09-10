@@ -2,6 +2,13 @@
 
 Semua yang dibutuhkan untuk memasang APK dan login, tanpa perlu membuka workspace di komputer.
 
+> ⚠️ **Dokumen ini menjelaskan build DEMO offline v1.0.1, bukan aplikasi yang dipakai sekarang.**
+> Alurnya sudah berbeda sejak v1.5.0: layar **Alokasi Harian** dan **Alokasi Hari Ini** dihapus,
+> serah terima pengiriman kini **wajib foto** dengan tanda tangan yang **opsional**, dan ada tiga
+> menu baru (Catat Penjualan, Laporkan Insiden, Setoran). Untuk build yang sungguhan dipakai,
+> baca `PRODUCTION-ACCESS.md`. Dokumen ini dibiarkan apa adanya karena APK demo v1.0.1 memang
+> masih berperilaku seperti yang ditulis di sini.
+
 ---
 
 ## ⚠️ Baca ini lebih dulu

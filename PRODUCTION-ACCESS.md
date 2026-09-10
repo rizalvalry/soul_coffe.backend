@@ -1,4 +1,4 @@
-# Soul Coffeemate — Akses Build Produksi (v1.5.0)
+# Soul Coffeemate — Akses Build Produksi (v1.5.1)
 
 > **v1.4.0 — cara masuk berubah.** Sekali seorang pengguna membuat PIN 6 angka di menu
 > Pengaturan, **kata sandi tidak lagi bisa dipakai untuk masuk** — hanya PIN itu. Membuat PIN juga
@@ -85,25 +85,33 @@ keenam ini — belum ada API untuk membuat user baru (lihat bagian "Menambah aku
 
 ## APK
 
-**Berkas:** `dist/soul-coffeemate-v1.5.0.apk`
+**Berkas:** `dist/soul-coffeemate-v1.5.1.apk`
 
 **Unduh langsung:**
-`https://github.com/rizalvalry/soul_coffe.backend/raw/main/dist/soul-coffeemate-v1.5.0.apk`
+`https://github.com/rizalvalry/soul_coffe.backend/raw/main/dist/soul-coffeemate-v1.5.1.apk`
 
 | Properti | Nilai |
 |---|---|
-| Ukuran | 24.15 MB (25.319.760 byte) |
+| Ukuran | 24.15 MB (25.327.604 byte) |
 | Package | `id.soulcoffeemate.ops.demo` |
-| Versi | 1.5.0 (versionCode 20) |
+| Versi | 1.5.1 (versionCode 21) |
 | Min Android | **7.0** (API 24) |
 | Target | Android 16 (API 36) |
 | Arsitektur | `arm64-v8a`, `armeabi-v7a` |
-| SHA-256 | `7d67fc5888bc4a78313676820b07f0acb2fc35429a851af74e2c41f46a56cb8d` |
-| Tanda tangan | SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c` — **sama dengan v1.0.x–v1.4.5**, jadi cukup install di atas versi lama, tidak perlu uninstall |
+| SHA-256 | `722a3e27b7f78ece678676d727e4a15db9de7db6656e74da4f5b4245840bfe7b` |
+| Tanda tangan | SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c` — **sama dengan v1.0.x–v1.5.0**, jadi cukup install di atas versi lama, tidak perlu uninstall |
 
 `npm run apk:verify` 13/13 lolos.
 
-**Beda dari v1.4.5 — empat perubahan alur:**
+**Beda dari v1.5.0 — dua menu baru:**
+
+1. **Setoran** (Finance) — antrean gerobak, tiga kolom uang, lalu pemisahan cups sisa. Lihat
+   bagian "Setoran harian" di bawah.
+2. **Absen membaca lokasi** — layar absen menampilkan jarak Anda ke Dapur Pusat sebelum tombol
+   ditekan, dan mengambil ulang posisi tepat saat ditekan. Aturannya baru berlaku setelah sebuah
+   dapur ditandai di peta; lihat bagian "Absen wajib di Dapur Pusat".
+
+**Beda v1.5.0 dari v1.4.5 — empat perubahan alur:**
 
 1. **Catat Penjualan** (staff) — tile pertama di menu staff. Cups terjual, cara bayar, simpan;
    stok gerobak berkurang otomatis. Wajib absen dulu. Lihat bagian "Penjualan Gerobak" di bawah.
@@ -277,7 +285,7 @@ Sama seperti build demo sebelumnya — lihat `DEMO-ACCESS.md` bagian "Izin yang 
 
 ### Cara memasang
 
-1. Buka repositori ini dari browser HP → folder `dist/` → unduh `soul-coffeemate-v1.5.0.apk`.
+1. Buka repositori ini dari browser HP → folder `dist/` → unduh `soul-coffeemate-v1.5.1.apk`.
 2. Izinkan **Install unknown apps** untuk browser yang dipakai.
 3. Buka berkas yang terunduh → **Install**.
 4. Play Protect akan memperingatkan karena APK ini tidak ditandatangani sertifikat Play Store —
@@ -762,6 +770,117 @@ yang membuatnya.
 
 Tabel `daily_allocations` beserta datanya **tidak dihapus** — riwayatnya tetap utuh dan endpoint
 `/allocations` masih ada; yang dihapus adalah langkahnya dari alur kerja sehari-hari.
+
+---
+
+## Penamaan menu bisa diubah — ✅ AKTIF (2026-09-10)
+
+**Pengaturan → Penamaan Menu** (`/admin/menu-naming`, Administrator saja). Setiap nama menu dan
+setiap judul kelompok di sidebar bisa diganti dari sini, termasuk News Feed dan halaman
+Management Users Role sendiri.
+
+**Yang membuat ini aman** — dan ini inti permintaannya: setiap menu punya **dua** hal yang terlihat
+seperti nama.
+
+| | Contoh | Dipakai oleh |
+|---|---|---|
+| **Kunci** | `carts`, `sales`, `attendance` | Hak akses (`role_permissions`), alamat halaman, kode program, test |
+| **Nama** | “Gerobak”, “Penjualan Gerobak” | Manusia yang membacanya |
+
+Halaman ini hanya menulis yang kedua, ke tabelnya sendiri (`module_labels`), dan tidak ada yang
+membaca tabel itu selain navigasi. Jadi mengganti “Gerobak” menjadi “Armada”:
+
+- `/admin/carts` tetap terbuka di alamat yang sama;
+- setiap izin yang sudah diberikan untuk modul `carts` tetap berlaku;
+- alur refill, absensi, dan penjualan tidak tersentuh sama sekali.
+
+Ada test yang membuktikan tepat itu: beri Finance modul `carts`, ganti namanya, lalu Finance tetap
+bisa masuk di alamat yang sama. Kunci setiap menu ditampilkan di sebelah kolom namanya supaya
+jelas mana yang berubah dan mana yang tidak.
+
+Mengosongkan sebuah kolom mengembalikan nama bawaannya — jadi tidak ada konsep “reset” terpisah,
+dan mengetik ulang nama bawaan tidak menyimpan baris apa pun. Kalau tabelnya hilang sekalipun,
+panel tetap jalan dengan nama bawaan (diuji dengan menghapus tabelnya di tengah test).
+
+---
+
+## Absen wajib di Dapur Pusat — ✅ AKTIF (2026-09-10)
+
+**Master Data → Dapur Pusat** sekarang punya peta, persis seperti Lokasi Berjualan: klik titiknya,
+lalu isi **radius absen** (bawaan **10 meter**, bisa berbeda per dapur). Absen dari luar radius itu
+**ditolak**.
+
+Pesan penolakannya menyebut angkanya: *“Anda 34 m dari Dapur Pulomas, batasnya 10 m.”* — supaya
+orangnya tahu harus mendekat berapa jauh, bukan sekadar “terlalu jauh”. Aplikasi juga menampilkan
+jaraknya **sebelum** tombol ditekan, dan mengambil ulang lokasi tepat saat ditekan, supaya orang
+yang sudah berjalan mendekat tidak dinilai dari posisinya semenit lalu.
+
+⚠️ **Ini satu-satunya tempat di seluruh sistem yang GPS-nya mengunci sebuah aksi.** Di semua alur
+lain, GPS hanya bukti dan tidak pernah menghalangi (E10) — refill, penjualan, dan pengiriman tetap
+bisa diselesaikan tanpa sinyal. Absen berbeda jenisnya: seluruh isi catatannya adalah “orang ini
+ada di sini”, jadi catatan tanpa bukti lokasi bukan catatan yang lebih lemah, melainkan catatan
+yang salah.
+
+Pengecualiannya dibatasi tiga cara, karena aturan tanpa jalan keluar yang sah tidak akan dipatuhi
+— akan diakali, dan akalannya adalah satu orang mengabsenkan orang lain:
+
+1. **Dapur yang belum ditandai di peta tidak menerapkan apa pun.** Jadi pada hari deploy tidak ada
+   yang berubah, dan aturannya dinyalakan satu dapur demi satu dapur. Dimatikan lagi cukup dengan
+   menghapus titiknya.
+2. **Izin per gerobak** — menu baru **Absensi → Izin Absen Luar Lokasi**, bisa diatur oleh
+   **Administrator dan Finance** (Finance dapat modulnya secara bawaan). Dua bentuk:
+
+   | Bentuk | Artinya |
+   |---|---|
+   | **Absen di titik jualan** | Boleh absen dari lokasi berjualan gerobak itu, bukan dari dapur. Untuk gerobak yang memang berdagang jauh, mis. Blok M. |
+   | **Bebas lokasi** | Tanpa geofence sama sekali. Untuk event, car free day, acara berhari-hari, atau mess staff yang jauh. |
+
+   Izin melekat pada **gerobak**, punya tanggal mulai (dan boleh tanpa tanggal selesai), dan
+   **alasannya wajib diisi** — itu yang dibaca saat laporan absensi ditinjau.
+3. **Satu saklar `SOUL_ABSEN_REQUIRES_GPS`** mematikan seluruh aturan, kalau ternyata banyak HP
+   yang tidak sanggup mengunci sinyal.
+
+Setiap absen sekarang menyimpan **koordinatnya sendiri, jaraknya, dan dasar aturannya**
+(`kitchen` / `selling_location` / `exempt` / `untagged`). Tanpa kolom terakhir itu, absen yang lolos
+karena dapurnya belum ditandai tidak bisa dibedakan dari absen yang benar-benar lolos geofence.
+
+**Status saat ini di produksi:** belum ada dapur yang ditandai di peta, jadi aturannya **belum
+aktif** untuk siapa pun — persis seperti yang dirancang. Nyalakan dengan membuka Master Data →
+Dapur Pusat → klik titiknya di peta → simpan.
+
+---
+
+## Setoran harian — ✅ AKTIF (2026-09-10)
+
+Menu baru di aplikasi untuk role **Finance**: **Setoran**. Antrean gerobak hari ini, lalu satu
+gerobak sekali waktu.
+
+Finance mengetik **tiga angka saja**: Tunai, QRIS/online, Transfer. Sisanya sudah ada di layar
+sebelum siapa pun mengetik — **cups terjual, cups sisa, dan jumlah yang seharusnya diterima**
+menurut transaksi hari itu, dihitung dari buku besar stok dan dari transaksi penjualannya sendiri.
+Meminta antrean staff membacakan angka yang sudah dipegang sistem adalah cara sebuah rekonsiliasi
+berubah jadi perdebatan soal hitungan.
+
+**Selisih dicatat, bukan ditolak — tapi wajib diberi alasan.** Menolaknya akan mendorong selisihnya
+masuk ke kantong seseorang; menerimanya diam-diam meninggalkan angka yang tidak bisa ditindak
+bulan depan. Aplikasi menampilkan selisihnya begitu muncul, bukan setelah submit ditolak.
+
+**Dua langkah, karena harinya memang dua langkah.** Uang diterima lebih dulu (cepat, ada antrean di
+belakang). Setelah itu **cups sisa dipisahkan**: mana yang masih layak dijual besok (kembali ke
+showcase dapur) dan mana yang di-reject saat itu juga (keluar dari sistem). Keduanya bergerak lewat
+buku besar stok yang sama seperti seluruh sistem.
+
+⚠️ **Tumpang tindih dengan “Tutup Gerobak” milik barista sudah ditangani.** Kedua menu itu
+mengerjakan hal yang sama dari dua ujung. Jumlah di sini selalu diukur terhadap **stok gerobak saat
+itu juga** dengan penguncian baris, bukan terhadap angka saat setoran dicatat — jadi siapa pun yang
+lebih dulu, dialah yang mencatat pergerakannya, dan yang belakangan diberi tahu *“mungkin gerobak
+ini sudah ditutup barista”* alih-alih dua-duanya memposting dan membuat stok jadi minus. Ada test
+khusus untuk kasus itu.
+
+**Di CMS:** **Laporan → Setoran Harian** (`/admin/settlements`) — read-only, per hari per gerobak,
+dengan total per jenis pembayaran yang dijumlahkan di bawah kolom, filter “hanya yang ada selisih”,
+dan selisihnya ditulis sebagai kata (**Kurang Rp 20.000** / **Lebih Rp 20.000** / **Pas**), karena
+“Rp -20.000” salah dibaca sekilas dan arah selisih itu justru seluruh makna kolomnya.
 
 ---
 

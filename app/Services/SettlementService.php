@@ -78,8 +78,20 @@ class SettlementService
             ->get()
             ->keyBy('cart_id');
 
+        // Every cart's remaining cups in ONE query rather than one per cart. This list is the
+        // Finance screen's main view and it refreshes on a timer, so a per-row projection would
+        // be a query per cart per minute for the whole shift.
+        $remaining = StockLedger::query()
+            ->where('location_type', StockLedgerService::CART)
+            ->whereIn('location_id', $assignments->pluck('cart_id')->filter()->unique()->all())
+            ->groupBy('location_id')
+            ->selectRaw('location_id, SUM(qty_delta) as qty')
+            ->pluck('qty', 'location_id')
+            ->map(fn ($qty): int => max(0, (int) $qty))
+            ->all();
+
         return $assignments
-            ->map(function (StaffAssignment $assignment) use ($sales, $settlements): array {
+            ->map(function (StaffAssignment $assignment) use ($sales, $settlements, $remaining): array {
                 $sale = $sales->get($assignment->cart_id);
                 $settlement = $settlements->get($assignment->cart_id);
 
@@ -92,7 +104,7 @@ class SettlementService
                     'transactions' => (int) ($sale->trx ?? 0),
                     'cups_sold' => (int) ($sale->cups ?? 0),
                     'expected_total' => (int) ($sale->revenue ?? 0),
-                    'cups_remaining' => array_sum($this->ledger->stockMap(StockLedgerService::CART, $assignment->cart_id)),
+                    'cups_remaining' => $remaining[$assignment->cart_id] ?? 0,
                     'settlement_id' => $settlement?->id,
                     'settlement_status' => $settlement?->status,
                 ];
