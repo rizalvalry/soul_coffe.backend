@@ -86,7 +86,7 @@
                 </p>
             @else
                 <p>
-                    Role ini <strong>tidak punya absen di aplikasi</strong> (hanya Barista dan Staff yang
+                    Role ini <strong>tidak punya absen di aplikasi</strong> (hanya Barista dan Rider yang
                     bisa), jadi seluruh selnya diisi manual di sini.
                 </p>
             @endif

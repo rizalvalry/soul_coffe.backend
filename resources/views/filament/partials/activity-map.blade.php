@@ -1,5 +1,5 @@
 {{--
-    The live map for Aktivitas Staff.
+    The live map for Aktivitas Rider.
 
     The container is wire:ignore and the behaviour lives in public/js/activity-map.js, so a
     refresh updates the markers without throwing away the operator's pan and zoom — and without

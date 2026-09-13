@@ -39,7 +39,7 @@ class MediaController extends Controller
     public function storeHandover(StoreHandoverMediaRequest $request)
     {
         if ($request->user()->role !== Role::RIDER) {
-            abort(403, 'Hanya rider yang mengunggah foto serah terima.');
+            abort(403, 'Hanya runner yang mengunggah foto serah terima.');
         }
 
         $media = $this->media->storeHandoverPhoto(

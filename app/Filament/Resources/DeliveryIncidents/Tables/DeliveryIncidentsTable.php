@@ -62,11 +62,11 @@ class DeliveryIncidentsTable
                     ->description(fn (DeliveryIncident $record): string => 'Gerobak '.($record->refillRequest?->cart?->code ?? '-')),
 
                 TextColumn::make('rider.name')
-                    ->label('Rider')
+                    ->label('Runner')
                     ->searchable(),
 
                 TextColumn::make('refillRequest.staff.name')
-                    ->label('Untuk staff')
+                    ->label('Untuk rider')
                     ->placeholder('-'),
 
                 TextColumn::make('lines')
@@ -79,7 +79,7 @@ class DeliveryIncidentsTable
                         ->join(', ')),
 
                 TextColumn::make('note')
-                    ->label('Keterangan rider')
+                    ->label('Keterangan runner')
                     ->placeholder('-')
                     ->wrap()
                     ->limit(80),
@@ -125,13 +125,13 @@ class DeliveryIncidentsTable
                     ->visible(fn (DeliveryIncident $record): bool => $record->status->isOpen() && static::mayDecide())
                     ->requiresConfirmation()
                     ->modalHeading('Lanjutkan pengantaran dengan cups yang masih layak')
-                    ->modalDescription('Cups yang rusak dihapus dari stok dapur dan jumlah kirim di request ini dikurangi sebanyak itu, sehingga rider hanya bisa mencatat cups yang benar-benar sampai. Rider tetap melanjutkan pengantaran.')
+                    ->modalDescription('Cups yang rusak dihapus dari stok dapur dan jumlah kirim di request ini dikurangi sebanyak itu, sehingga runner hanya bisa mencatat cups yang benar-benar sampai. Runner tetap melanjutkan pengantaran.')
                     ->modalSubmitActionLabel('Lanjut sebagian')
                     ->schema([
                         Textarea::make('note')
                             ->label('Catatan (opsional)')
                             ->maxLength(500)
-                            ->helperText('Ikut terkirim ke rider, staff pemohon, dan dapur.'),
+                            ->helperText('Ikut terkirim ke runner, rider pemohon, dan dapur.'),
                     ])
                     ->action(function (DeliveryIncident $record, array $data, DeliveryIncidentService $service): void {
                         $service->resolve($record, Auth::user(), 'partial', $data['note'] ?? null);
@@ -150,14 +150,14 @@ class DeliveryIncidentsTable
                     ->visible(fn (DeliveryIncident $record): bool => $record->status->isOpen() && static::mayDecide())
                     ->requiresConfirmation()
                     ->modalHeading('Batalkan pengantaran ini?')
-                    ->modalDescription('Request menjadi DIBATALKAN, rider kembali ke dapur, dan cups yang rusak dihapus dari stok dapur. Cups yang masih layak tetap menjadi stok dapur — tidak ada yang dikirim.')
+                    ->modalDescription('Request menjadi DIBATALKAN, runner kembali ke dapur, dan cups yang rusak dihapus dari stok dapur. Cups yang masih layak tetap menjadi stok dapur — tidak ada yang dikirim.')
                     ->modalSubmitActionLabel('Batalkan pengantaran')
                     ->schema([
                         Textarea::make('note')
                             ->label('Alasan')
                             ->required()
                             ->maxLength(500)
-                            ->helperText('Wajib: ini yang dibaca staff pemohon ketika pesanannya tidak datang.'),
+                            ->helperText('Wajib: ini yang dibaca rider pemohon ketika pesanannya tidak datang.'),
                     ])
                     ->action(function (DeliveryIncident $record, array $data, DeliveryIncidentService $service): void {
                         $service->resolve($record, Auth::user(), 'cancel', (string) $data['note']);
@@ -165,7 +165,7 @@ class DeliveryIncidentsTable
                         Notification::make()
                             ->warning()
                             ->title('Pengantaran dibatalkan')
-                            ->body('Rider, staff pemohon, dan dapur sudah diberi tahu.')
+                            ->body('Runner, rider pemohon, dan dapur sudah diberi tahu.')
                             ->send();
                     }),
             ])

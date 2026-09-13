@@ -1,7 +1,7 @@
 # Soul Coffeemate — Backend API
 
 Internal field-operations API for the SOUL COFFEEMATE electric-motorbike coffee-cart fleet.
-Five roles: Administrator, Finance, Barista, Rider, Staff. No customer ever logs in.
+Five roles: Administrator, Finance, Barista, Runner, Rider. No customer ever logs in.
 
 **Laravel 12 · PHP 8.2 · MySQL 8 · Sanctum · Reverb**
 
@@ -100,15 +100,15 @@ demo, but requirement 3 is not met. A small VPS is the right target if realtime 
 
 5. **Money is `BIGINT` integer rupiah.** No floats, ever.
 
-6. **Cost values are stripped for Barista, Rider and Staff (R15)** at serialisation — omitted from
+6. **Cost values are stripped for Barista, Runner and Rider (R15)** at serialisation — omitted from
    the JSON, not zeroed. Asserted by tests.
 
 7. **`active_cart_id` enforces one open request per cart (R2).** MySQL 8 has no partial unique
    index, so the column holds `cart_id` while the request is open and `NULL` when terminal;
    MySQL permits many NULLs in a unique index. **Do not "tidy this up"** — removing it breaks R2
-   with no visible symptom until two riders are dispatched to the same cart.
+   with no visible symptom until two runners are dispatched to the same cart.
 
-8. **Idempotency-Key is required on every state transition (R12).** A staff member on a bad
+8. **Idempotency-Key is required on every state transition (R12).** A rider on a bad
    connection who taps twice must not create two requests.
 
 9. **Events are written to `outbox_events` inside the state-change transaction** and published by
@@ -161,7 +161,7 @@ person who tapped the button is looking at the result already.
 - **Failure:** never throws. A provider outage delays nothing else — the event is already durable
   in `outbox_events` and `notifications`. A token FCM reports as `UNREGISTERED` is deleted.
 
-Modules that previously emitted no events now do: absen (clock-in, staff window opened), showcase
+Modules that previously emitted no events now do: absen (clock-in, rider window opened), showcase
 stock (brew, hand-to-cart, close-out) and the news feed (`NewsPostObserver`, fired once on the
 transition into a published state).
 

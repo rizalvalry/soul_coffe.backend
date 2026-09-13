@@ -36,7 +36,7 @@ class SettlementsTable
                     ->sortable(),
 
                 TextColumn::make('staff.name')
-                    ->label('Staff')
+                    ->label('Rider')
                     ->searchable()
                     ->placeholder('-'),
 

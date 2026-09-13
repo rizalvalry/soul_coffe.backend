@@ -22,7 +22,7 @@ class AttendanceRateWidget extends LineChartWidget
 
     public function getHeading(): string
     {
-        return 'Tingkat Kehadiran Staff (14 Hari Terakhir)';
+        return 'Tingkat Kehadiran Rider (14 Hari Terakhir)';
     }
 
     protected function getData(): array

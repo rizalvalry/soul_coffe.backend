@@ -17,7 +17,7 @@ class StaffAssignmentForm
         return $schema
             ->components([
                 Select::make('user_id')
-                    ->label('Staff')
+                    ->label('Rider')
                     // Only STAFF is ever assigned to a cart; offering every user here would
                     // let an admin roster a Barista onto a bicycle.
                     ->options(fn (): array => User::query()
@@ -59,7 +59,7 @@ class StaffAssignmentForm
                             ->when($record, fn ($q) => $q->whereKeyNot($record->getKey()));
 
                         if ($get('user_id') && (clone $base)->where('user_id', $get('user_id'))->exists()) {
-                            $fail('Staff ini sudah ditugaskan pada tanggal tersebut (satu staff satu gerobak per hari).');
+                            $fail('Rider ini sudah ditugaskan pada tanggal tersebut (satu rider satu gerobak per hari).');
 
                             return;
                         }

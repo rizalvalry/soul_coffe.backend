@@ -56,7 +56,7 @@ class AbsenExemptionForm
                     ->required()
                     ->rows(3)
                     ->maxLength(500)
-                    ->helperText('Wajib. Contoh: “Event Car Free Day Sudirman 12–14 Sep”, “Mess staff di Bekasi”, “Berjualan di Blok M selama acara”. Ini yang dibaca saat laporan absensi ditinjau.')
+                    ->helperText('Wajib. Contoh: “Event Car Free Day Sudirman 12–14 Sep”, “Mess rider di Bekasi”, “Berjualan di Blok M selama acara”. Ini yang dibaca saat laporan absensi ditinjau.')
                     ->columnSpanFull(),
             ]);
     }

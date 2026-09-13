@@ -35,15 +35,15 @@ Ini akun demo. Jangan dipakai staf sungguhan.
 | Administrator | `+6281100000001` | `admin123` |
 | Finance | `+6281100000002` | `finance123` |
 | Barista | `+6281100000003` | `barista123` |
-| Rider | `+6281100000004` | `rider123` |
-| Staff (Maufu) | `+6281100000005` | `staff123` |
+| Runner | `+6281100000004` | `rider123` |
+| Rider (Maufu) | `+6281100000005` | `staff123` |
 
-**PIN staff:** `123456` — dipakai Rider saat HP staff mati sehingga tanda tangan tidak bisa
+**PIN rider:** `123456` — dipakai Runner saat HP rider mati sehingga tanda tangan tidak bisa
 diambil (jalur cadangan, supaya pengiriman tidak menggantung).
 
 Nomor boleh diketik `08...`, `62...`, atau `+62...` — semuanya dinormalkan.
 
-**Staff Maufu bertugas di gerobak `0018`.** Staff hanya bisa request refill untuk gerobak yang
+**Rider Maufu bertugas di gerobak `0018`.** Rider hanya bisa request refill untuk gerobak yang
 ditugaskan kepadanya pada hari itu.
 
 ---
@@ -98,14 +98,14 @@ kanvas tanda tangan, tombol ganti role, belum pernah disentuh tangan. Build deng
 punya risiko tambahan: kalau ada kode yang dipanggil lewat refleksi dan lolos dari deteksi R8,
 gejalanya baru muncul saat runtime, bukan saat build. Anda akan menjadi yang pertama
 menjalankannya. Kalau ada yang aneh — terutama di keempat alur ini — kembali ke APK legacy di
-atas dan laporkan: login, foto refill, tanda tangan serah terima, lokasi rider.
+atas dan laporkan: login, foto refill, tanda tangan serah terima, lokasi runner.
 
 ### Izin yang diminta
 
 | Izin | Alasan |
 |---|---|
 | Kamera | **Wajib.** Foto bukti kondisi frozen gerobak. Aplikasi hanya membuka kamera, tidak pernah galeri, supaya foto lama tidak bisa dipakai ulang. |
-| Lokasi | **Opsional.** Kalau ditolak, request tetap terkirim dan hanya ditandai "tanpa GPS". Staff di lapangan tidak boleh terhalang karena GPS mati. |
+| Lokasi | **Opsional.** Kalau ditolak, request tetap terkirim dan hanya ditandai "tanpa GPS". Rider di lapangan tidak boleh terhalang karena GPS mati. |
 | Internet, status jaringan | Deteksi koneksi |
 | Biometrik | Dipakai penyimpanan token yang aman |
 
@@ -144,12 +144,12 @@ dibutuhkan API online plus server WebSocket yang hidup.
 | # | Role | Lakukan |
 |---|---|---|
 | 1 | **Barista** | *Alokasi Harian* → pilih Maufu → jumlah terisi otomatis dari target → kirim |
-| 2 | **Staff** | *Request Refill* → isi jumlah → **ambil foto** → kirim |
+| 2 | **Rider** | *Request Refill* → isi jumlah → **ambil foto** → kirim |
 | 3 | **Barista** | *Permintaan Refill* → request terlihat, tapi tombol **Siapkan mati**, berlabel "Menunggu Approval Finance" |
 | 4 | **Finance** | *Approval Refill* → lihat rincian dan **nilai total** → Approve |
 | 5 | **Barista** | Tombol **Siapkan** kini aktif → isi jumlah siap → **Siap Diambil** |
-| 6 | **Rider** | *Siap Diambil* → **Ambil** |
-| 7 | **Rider** | *Pengiriman Saya* → isi jumlah diterima → **staff tanda tangan di HP rider** → kirim |
+| 6 | **Runner** | *Siap Diambil* → **Ambil** |
+| 7 | **Runner** | *Pengiriman Saya* → isi jumlah diterima → **rider tanda tangan di HP runner** → kirim |
 | 8 | — | Status **Selesai**, stok gerobak bertambah |
 
 **Langkah 3 dan 5 adalah inti seluruh sistem ini.** Barista bisa *melihat* permintaan sejak
@@ -163,7 +163,7 @@ Yang menarik untuk dicoba menggagalkannya:
   permintaan terbuka
 - Finance menyetujui lebih banyak dari yang diminta → ditolak
 - Tanda tangan berupa satu titik → ditolak, minimal 3 goresan
-- Pilih "Staff tidak bisa paraf?" → masukkan PIN `123456`
+- Pilih "Rider tidak bisa paraf?" → masukkan PIN `123456`
 - Alokasi pagi melebihi target lebih dari 20% → naik ke Finance, stok belum berpindah
 
 Yang terakhir itu penting: tanpa aturan tersebut, gerbang approval Finance bisa dilewati begitu
@@ -231,4 +231,4 @@ kecil, bukan shared hosting.
 | "Tidak dapat menghubungi server" (pada build hosting) | Tiga baris `DB_*` belum diisi |
 | "Nomor HP atau kata sandi salah" | `soul_coffee_full.sql` belum diimpor, jadi belum ada user |
 | Daftar kosong setelah login | Normal untuk database bersih — mulai dari langkah 1 |
-| "Anda tidak bertugas di gerobak ini hari ini" | Penugasan staff hanya untuk tanggal seed. Administrator perlu membuat penugasan hari ini. |
+| "Anda tidak bertugas di gerobak ini hari ini" | Penugasan rider hanya untuk tanggal seed. Administrator perlu membuat penugasan hari ini. |

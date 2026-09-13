@@ -12,7 +12,7 @@ use Illuminate\Routing\Controllers\Middleware;
 /**
  * Where the phone reports itself from.
  *
- * Staff only: the trail exists to explain a cart's day, and a rider's or barista's route is not
+ * Rider only: the trail exists to explain a cart's day, and a runner's or barista's route is not
  * part of that story. Recording everyone's movement because it was easy would be surveillance
  * with no question behind it.
  *

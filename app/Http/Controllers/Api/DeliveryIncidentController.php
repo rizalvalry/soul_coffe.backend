@@ -17,10 +17,10 @@ use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
 
 /**
- * Cups damaged in transit: the rider's report, and Finance's decision about it.
+ * Cups damaged in transit: the runner's report, and Finance's decision about it.
  *
  * Authorisation is per action rather than per controller, because the two acts belong to
- * different people by design — see DeliveryIncidentService. A rider may report and may read
+ * different people by design — see DeliveryIncidentService. A runner may report and may read
  * their own reports; only Finance or an Administrator may decide.
  */
 class DeliveryIncidentController extends Controller
@@ -39,8 +39,8 @@ class DeliveryIncidentController extends Controller
     /**
      * What the caller is entitled to see.
      *
-     * Scoped at the QUERY, never by filtering a response (docs/02 §2.1): a rider sees their own
-     * reports, a staff member the ones on their own deliveries, and Finance/Administrator all of
+     * Scoped at the QUERY, never by filtering a response (docs/02 §2.1): a runner sees their own
+     * reports, a rider the ones on their own deliveries, and Finance/Administrator all of
      * them. Anyone else gets an empty list rather than a 403 — there is nothing secret about the
      * existence of the endpoint, only about the rows.
      */
@@ -67,7 +67,7 @@ class DeliveryIncidentController extends Controller
     public function store(StoreDeliveryIncidentRequest $request, RefillRequest $refill): JsonResponse
     {
         if ($request->user()->role !== Role::RIDER) {
-            abort(403, 'Hanya rider yang melaporkan insiden pengiriman.');
+            abort(403, 'Hanya runner yang melaporkan insiden pengiriman.');
         }
 
         $incident = $this->incidents->report(

@@ -18,7 +18,7 @@ use RuntimeException;
  * Setoran — Finance receiving the day's money and settling the cups that came back.
  *
  * FINANCE AND ADMINISTRATOR ONLY. This is the money desk: the person receiving a deposit is the
- * one recording it, and a staff member recording their own would be the whole control gone.
+ * one recording it, and a rider recording their own would be the whole control gone.
  *
  * Four endpoints, matching the four things that happen at the desk:
  *   queue    — who is still waiting to deposit;

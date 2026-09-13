@@ -11,7 +11,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 /**
  * The `user` object shape shared by `POST /auth/login` and `GET /me` (docs/04).
  *
- * `cart_code`/`cart_id` are read from today's staff_assignments row (STAFF only);
+ * `cart_code`/`cart_id` are read from today's staff_assignments row (RIDER only);
  * `kitchen_name`/`kitchen_id` from `users.kitchen_id` (BARISTA only). Both stay null for
  * every other role — matching the contract's `"kitchen_name": null` example for a STAFF user.
  */

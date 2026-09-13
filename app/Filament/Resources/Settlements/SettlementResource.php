@@ -17,7 +17,7 @@ use UnitEnum;
 /**
  * "Setoran Harian" — the money each cart handed in, and what happened to the cups left over.
  *
- * The deposit itself is taken on the phone, at the desk, with the staff member standing there.
+ * The deposit itself is taken on the phone, at the desk, with the rider standing there.
  * This is where it is read: per day, per cart, with the gap between what the transactions say and
  * what was actually handed over, and the reason somebody typed for it.
  *

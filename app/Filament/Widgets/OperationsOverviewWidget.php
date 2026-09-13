@@ -55,8 +55,8 @@ class OperationsOverviewWidget extends StatsOverviewWidget
                 ->descriptionIcon('heroicon-m-arrow-path')
                 ->color('primary'),
 
-            Stat::make('Staff Absen Hari Ini', sprintf('%d / %d', $s['staff_clocked_in_today'], $s['staff_total_active']))
-                ->description($attendanceRate.'% staff aktif sudah absen')
+            Stat::make('Rider Absen Hari Ini', sprintf('%d / %d', $s['staff_clocked_in_today'], $s['staff_total_active']))
+                ->description($attendanceRate.'% rider aktif sudah absen')
                 ->descriptionIcon('heroicon-m-user-group')
                 ->color($attendanceRate >= 80 ? 'success' : ($attendanceRate >= 50 ? 'warning' : 'danger')),
 

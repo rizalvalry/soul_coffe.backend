@@ -48,7 +48,7 @@ class SalesTable
                     ->sortable(),
 
                 TextColumn::make('staff.name')
-                    ->label('Staff')
+                    ->label('Rider')
                     ->searchable()
                     ->sortable(),
 
@@ -137,7 +137,7 @@ class SalesTable
                     ->searchable(),
 
                 SelectFilter::make('staff_id')
-                    ->label('Staff')
+                    ->label('Rider')
                     ->relationship('staff', 'name')
                     ->searchable()
                     ->preload(),

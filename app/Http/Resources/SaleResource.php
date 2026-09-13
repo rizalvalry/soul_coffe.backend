@@ -10,10 +10,10 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * One sale as the mobile client sees it.
  *
  * `is_suspect` is returned but the app deliberately does not act on it: the flag is for
- * Administrator and Finance, and showing the staff member "you look suspicious" would be both
+ * Administrator and Finance, and showing the rider "you look suspicious" would be both
  * an accusation and a hint about how to avoid the threshold next time.
  *
- * A voided sale is still returned here, not hidden — the staff member's own list is where they
+ * A voided sale is still returned here, not hidden — the rider's own list is where they
  * see their day, and a transaction that vanished with no trace would look like a bug, not a
  * correction they themselves may have made. Every aggregate that feeds money or stock totals
  * (SalesActivityService, SettlementService, StaffLocationService) excludes it instead; this

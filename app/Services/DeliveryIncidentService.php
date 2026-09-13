@@ -82,7 +82,7 @@ class DeliveryIncidentService
             }
 
             if ($locked->rider_id !== $rider->id) {
-                abort(403, 'Anda bukan rider yang mengambil request ini.');
+                abort(403, 'Anda bukan runner yang mengambil request ini.');
             }
 
             // Only in transit. Before pickup the cups are in the kitchen and this is the

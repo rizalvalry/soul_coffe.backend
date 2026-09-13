@@ -16,9 +16,9 @@ use Illuminate\Routing\Controllers\Middleware;
 use RuntimeException;
 
 /**
- * Sales from a cart, staff-side.
+ * Sales from a cart, rider-side.
  *
- * Staff-only: these are cups leaving the cart the caller is standing at. A barista or rider has
+ * Rider-only: these are cups leaving the cart the caller is standing at. A barista or runner has
  * no cart of their own, and an administrator recording somebody else's sale would be inventing
  * revenue.
  *
@@ -38,7 +38,7 @@ class SaleController extends Controller implements HasMiddleware
     {
         return [
             new Middleware('role:STAFF', only: ['index', 'store']),
-            // Void is reachable by staff (their own sale, inside the window) and by
+            // Void is reachable by rider (their own sale, inside the window) and by
             // Administrator/Finance (any time) — see SaleService::void() for the actual rule.
             // The role check here only decides who reaches the endpoint at all.
             new Middleware('role:STAFF,ADMINISTRATOR,FINANCE', only: ['void']),
@@ -85,7 +85,7 @@ class SaleController extends Controller implements HasMiddleware
     }
 
     /**
-     * Undoes a sale. A staff member may only undo their own, and only inside the configured
+     * Undoes a sale. A rider may only undo their own, and only inside the configured
      * window; Administrator and Finance are not bound by either — see `SaleService::void()` for
      * the full rule, which is what actually enforces this, not the middleware above.
      */

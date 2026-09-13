@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Storage;
 /**
  * One incident as the app sees it.
  *
- * Carries the decision as well as the report, because the rider who filed it needs to know what
+ * Carries the decision as well as the report, because the runner who filed it needs to know what
  * was decided — that is the whole reason they are still standing next to their bike waiting.
  */
 class DeliveryIncidentResource extends JsonResource

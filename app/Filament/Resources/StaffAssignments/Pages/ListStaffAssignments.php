@@ -26,7 +26,7 @@ class ListStaffAssignments extends ListRecords
                 ->color('gray')
                 ->requiresConfirmation()
                 ->modalHeading('Terapkan penugasan kemarin ke hari ini?')
-                ->modalDescription('Staff yang belum punya penugasan hari ini akan disalin dari penugasan kemarin (gerobak dan lokasi yang sama). Staff atau gerobak yang sudah punya penugasan hari ini tidak akan diubah.')
+                ->modalDescription('Rider yang belum punya penugasan hari ini akan disalin dari penugasan kemarin (gerobak dan lokasi yang sama). Rider atau gerobak yang sudah punya penugasan hari ini tidak akan diubah.')
                 ->action(function (StaffAssignmentCarryForwardService $service): void {
                     $result = $service->carryForward();
 
@@ -34,7 +34,7 @@ class ListStaffAssignments extends ListRecords
                         ->success()
                         ->title('Penugasan hari ini diperbarui')
                         ->body(sprintf(
-                            '%d penugasan baru dibuat. %d staff sudah punya penugasan, %d gerobak sudah dipakai, %d staff tidak aktif — semuanya dilewati.',
+                            '%d penugasan baru dibuat. %d rider sudah punya penugasan, %d gerobak sudah dipakai, %d rider tidak aktif — semuanya dilewati.',
                             $result['created'],
                             $result['skipped_user_conflict'],
                             $result['skipped_cart_conflict'],

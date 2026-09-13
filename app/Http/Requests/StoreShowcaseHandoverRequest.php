@@ -7,7 +7,7 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 /**
- * `POST /showcase/hand-to-cart` — the barista's Add Stock form: pick a gerobak, pick the staff
+ * `POST /showcase/hand-to-cart` — the barista's Add Stock form: pick a gerobak, pick the rider
  * on it, type the cups, and the day's money is already filled in.
  *
  * Deliberately does NOT require the cart to be on today's roster first. That is the point of the

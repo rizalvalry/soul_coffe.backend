@@ -106,17 +106,17 @@ class UserForm
                     // hashing twice would produce a hash of a hash that no login can match.
 
                 TextInput::make('pin_hash')
-                    ->label('PIN Staff')
+                    ->label('PIN Rider')
                     ->password()
                     ->revealable()
                     ->numeric()
                     ->minLength(6)
                     ->maxLength(6)
-                    ->helperText('6 digit. Dipakai Rider sebagai jalur cadangan saat HP staff mati (E7). Kosongkan bila tidak diubah.')
+                    ->helperText('6 digit. Dipakai Runner sebagai jalur cadangan saat HP rider mati (E7). Kosongkan bila tidak diubah.')
                     // Only STAFF carries a PIN -- see UserSeeder, which sets pin_hash for STAFF only.
                     ->visible(fn (Get $get): bool => $get('role') === Role::STAFF->value)
                     // Never render the stored hash back into the box: an admin who opened the
-                    // record and pressed Save would otherwise re-hash the hash, and the staff
+                    // record and pressed Save would otherwise re-hash the hash, and the rider
                     // member's real PIN would stop working with no visible cause.
                     ->formatStateUsing(fn (): ?string => null)
                     ->dehydrated(fn (?string $state): bool => filled($state))

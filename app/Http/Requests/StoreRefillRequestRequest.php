@@ -6,7 +6,7 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 /**
- * `POST /refills` (docs/04 §Flow B). Authorization (STAFF only) is enforced
+ * `POST /refills` (docs/04 §Flow B). Authorization (RIDER only) is enforced
  * via RefillRequestPolicy::create in the controller, not here — a FormRequest
  * that fails authorize() renders a bare 403 with no policy-specific handling,
  * and this app's 403s are meant to come from Gate::authorize().

@@ -26,7 +26,7 @@ use RuntimeException;
  * The cart the cups come from need not be assigned to anyone today — Finance may pick an idle
  * cart sitting at the kitchen just as freely as one a rider has mangkal'd in front of the office
  * with. There is no absen gate (Finance is not clocking in to sell), no StaffAssignment
- * requirement, and no suspect-quantity flag (that rule was about a staff member's own reported
+ * requirement, and no suspect-quantity flag (that rule was about a rider's own reported
  * sale pattern out in the field, which does not apply to Finance recording a walk-in purchase in
  * front of them). The stock mechanism is otherwise identical: the cups still leave a cart's stock
  * through the same append-only ledger.
@@ -144,7 +144,7 @@ class DirectSaleService
     /**
      * Undoes a direct sale that should never have been recorded. Mirrors SaleService::void()
      * closely, with one deliberate simplification: since only Administrator and Finance ever
-     * create or void a direct sale, there is no staff-ownership case and no time window — both
+     * create or void a direct sale, there is no rider-ownership case and no time window — both
      * may void at any time. The settlement boundary is unchanged: once the cart's cups for that
      * date have already been reconciled, a correction goes through Stock Opname instead, for
      * exactly the reason SaleService::void() explains.

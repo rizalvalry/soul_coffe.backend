@@ -314,6 +314,6 @@ class AbsenGeofenceTest extends TestCase
     {
         $this->absen(['gps_lat' => self::KITCHEN_LAT, 'gps_lng' => self::KITCHEN_LNG])
             ->assertStatus(422)
-            ->assertJsonPath('message', fn (string $m): bool => str_contains($m, 'Absen staff belum dibuka'));
+            ->assertJsonPath('message', fn (string $m): bool => str_contains($m, 'Absen rider belum dibuka'));
     }
 }

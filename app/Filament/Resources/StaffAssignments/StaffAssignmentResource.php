@@ -27,7 +27,7 @@ class StaffAssignmentResource extends Resource
 
     protected static string|UnitEnum|null $navigationGroup = 'Operasional';
 
-    protected static ?string $navigationLabel = 'Penugasan Staff';
+    protected static ?string $navigationLabel = 'Penugasan Rider';
 
     protected static ?string $modelLabel = 'Penugasan';
 

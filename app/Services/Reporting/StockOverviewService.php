@@ -12,7 +12,7 @@ use Illuminate\Support\Collection;
  * Where every cup currently is: still in a kitchen showcase, or already out on a cart.
  *
  * The panel had no answer to "how many cups exist right now" — the barista could see their own
- * kitchen from the phone and each staff member their own cart, but nobody could see the total
+ * kitchen from the phone and each rider their own cart, but nobody could see the total
  * before it was divided up. That is the number a production team plans against.
  *
  * Computed from `stock_ledger` (R6: append-only, stock is SUM(qty_delta), never a counter), so

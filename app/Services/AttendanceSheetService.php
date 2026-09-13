@@ -16,14 +16,14 @@ use Illuminate\Support\Collection;
  * TWO SOURCES, ONE CELL
  * ---------------------
  * Presence is not typed in for anyone who can clock in. `attendances` already holds what Barista
- * and Staff recorded from their own phones (server clock, R16), so an M appears on this sheet by
+ * and Rider recorded from their own phones (server clock, R16), so an M appears on this sheet by
  * itself the moment they absen — that was the whole point of building the mobile absen flow, and
  * the first version of this report ignored it, which meant the office was re-typing facts the
  * system already had.
  *
  * A hand-entered `attendance_marks` row WINS over the derived M, because the codes it carries are
- * things no clock-in can express: libur, sakit, berangkat siang, or presence for RIDER — a role
- * that cannot absen from the app at all (AttendanceService::CLOCKING_ROLES is Barista and Staff
+ * things no clock-in can express: libur, sakit, berangkat siang, or presence for RUNNER — a role
+ * that cannot absen from the app at all (AttendanceService::CLOCKING_ROLES is Barista and Rider
  * only). Clearing a mark does not erase a clock-in; the cell simply falls back to what the person
  * actually recorded. You can annotate the fact, not delete it.
  *

@@ -6,7 +6,7 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 /**
- * `POST /refills/{id}/deliver` — multipart (RIDER). `lines` arrives as a JSON
+ * `POST /refills/{id}/deliver` — multipart (RUNNER). `lines` arrives as a JSON
  * string in the multipart body (there is no multipart array-of-objects
  * encoding the mobile client can rely on); prepareForValidation() decodes it
  * once so the rest of validation and the controller both see a plain array.
@@ -17,7 +17,7 @@ use Illuminate\Validation\Rule;
  * static rule duplicated per signature_method.
  *
  * WHAT CHANGED ON 2026-09-10: the handover PHOTO is required and the SIGNATURE is optional. It
- * used to be the other way round. A signature field with `required` on it meant a rider standing
+ * used to be the other way round. A signature field with `required` on it meant a runner standing
  * in the street with a crate in one hand could not close a delivery that had plainly happened,
  * while the artefact that would actually settle a dispute — a picture of the cups being handed
  * over — was not collected at all.
@@ -72,8 +72,8 @@ class DeliverRefillRequestRequest extends FormRequest
             // checked in RefillRequestStateMachine::deliver().
             'handover_media_id' => ['required', 'integer', Rule::exists('media', 'id')->where('kind', 'handover')],
 
-            // Now optional — a rider who has the staff member's signature may still record it,
-            // and a rider who does not is no longer blocked from completing a delivery that
+            // Now optional — a runner who has the rider's signature may still record it,
+            // and a runner who does not is no longer blocked from completing a delivery that
             // demonstrably happened. Absent means "no signature was taken", which is a fact the
             // row records rather than a gap to be filled with a placeholder.
             'signature' => ['nullable', 'file', 'mimes:png', 'max:5120'],

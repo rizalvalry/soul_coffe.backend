@@ -7,7 +7,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 
 /**
- * Clones yesterday's staff roster onto today. Scheduled for 00:00 in routes/console.php,
+ * Clones yesterday's rider roster onto today. Scheduled for 00:00 in routes/console.php,
  * alongside soul:seed-daily-allowances.
  */
 class CarryForwardStaffAssignments extends Command
@@ -15,7 +15,7 @@ class CarryForwardStaffAssignments extends Command
     protected $signature = 'soul:carry-forward-staff-assignments
                             {--date= : Operating date (Y-m-d), defaults to today}';
 
-    protected $description = "Copy yesterday's staff-cart-location roster onto today for every staff member without a row yet";
+    protected $description = "Copy yesterday's rider-cart-location roster onto today for every rider without a row yet";
 
     public function handle(StaffAssignmentCarryForwardService $carryForward): int
     {
@@ -26,7 +26,7 @@ class CarryForwardStaffAssignments extends Command
         $result = $carryForward->carryForward($date);
 
         $this->info(sprintf(
-            'Penugasan staff %s: %d dibuat, %d staff sudah punya penugasan (dilewati), %d gerobak sudah ada penugasannya (dilewati), %d staff tidak aktif (dilewati).',
+            'Penugasan rider %s: %d dibuat, %d rider sudah punya penugasan (dilewati), %d gerobak sudah ada penugasannya (dilewati), %d rider tidak aktif (dilewati).',
             $date->toDateString(),
             $result['created'],
             $result['skipped_user_conflict'],

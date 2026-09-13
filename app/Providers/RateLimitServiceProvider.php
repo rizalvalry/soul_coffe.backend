@@ -22,7 +22,7 @@ use Illuminate\Support\ServiceProvider;
  *
  * 2. **The client IP is not the client.** This API is served through Cloudflare and the app does
  *    not declare trusted proxies, so `$request->ip()` is an edge address shared by every phone in
- *    the fleet. An IP-keyed limit is therefore closer to a global limit: one staff member
+ *    the fleet. An IP-keyed limit is therefore closer to a global limit: one rider
  *    fat-fingering their PIN would throttle everyone else at the same time.
  *
  * Both are fixed by keying on the ACCOUNT being targeted (the normalised phone) alongside the IP.

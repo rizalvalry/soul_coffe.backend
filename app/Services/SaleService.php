@@ -34,7 +34,7 @@ use RuntimeException;
  *
  * 4. **Suspect is a FLAG, never a veto.** A large single transaction is recorded in full and then
  *    reported to Administrator and Finance. This was explicit in the request and it is also the
- *    only defensible design: refusing the sale would punish the honest staff member in a busy
+ *    only defensible design: refusing the sale would punish the honest rider in a busy
  *    hour, and a dishonest one would simply split it into two taps.
  *
  * The price is pinned per line at sale time, the way R10 pins refill cost: a price change next
@@ -65,7 +65,7 @@ class SaleService
         ?Carbon $operatingDate = null,
     ): Sale {
         if ($staff->role !== Role::STAFF) {
-            throw new RuntimeException('Hanya staff yang mencatat penjualan gerobak.');
+            throw new RuntimeException('Hanya rider yang mencatat penjualan gerobak.');
         }
 
         $date = ($operatingDate ?? Carbon::today())->startOfDay();

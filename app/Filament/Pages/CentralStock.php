@@ -16,7 +16,7 @@ use UnitEnum;
  * "Stok Terpusat" — every cup that exists right now, before and after it is divided up.
  *
  * The panel could not answer this before. A barista saw their own kitchen from the phone and each
- * staff member their own cart, so the only way to know the company total was to add up screens by
+ * rider their own cart, so the only way to know the company total was to add up screens by
  * hand. Production plans against that total.
  *
  * Read-only by nature: stock moves by brewing, handing over, refilling and closing out — never by

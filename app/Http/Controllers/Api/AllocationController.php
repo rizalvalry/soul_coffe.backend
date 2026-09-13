@@ -22,8 +22,8 @@ use Illuminate\Routing\Controllers\Middleware;
  *
  * Role gates are declared here via HasMiddleware rather than in routes/api.php (owned by
  * another workstream): `today`/`store`/`kitchenStock` are barista-only per the contract's
- * "(BARISTA)" heading; `mine`/`myStock` are staff-only. `show` has no route-wide role gate —
- * a Staff caller may view their OWN allocation, which is a per-record check the route-level
+ * "(BARISTA)" heading; `mine`/`myStock` are rider-only. `show` has no route-wide role gate —
+ * a Rider caller may view their OWN allocation, which is a per-record check the route-level
  * gate cannot express, so it is delegated to DailyAllocationPolicy instead.
  */
 class AllocationController extends Controller implements HasMiddleware
@@ -64,7 +64,7 @@ class AllocationController extends Controller implements HasMiddleware
         return new AllocationResource($allocation->load('lines.product', 'cart', 'staff', 'location'));
     }
 
-    /** The digital *Surat Pengambilan Barang* for the calling staff member, today. */
+    /** The digital *Surat Pengambilan Barang* for the calling rider, today. */
     public function mine(Request $request): JsonResponse
     {
         $allocation = DailyAllocation::query()

@@ -18,7 +18,7 @@ class SaleInfolist
                     ->schema([
                         TextEntry::make('occurred_at')->label('Waktu')->dateTime('d M Y H:i:s'),
                         TextEntry::make('cart.code')->label('Gerobak')->badge(),
-                        TextEntry::make('staff.name')->label('Staff'),
+                        TextEntry::make('staff.name')->label('Rider'),
                         TextEntry::make('location.name')->label('Area')->placeholder('-'),
                         TextEntry::make('total_qty')->label('Total cups'),
                         TextEntry::make('total_amount_minor')

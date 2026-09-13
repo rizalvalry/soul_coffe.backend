@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Gate;
 /**
  * `GET/POST /refills` (docs/04 §Flow B). Role scoping (§2.2) is applied at
  * the query level here — never by filtering an already-fetched collection —
- * so a Staff or Barista token can never even receive another cart/kitchen's
+ * so a Rider or Barista token can never even receive another cart/kitchen's
  * rows over the wire.
  */
 class RefillRequestController extends Controller

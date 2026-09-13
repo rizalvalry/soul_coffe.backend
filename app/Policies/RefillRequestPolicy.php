@@ -68,7 +68,7 @@ class RefillRequestPolicy
 
     public function claim(User $user, RefillRequest $refill): bool
     {
-        // Self-claim from the shared pool (Q4) — any rider may attempt; the
+        // Self-claim from the shared pool (Q4) — any runner may attempt; the
         // state machine's atomic UPDATE decides who actually wins (E2).
         return $user->role === Role::RIDER;
     }

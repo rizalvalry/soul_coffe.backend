@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Auth;
 use UnitEnum;
 
 /**
- * "Aktivitas Staff" — where each cart is, and what it has sold there today.
+ * "Aktivitas Rider" — where each cart is, and what it has sold there today.
  *
  * TWO QUESTIONS, ONE SCREEN
  * -------------------------
@@ -48,9 +48,9 @@ class StaffActivity extends Page
 
     protected static string|UnitEnum|null $navigationGroup = 'Operasional';
 
-    protected static ?string $navigationLabel = 'Aktivitas Staff';
+    protected static ?string $navigationLabel = 'Aktivitas Rider';
 
-    protected static ?string $title = 'Aktivitas Staff';
+    protected static ?string $title = 'Aktivitas Rider';
 
     protected static ?int $navigationSort = 5;
 

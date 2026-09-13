@@ -28,7 +28,7 @@ use RuntimeException;
  * The showcase flow, barista-side (docs: see CentralStockService).
  *
  * Barista-only throughout: brewing, handing cups to a cart, and sorting what comes back are all
- * kitchen-side acts. Staff read their own cart's stock through `GET /me/stock`, which already
+ * kitchen-side acts. Rider read their own cart's stock through `GET /me/stock`, which already
  * exists and already reads the same ledger, so nothing here is duplicated for them.
  *
  * Business-rule failures come out of the service as RuntimeException and are translated to 422
@@ -172,11 +172,11 @@ class ShowcaseStockController extends Controller implements HasMiddleware
     }
 
     /**
-     * Staff the barista can hand a cart to.
+     * Rider the barista can hand a cart to.
      *
-     * Deliberately NOT `/allocations/today`'s staff-on-shift list, which only returns people who
+     * Deliberately NOT `/allocations/today`'s rider-on-shift list, which only returns people who
      * already have an assignment: this form exists precisely for the case where nobody has been
-     * assigned yet, so filtering by assignment would hide exactly the staff the barista needs.
+     * assigned yet, so filtering by assignment would hide exactly the rider the barista needs.
      *
      * `assigned_cart_code` is included so the UI can show at a glance who is already placed
      * today — R11 makes picking them a conflict, and saying so in the list is kinder than a 422

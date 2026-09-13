@@ -109,7 +109,7 @@ class CentralStockService
         $this->assertBarista($barista);
 
         if ($staff->role !== Role::STAFF) {
-            throw new RuntimeException('Penerima gerobak harus staff.');
+            throw new RuntimeException('Penerima gerobak harus rider.');
         }
 
         $rows = $this->normalizeQuantities($qtyByProductId);

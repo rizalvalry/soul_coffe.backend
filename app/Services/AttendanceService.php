@@ -48,7 +48,7 @@ class AttendanceService
 
         if ($user->role === Role::STAFF && ! $this->isStaffWindowOpen($operatingDate)) {
             throw new RuntimeException(
-                'Absen staff belum dibuka. Tunggu barista membuka absen setelah kopi siap.'
+                'Absen rider belum dibuka. Tunggu barista membuka absen setelah kopi siap.'
             );
         }
 
@@ -106,7 +106,7 @@ class AttendanceService
     }
 
     /**
-     * Barista opens the day's absen for every staff member.
+     * Barista opens the day's absen for every rider.
      *
      * Requires the barista to have clocked in first, and not as ceremony: "open absen" asserts
      * that the coffee is ready, which is only meaningful coming from someone who has actually
@@ -117,7 +117,7 @@ class AttendanceService
         $date = ($operatingDate ?? Carbon::today())->toDateString();
 
         if ($barista->role !== Role::BARISTA) {
-            throw new RuntimeException('Hanya barista yang dapat membuka absen staff.');
+            throw new RuntimeException('Hanya barista yang dapat membuka absen rider.');
         }
 
         $hasClockedIn = Attendance::query()
@@ -126,7 +126,7 @@ class AttendanceService
             ->exists();
 
         if (! $hasClockedIn) {
-            throw new RuntimeException('Absen dulu sebelum membuka absen staff.');
+            throw new RuntimeException('Absen dulu sebelum membuka absen rider.');
         }
 
         return DB::transaction(function () use ($barista, $date): StaffAttendanceWindow {
@@ -143,7 +143,7 @@ class AttendanceService
             if ($window->wasRecentlyCreated) {
                 $this->events->publish(
                     'StaffAttendanceWindowOpened',
-                    'Absen staff dibuka',
+                    'Absen rider dibuka',
                     sprintf('%s sudah membuka absen. Silakan absen untuk mulai bertugas.', $barista->name),
                     ['role.STAFF', 'role.ADMINISTRATOR'],
                     $this->clockingStaffIds(),

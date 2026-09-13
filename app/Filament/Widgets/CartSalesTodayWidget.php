@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Auth;
  * at Pulomas moving?"), and a bar chart of eight carts answers that worse than eight rows do.
  * The charts above it already carry the trend.
  *
- * Reads SalesActivityService, the same service behind the Aktivitas Staff page, so the dashboard
+ * Reads SalesActivityService, the same service behind the Aktivitas Rider page, so the dashboard
  * and that page can never disagree about the same day.
  */
 class CartSalesTodayWidget extends Widget

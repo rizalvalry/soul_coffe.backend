@@ -13,7 +13,7 @@ return [
     // E6: an evidence photo's sha256 may not repeat within this rolling window.
     'evidence_dedupe_days' => (int) env('SOUL_EVIDENCE_DEDUPE_DAYS', 7),
 
-    // A re-upload of identical bytes by the same staff member within this window is treated as
+    // A re-upload of identical bytes by the same rider within this window is treated as
     // a retry of one upload, not a reused photo — the mobile client retries when the connection
     // drops before the response lands. Kept far shorter than the dedupe window above: it must
     // cover a handful of retries, never a second submit.
@@ -31,7 +31,7 @@ return [
     // here because this is the shared tunables file for both flows.
     'allocation_over_target_tolerance' => (int) env('SOUL_ALLOCATION_OVER_TARGET_TOLERANCE', 20),
 
-    // Daily operational allowance per cart (uang makan/minum staff), in whole rupiah per R9.
+    // Daily operational allowance per cart (uang makan/minum rider), in whole rupiah per R9.
     // Written once per cart per operating day by `soul:seed-daily-allowances` at 00:00 and
     // pre-filled — still editable — in the barista's Add Stock form, so the usual case needs
     // no typing at all.
@@ -39,8 +39,8 @@ return [
 
     // How the allowance above is treated in the money reports.
     //
-    // false (default) = biaya operasional: company expense, outside the staff's settlement.
-    // true            = counted into Settlement.expected_total_minor, i.e. money the staff is
+    // false (default) = biaya operasional: company expense, outside the rider's settlement.
+    // true            = counted into Settlement.expected_total_minor, i.e. money the rider is
     //                   accountable for at day-end reconciliation.
     //
     // This is deliberately a switch rather than something baked into how the allowance is
@@ -61,7 +61,7 @@ return [
     // reads.
     'sale_suspect_qty_threshold' => (int) env('SOUL_SALE_SUSPECT_QTY_THRESHOLD', 15),
 
-    // A staff member may void their OWN sale within this many minutes of making it — long enough
+    // A rider may void their OWN sale within this many minutes of making it — long enough
     // to correct a mis-tap while the customer is still there, short enough that it cannot be used
     // to quietly erase a shift's revenue after the fact. Administrator and Finance are not bound
     // by this window (see SaleService::void()).
@@ -80,7 +80,7 @@ return [
     // fix would otherwise mean nobody can start their shift.
     'absen_requires_gps' => (bool) env('SOUL_ABSEN_REQUIRES_GPS', true),
 
-    // ── Aktivitas staff (GPS trail) ────────────────────────────────────────────────────────────
+    // ── Aktivitas rider (GPS trail) ────────────────────────────────────────────────────────────
     //
     // A background ping is kept when either this much time has passed since the last stored one,
     // or the phone has moved at least this far. Both filters exist so that a phone standing at a
@@ -93,7 +93,7 @@ return [
     // long dead spot must not be able to post an unbounded array.
     'location_ping_max_batch' => (int) env('SOUL_LOCATION_PING_MAX_BATCH', 50),
 
-    // How recent a ping must be for the map to call a staff member "live" rather than showing a
+    // How recent a ping must be for the map to call a rider "live" rather than showing a
     // last known position. Anything older is labelled, never silently presented as current.
     'location_stale_minutes' => (int) env('SOUL_LOCATION_STALE_MINUTES', 10),
 

@@ -308,7 +308,7 @@ class CentralStockTest extends TestCase
     public function test_the_receiving_user_must_be_staff(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('harus staff');
+        $this->expectExceptionMessage('harus rider');
 
         $this->service->handToCart($this->barista, $this->cart, $this->barista, [$this->product->id => 5]);
     }

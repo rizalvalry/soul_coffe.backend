@@ -15,9 +15,9 @@ use Illuminate\Routing\Controllers\Middleware;
 use RuntimeException;
 
 /**
- * Absen — the barista/staff clock-in and the gate between them.
+ * Absen — the barista/rider clock-in and the gate between them.
  *
- * `status` is the endpoint the mobile app leans on hardest: it is what decides whether the staff
+ * `status` is the endpoint the mobile app leans on hardest: it is what decides whether the rider
  * absen button renders enabled or disabled, so it answers "can I press this, and if not why" in
  * one call rather than making the client infer it from a 422.
  */
@@ -66,7 +66,7 @@ class AttendanceController extends Controller implements HasMiddleware
             ->setStatusCode($attendance->wasRecentlyCreated ? 201 : 200);
     }
 
-    /** Barista opens absen for every staff member today. */
+    /** Barista opens absen for every rider today. */
     public function open(Request $request): JsonResponse
     {
         try {
@@ -111,7 +111,7 @@ class AttendanceController extends Controller implements HasMiddleware
 
                 'staff_window_open' => $windowOpen,
 
-                // A barista may always absen. A staff member may only once the gate is open —
+                // A barista may always absen. A rider may only once the gate is open —
                 // and either way, not twice.
                 'can_clock_in' => match (true) {
                     $hasClockedIn => false,
@@ -150,7 +150,7 @@ class AttendanceController extends Controller implements HasMiddleware
     }
 
     /**
-     * Today's roll call. Barista and staff both see it — knowing who is already on shift is
+     * Today's roll call. Barista and rider both see it — knowing who is already on shift is
      * ordinary shift information, not something to gate.
      */
     public function index(Request $request): JsonResponse

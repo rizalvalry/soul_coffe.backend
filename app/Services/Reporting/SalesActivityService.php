@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
  * This is the layer the requested AI insight will eventually consume, so the shape of what comes
  * out matters more than the screens that show it today. Three questions, three methods:
  *
- *   perCart()   — the dashboard list: every cart's day, at its own location, with its staff.
+ *   perCart()   — the dashboard list: every cart's day, at its own location, with its rider.
  *   areaHours() — the engagement grid: area × hour of day, in cups. "Pulomas is busy at 09:00,
  *                 Cempaka Mas at 10:00" is a claim about THIS table.
  *   suspects()  — flagged transactions awaiting a human look.

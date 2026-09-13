@@ -21,7 +21,7 @@ class StaffAssignmentsTable
                     ->date('d M Y')
                     ->sortable(),
                 TextColumn::make('user.name')
-                    ->label('Staff')
+                    ->label('Rider')
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('cart.code')

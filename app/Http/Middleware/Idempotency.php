@@ -17,7 +17,7 @@ use Symfony\Component\HttpFoundation\Response;
  * Three cases are handled, and the third is the one that matters most in the field:
  *   1. First call with a key   → execute, store the response, return it
  *   2. Repeat with same key    → return the stored response, never execute twice
- *   3. Repeat WHILE the first is still in flight → 409, because a staff member on a bad
+ *   3. Repeat WHILE the first is still in flight → 409, because a rider on a bad
  *      connection who taps twice must not create two refill requests. A lock, not a check,
  *      is what makes this safe: two simultaneous requests would both miss a plain cache read.
  */

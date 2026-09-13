@@ -18,8 +18,8 @@ use UnitEnum;
 /**
  * "Insiden Pengiriman" — the decision desk for cups broken on the way to a cart.
  *
- * A rider reports from the road; somebody here decides. The badge is the notification that
- * matters, because a rider is standing next to their bike waiting for the answer: a count of
+ * A runner reports from the road; somebody here decides. The badge is the notification that
+ * matters, because a runner is standing next to their bike waiting for the answer: a count of
  * open reports sits beside the menu item in danger red on every page of the panel.
  *
  * No create and no edit. An incident is a report from the field with a photograph attached, and
@@ -75,7 +75,7 @@ class DeliveryIncidentResource extends Resource
 
     public static function getNavigationBadgeTooltip(): ?string
     {
-        return 'Rider menunggu keputusan: batalkan pengantaran atau lanjut sebagian';
+        return 'Runner menunggu keputusan: batalkan pengantaran atau lanjut sebagian';
     }
 
     public static function getRelations(): array

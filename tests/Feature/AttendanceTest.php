@@ -59,7 +59,7 @@ class AttendanceTest extends TestCase
     public function test_staff_cannot_clock_in_before_a_barista_opens_the_gate(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Absen staff belum dibuka');
+        $this->expectExceptionMessage('Absen rider belum dibuka');
 
         $this->service->clockIn($this->staff);
     }
@@ -67,7 +67,7 @@ class AttendanceTest extends TestCase
     public function test_a_barista_cannot_open_the_gate_before_clocking_in_themselves(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Absen dulu sebelum membuka absen staff');
+        $this->expectExceptionMessage('Absen dulu sebelum membuka absen rider');
 
         $this->service->openStaffWindow($this->barista);
     }
@@ -146,7 +146,7 @@ class AttendanceTest extends TestCase
         $this->assertFalse($this->service->isStaffWindowOpen(now()));
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Absen staff belum dibuka');
+        $this->expectExceptionMessage('Absen rider belum dibuka');
 
         $this->service->clockIn($this->staff);
     }

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
- * A rider's report that cups were damaged in transit. See the migration for why this is its own
+ * A runner's report that cups were damaged in transit. See the migration for why this is its own
  * record rather than a refill status.
  */
 class DeliveryIncident extends Model

@@ -154,10 +154,10 @@ class DashboardMetricsService
     }
 
     /**
-     * Attendance rate per day — clocked-in STAFF divided by active STAFF headcount AT THAT TIME.
+     * Attendance rate per day — clocked-in RIDER divided by active RIDER headcount AT THAT TIME.
      *
      * Uses TODAY's active headcount as the denominator for every day in the window rather than
-     * reconstructing historical headcount (nothing records when a staff account was activated),
+     * reconstructing historical headcount (nothing records when a rider account was activated),
      * so a rate over 100% is possible right after someone is deactivated and is a known,
      * documented approximation rather than a silent error.
      *

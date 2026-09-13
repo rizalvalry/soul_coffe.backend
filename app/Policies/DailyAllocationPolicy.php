@@ -12,12 +12,12 @@ use App\Models\User;
  * Route-wide "is this role even allowed to hit this endpoint" checks live in
  * AllocationController::middleware() (EnsureRole) — that answers a question that is the
  * same for every request to that action. This policy answers the question EnsureRole
- * structurally cannot: "does THIS caller own or oversee THIS specific record". A Staff
- * member scoped to their own cart is the only role where the two questions diverge.
+ * structurally cannot: "does THIS caller own or oversee THIS specific record". A Rider
+ * scoped to their own cart is the only role where the two questions diverge.
  */
 class DailyAllocationPolicy
 {
-    /** Who may see the full staff-on-shift roster (the barista's allocation worksheet). */
+    /** Who may see the full rider-on-shift roster (the barista's allocation worksheet). */
     public function viewAny(User $user): bool
     {
         return in_array($user->role, [Role::ADMINISTRATOR, Role::FINANCE, Role::BARISTA], true);
@@ -34,7 +34,7 @@ class DailyAllocationPolicy
     {
         return match ($user->role) {
             Role::ADMINISTRATOR, Role::FINANCE, Role::BARISTA => true,
-            // A Staff member may only see the allocation issued to their own cart.
+            // A Rider may only see the allocation issued to their own cart.
             Role::STAFF => $allocation->staff_id === $user->id,
             default => false,
         };

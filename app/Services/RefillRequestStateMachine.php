@@ -556,7 +556,7 @@ class RefillRequestStateMachine
             }
 
             if ($locked->rider_id !== $rider->id) {
-                abort(403, 'Anda bukan rider yang mengambil request ini.');
+                abort(403, 'Anda bukan runner yang mengambil request ini.');
             }
 
             // E8 — only checked when the client supplies who is physically present;
@@ -564,7 +564,7 @@ class RefillRequestStateMachine
             // field isn't in the abbreviated contract sample but is additive.
             $staffId = $data['staff_id'] ?? null;
             if ($staffId !== null && (int) $staffId !== $locked->staff_id) {
-                abort(403, 'Staff tidak sesuai dengan pemohon');
+                abort(403, 'Rider tidak sesuai dengan pemohon');
             }
 
             // The one thing a delivery may not be completed without. Uploaded moments ago via
@@ -601,7 +601,7 @@ class RefillRequestStateMachine
 
                 if (! $staff?->pin_hash || ! Hash::check((string) ($data['staff_pin'] ?? ''), $staff->pin_hash)) {
                     // E7.
-                    throw ValidationException::withMessages(['staff_pin' => ['PIN staff tidak sesuai']]);
+                    throw ValidationException::withMessages(['staff_pin' => ['PIN rider tidak sesuai']]);
                 }
             } elseif ($method === SignatureMethod::STAFF_SIGNATURE) {
                 if (! $signatureFile) {

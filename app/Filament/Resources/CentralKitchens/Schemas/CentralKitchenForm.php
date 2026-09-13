@@ -63,7 +63,7 @@ class CentralKitchenForm
                     ->maxValue(5000)
                     ->default(10)
                     ->required()
-                    ->helperText('Staff dan barista hanya bisa absen dalam radius ini dari titik di atas. Untuk hari yang tidak biasa — event, car free day, mess jauh, jualan di Blok M — buat pengecualian per gerobak di menu Izin Absen.'),
+                    ->helperText('Rider dan barista hanya bisa absen dalam radius ini dari titik di atas. Untuk hari yang tidak biasa — event, car free day, mess jauh, jualan di Blok M — buat pengecualian per gerobak di menu Izin Absen.'),
 
                 TimePicker::make('open_at')
                     ->label('Jam Buka')

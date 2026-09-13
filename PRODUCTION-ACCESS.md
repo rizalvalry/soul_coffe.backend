@@ -12,9 +12,9 @@
 > menerapkannya sekaligus menghapus PIN lama dan mengeluarkan semua sesi pengguna itu.
 >
 > **Diperiksa ulang langsung di server, 2026-09-10:** lima dari enam akun masih **tanpa PIN** dan
-> masuk memakai kata sandi seperti biasa. Satu tidak: **Staff (Mufit) sudah punya PIN**, jadi
+> masuk memakai kata sandi seperti biasa. Satu tidak: **Rider (Mufit) sudah punya PIN**, jadi
 > `POST /auth/login` untuk akun itu menjawab `409 PIN_REQUIRED` dan kata sandinya tidak lagi bisa
-> dipakai. PIN-nya bukan lagi `123456` — dicoba dan ditolak. Untuk menguji layar staff, pakai PIN
+> dipakai. PIN-nya bukan lagi `123456` — dicoba dan ditolak. Untuk menguji layar rider, pakai PIN
 > yang dipegang pemilik akun, atau tombol **"Lupa PIN?"** lalu reset dari menu Permintaan Reset PIN.
 >
 > Satu batas yang disengaja: aturan ini berlaku untuk **API mobile saja**. Panel `/admin` tetap
@@ -53,8 +53,8 @@ yang sama sebelum dicocokkan.
 | Administrator | `0811000001` | `admin123` |
 | Finance | `0811000002` | `finance123` |
 | Barista | `0811000003` | `barista123` |
-| Rider | `0811000004` | `rider123` |
-| Staff (Maufu) | `0811000005` | `staff123` |
+| Runner | `0811000004` | `rider123` |
+| Rider (Maufu) | `0811000005` | `staff123` |
 | Content Creator | `0811000006` | `contentcreator123` |
 
 These are the numbers **actually stored on the live server** — confirmed 2026-09-03 by reading
@@ -64,11 +64,11 @@ that file's current numbering existed, so a fresh local install and this live se
 byte-identical demo numbers. Both normalise and log in the same way; this table is what to type
 against `soulcoffee.rafancloud.com`, not a description of the seeder.
 
-**PIN staff:** ~~`123456`~~ — **tidak berlaku lagi.** Akun Staff (Mufit) memang punya PIN di
+**PIN rider:** ~~`123456`~~ — **tidak berlaku lagi.** Akun Rider (Mufit) memang punya PIN di
 server (diperiksa 2026-09-10), tetapi bukan angka ini; login dengan `123456` ditolak. Lihat catatan
 di bagian atas dokumen ini.
 
-**Staff Maufu bertugas di gerobak `0018`, lokasi Sudirman** — dikonfirmasi langsung dari
+**Rider Maufu bertugas di gerobak `0018`, lokasi Sudirman** — dikonfirmasi langsung dari
 `GET /me` pada akun ini, bukan asumsi dari data seed.
 
 **Content Creator tidak punya akses ke API mobile sama sekali** — satu-satunya pintu masuknya
@@ -103,7 +103,7 @@ keenam ini — belum ada API untuk membuat user baru (lihat bagian "Menambah aku
 
 `npm run apk:verify` 13/13 lolos.
 
-**Beda dari v1.5.1 — dua fitur baru di layar Catat Penjualan (staff):**
+**Beda dari v1.5.1 — dua fitur baru di layar Catat Penjualan (rider):**
 
 1. **Batalkan transaksi (void).** Panel yang mengembang inline di setiap baris riwayat transaksi
    hari itu, dengan alasan wajib diisi. Server yang memutuskan apakah pembatalan masih boleh
@@ -113,10 +113,10 @@ keenam ini — belum ada API untuk membuat user baru (lihat bagian "Menambah aku
 2. **Antrean offline.** Transaksi yang gagal terkirim karena benar-benar tidak ada koneksi
    (bukan ditolak server) disimpan di HP dan otomatis dikirim ulang begitu sinyal kembali, atau
    lewat tombol "Kirim Sekarang". Baris yang masih menunggu tidak pernah menampilkan nilai
-   rupiah — R15 berarti akun STAFF memang tidak pernah tahu harga, online maupun offline. Lihat
+   rupiah — R15 berarti akun RIDER memang tidak pernah tahu harga, online maupun offline. Lihat
    bagian "Antrean Penjualan Offline" di bawah.
 
-Kedua fitur ini murni penambahan di layar staff; tidak ada perubahan pada alur Setoran, Absen,
+Kedua fitur ini murni penambahan di layar rider; tidak ada perubahan pada alur Setoran, Absen,
 atau Pengiriman.
 
 **Beda dari v1.5.0 — dua menu baru:**
@@ -129,16 +129,16 @@ atau Pengiriman.
 
 **Beda v1.5.0 dari v1.4.5 — empat perubahan alur:**
 
-1. **Catat Penjualan** (staff) — tile pertama di menu staff. Cups terjual, cara bayar, simpan;
+1. **Catat Penjualan** (rider) — tile pertama di menu rider. Cups terjual, cara bayar, simpan;
    stok gerobak berkurang otomatis. Wajib absen dulu. Lihat bagian "Penjualan Gerobak" di bawah.
-2. **Lokasi staff dilaporkan** ke CMS selagi aplikasi terbuka (hanya role STAFF), plus titik
-   presisi di setiap transaksi. Lihat "Aktivitas Staff" untuk batasannya yang sebenarnya.
+2. **Lokasi rider dilaporkan** ke CMS selagi aplikasi terbuka (hanya role RIDER), plus titik
+   presisi di setiap transaksi. Lihat "Aktivitas Rider" untuk batasannya yang sebenarnya.
 3. **Pengiriman: foto wajib, tanda tangan opsional.** Tiga bentuk sah — foto saja, foto + paraf,
    foto + PIN. Placeholder PNG 1×1 untuk jalur PIN sudah tidak dipakai lagi.
-4. **Laporkan Insiden** (rider) — foto kerusakan + jumlah rusak per produk. Keputusan lanjut atau
-   batal diambil Finance/Administrator di CMS, bukan oleh rider.
+4. **Laporkan Insiden** (runner) — foto kerusakan + jumlah rusak per produk. Keputusan lanjut atau
+   batal diambil Finance/Administrator di CMS, bukan oleh runner.
 
-Dan dua layar **dihapus**: Alokasi Harian (barista) dan Alokasi Hari Ini (staff) — lihat bagian
+Dan dua layar **dihapus**: Alokasi Harian (barista) dan Alokasi Hari Ini (rider) — lihat bagian
 "Alokasi Harian dihapus dari alur".
 
 **Beda v1.4.5 dari v1.4.4:** tombol **"Tandai Semua Dibaca"** di layar Notifikasi (muncul hanya kalau ada
@@ -160,7 +160,7 @@ dalam APK yang sudah dibuild: `google_app_id` dan `project_id` di resource
 jadi tidak perlu perubahan kode apa pun untuk rilis ini.
 
 Push sudah benar-benar terkirim — sisi server (`FCM_PROJECT_ID`, `FCM_CREDENTIALS_PATH`, file
-service-account) sudah di-deploy dan dibuktikan langsung ke perangkat Rider dan Staff (Mufit) yang
+service-account) sudah di-deploy dan dibuktikan langsung ke perangkat Runner dan Rider (Mufit) yang
 sungguhan terdaftar; lihat bagian "FCM Push Notification" di bawah untuk buktinya.
 
 **Beda dari v1.4.2 — lonceng notifikasi akhirnya ada isinya:** backend (`GET /notifications`),
@@ -172,15 +172,15 @@ ke layar yang relevan.
 
 Sambil memperbaiki itu, ditemukan penyebab kedua kenapa notifikasi terasa tidak real-time: socket
 Pusher sebelumnya hanya tersambung selagi salah satu dari empat layar tertentu (Permintaan Refill
-barista, Approval Finance, Rider, Permintaan Refill staff) sedang dibuka — masing-masing membuka
+barista, Approval Finance, Runner, Permintaan Refill rider) sedang dibuka — masing-masing membuka
 koneksinya sendiri. Kejadian yang terjadi saat pengguna berada di menu utama atau layar lain tidak
 sampai ke mana pun. Socket sekarang tersambung satu kali untuk seluruh sesi (`RealtimeProvider`,
 dipasang di layout utama), sehingga badge dan lonceng ikut hidup di layar mana pun.
 
 Perubahan yang menyertai rilis ini ada di sisi server dan **sudah live tanpa perlu update APK
 sebelumnya**: broadcast Pusher dikirim langsung setelah transaksi commit (bukan lewat antrean
-yang tidak pernah ada yang menjalankan), dan penugasan staff kini disalin otomatis dari hari
-sebelumnya — lihat bagian "Dashboard & Laporan" dan "Penugasan Staff Otomatis" di bawah.
+yang tidak pernah ada yang menjalankan), dan penugasan rider kini disalin otomatis dari hari
+sebelumnya — lihat bagian "Dashboard & Laporan" dan "Penugasan Rider Otomatis" di bawah.
 
 ### v1.4.4 (sebelumnya)
 
@@ -288,7 +288,7 @@ punya perangkat, dan satu-satunya image emulator yang terpasang adalah x86_64, a
 sengaja dibuang dari APK ini. Semua verifikasi di atas dilakukan lewat `curl` langsung ke API dan
 lewat pembongkaran isi APK, bukan dengan menjalankan aplikasinya. Yang paling perlu ditekan saat
 smoke test pertama, karena menyentuh modul native yang tidak tersentuh oleh verifikasi API:
-login, foto refill (kamera), tanda tangan serah terima (WebView), lokasi rider (GPS).
+login, foto refill (kamera), tanda tangan serah terima (WebView), lokasi runner (GPS).
 
 Dua keterbatasan yang sudah diketahui dan didokumentasikan di `soul_coffe.mobile` README ("Real
 backend"): `RefillRequest.location_name` dan `Allocation.barista_name` akan selalu tampil
@@ -404,23 +404,23 @@ tapi jatah harian per gerobak tidak pernah terisi.
 
 ---
 
-## Penugasan Staff Otomatis — ✅ AKTIF
+## Penugasan Rider Otomatis — ✅ AKTIF
 
-"Penugasan Staff" tidak lagi harus diketik ulang setiap hari. `StaffAssignmentCarryForwardService`
+"Penugasan Rider" tidak lagi harus diketik ulang setiap hari. `StaffAssignmentCarryForwardService`
 berjalan pukul 00:00 lewat entri cron yang sama (`schedule:run`) dan menyalin penugasan kemarin
-(staff → gerobak → lokasi) ke hari ini untuk setiap staff yang belum punya baris hari ini.
+(rider → gerobak → lokasi) ke hari ini untuk setiap rider yang belum punya baris hari ini.
 
 Yang **tidak** disalin, dengan sengaja:
-- Staff atau gerobak yang **sudah** punya penugasan hari ini — keputusan manual Administrator
+- Rider atau gerobak yang **sudah** punya penugasan hari ini — keputusan manual Administrator
   tidak pernah ditimpa oleh proses otomatis ini.
-- Staff yang `is_active = false` — akun yang dinonaktifkan semalam tidak ikut ditugaskan lagi
+- Rider yang `is_active = false` — akun yang dinonaktifkan semalam tidak ikut ditugaskan lagi
   besoknya.
-- Gerobak yang bukan `status = active` — gerobak yang sedang maintenance tidak diberi staff.
+- Gerobak yang bukan `status = active` — gerobak yang sedang maintenance tidak diberi rider.
 
 `assigned_by` pada baris hasil salinan tetap menunjuk ke admin yang **aslinya** membuat penugasan
 itu, bukan aktor sistem — keputusan roster yang diulang tetap keputusan orang yang sama.
 
-Di halaman "Penugasan Staff" ada tombol **"Terapkan Penugasan Hari Ini"** untuk menjalankan proses
+Di halaman "Penugasan Rider" ada tombol **"Terapkan Penugasan Hari Ini"** untuk menjalankan proses
 yang sama secara manual, kapan saja — berguna untuk hari deploy pertama (belum ada "kemarin" yang
 sempat berjalan) atau kalau ingin penugasan hari ini langsung terisi tanpa menunggu jam 00:00.
 
@@ -434,11 +434,11 @@ terdaftar di scheduler produksi lewat `php artisan schedule:list` (2026-09-07).
 Dashboard admin (`/admin`, halaman utama setelah login) sekarang menampilkan:
 
 - **4 kartu ringkasan hari ini** — pendapatan (dengan perbandingan ke kemarin), jumlah refill
-  request (dirinci per status), staff yang sudah absen (dari total staff aktif), dan selisih kas.
+  request (dirinci per status), rider yang sudah absen (dari total rider aktif), dan selisih kas.
 - **Tren pendapatan** — grafik garis, 14 hari terakhir.
 - **Volume refill request** — grafik batang, 14 hari terakhir.
 - **Distribusi status refill** — grafik donat, 30 hari terakhir.
-- **Tingkat kehadiran staff** — grafik garis (%), 14 hari terakhir.
+- **Tingkat kehadiran rider** — grafik garis (%), 14 hari terakhir.
 
 Semua angka dihitung oleh satu kelas (`DashboardMetricsService`), diuji langsung terhadap database
 (`tests/Feature/Reporting/DashboardMetricsServiceTest.php`, 8 test) — bukan lewat widget yang sulit
@@ -495,7 +495,7 @@ saat review, dan keduanya sudah dibongkar:
    orang yang sudah diwakili baris tersebut.
 2. **Laporannya mengabaikan absen dari aplikasi.** Tabel `attendances` sudah memuat absen
    sungguhan sejak alur absen mobile jalan, tapi grid itu hanya membaca tabel isian manualnya
-   sendiri — jadi staff yang sudah absen dari HP tetap tampil sel kosong, dan kantor mengetik
+   sendiri — jadi rider yang sudah absen dari HP tetap tampil sel kosong, dan kantor mengetik
    ulang fakta yang sistemnya sudah punya.
 
 Kata **"partner" juga dibebaskan** — bisnis ini membutuhkannya untuk arti yang sebenarnya (mitra,
@@ -506,7 +506,7 @@ Seluruh kelas dan tabelnya kini bernama `Attendance*` / `attendance_marks`.
 
 | Sumber | Kapan dipakai | Tanda di layar |
 |---|---|---|
-| **Absen aplikasi** (`attendances`) | Barista & Staff yang menekan absen sendiri — jam server, R16 | titik tinta kecil di sudut sel; hover memperlihatkan jamnya |
+| **Absen aplikasi** (`attendances`) | Barista & Rider yang menekan absen sendiri — jam server, R16 | titik tinta kecil di sudut sel; hover memperlihatkan jamnya |
 | **Isian manual** (`attendance_marks`) | L/S/T untuk siapa pun, dan **semua** sel role yang tak bisa absen di app | tanpa titik |
 
 Isian manual **menimpa** absen aplikasi, karena libur/sakit/berangkat-siang adalah penilaian yang
@@ -514,8 +514,8 @@ tidak bisa dilaporkan sendiri oleh siapa pun. Sebaliknya, **mengosongkan isian m
 menghapus absennya** — selnya kembali menampilkan M dari aplikasi. Fakta absennya bisa dianotasi,
 tidak bisa dihapus dari sini.
 
-Catatan penting: **RIDER tidak bisa absen dari aplikasi sama sekali** (`CLOCKING_ROLES` hanya
-Barista dan Staff), dan sheet acuan Anda justru sheet RIDER — itulah alasan lembar manual ini
+Catatan penting: **RUNNER tidak bisa absen dari aplikasi sama sekali** (`CLOCKING_ROLES` hanya
+Barista dan Rider), dan sheet acuan Anda justru sheet RUNNER — itulah alasan lembar manual ini
 tetap perlu ada.
 
 Kode selnya sama seperti sheet: **M** hadir, **T** berangkat siang/tidak target, **L** libur,
@@ -594,13 +594,13 @@ membuat izin dan pintu tidak saling bertentangan.
 di bagian Absensi di atas. Sisanya diatur sendiri lewat halaman matriks.
 
 Menu yang sudah masuk matriks: Dashboard, Pengguna & Role, Produk, Gerobak, Lokasi, Dapur Pusat,
-Target Harian, Penugasan Staff, Stok Terpusat, **Penjualan Gerobak**, **Insiden Pengiriman**,
-**Aktivitas Staff**, Laporan Absensi, Laporan & Ekspor, Audit Trail, Permintaan Reset PIN,
+Target Harian, Penugasan Rider, Stok Terpusat, **Penjualan Gerobak**, **Insiden Pengiriman**,
+**Aktivitas Rider**, Laporan Absensi, Laporan & Ekspor, Audit Trail, Permintaan Reset PIN,
 Pengaturan AI.
 
 Empat di antaranya **hanya bisa "Lihat"** karena tidak ada yang bisa dibuat atau diubah di sana:
 Dashboard, Laporan & Ekspor, Audit Trail, Stok Terpusat — ditambah **Penjualan Gerobak** dan
-**Aktivitas Staff**, yang read-only karena keduanya adalah catatan kejadian, bukan formulir.
+**Aktivitas Rider**, yang read-only karena keduanya adalah catatan kejadian, bukan formulir.
 
 Satu pengecualian yang perlu diketahui: **Insiden Pengiriman** ikut matriks dan dua tombol
 keputusannya dikaitkan ke hak **Ubah**, bukan ke hak Lihat. Peran yang hanya diberi "Lihat" bisa
@@ -627,7 +627,7 @@ Project Firebase: `soulcoffee-fb389`. App Android: `1:1067852115776:android:8ed7
 
 **Bukan cuma "config-nya ada" — sudah dibuktikan ujung ke ujung, dan notifikasinya benar-benar
 tampil di layar HP** (dikonfirmasi langsung oleh pemilik akun, 2026-09-07). Alurnya: deploy →
-`device_push_tokens` produksi berisi token asli (Rider dan Staff Mufit, keduanya Android,
+`device_push_tokens` produksi berisi token asli (Runner dan Rider Mufit, keduanya Android,
 terdaftar sendiri oleh APK) → dua pesan uji dikirim lewat `EventPublisher` (jalur bisnis
 sesungguhnya, bukan jalur pintas) ke kedua token Mufit → Google FCM membalas `Sent` untuk
 semuanya → **notifikasi muncul di HP**. `POST /notifications/read-all` juga sudah dicoba lewat
@@ -651,7 +651,7 @@ penyebabnya di sisi perangkat (bukan di sisi server, yang sudah terbukti terkiri
 
 ## Penjualan Gerobak & notifikasi suspect — ✅ AKTIF (2026-09-10)
 
-Staff sekarang mencatat penjualan dari HP: **Catat Penjualan**, tile pertama di menu staff.
+Rider sekarang mencatat penjualan dari HP: **Catat Penjualan**, tile pertama di menu rider.
 Pilih cups, pilih cara bayar, simpan. Stok gerobak berkurang lewat buku besar stok yang sama
 dipakai seluruh sistem (`SALE_OUT`), jadi angka di "Stok Gerobak", "Stok Terpusat", dan laporan
 tidak mungkin berbeda dari transaksi yang membentuknya.
@@ -660,24 +660,24 @@ Empat aturan, dan hanya empat:
 
 1. **Absen dulu.** Menjual adalah bagian dari shift, dan shift dimulai dari absen. Penjualan dari
    orang yang belum absen akan membuat dua laporan saling bertentangan soal pagi yang sama.
-2. **Harus punya gerobak hari ini** (dari Penugasan Staff).
+2. **Harus punya gerobak hari ini** (dari Penugasan Rider).
 3. **Stok harus cukup.** Ditolak dengan nama produk dan sisa sebenarnya — "stok tidak cukup"
    tidak berguna bagi orang yang sedang dikerumuni pembeli.
 4. **Transaksi besar DITANDAI, tidak pernah ditolak.**
 
 Poin 4 sesuai permintaan, dan memang satu-satunya rancangan yang bisa dipertahankan: menolak
-transaksi besar akan menghukum staff jujur di jam ramai, sementara yang tidak jujur cukup
+transaksi besar akan menghukum rider jujur di jam ramai, sementara yang tidak jujur cukup
 membaginya jadi dua tap. Jadi: di atas **15 cups dalam satu transaksi** (bisa diubah lewat
 `SOUL_SALE_SUSPECT_QTY_THRESHOLD`), transaksinya **tetap tercatat penuh**, stok tetap berkurang,
-lalu laporannya dikirim ke **Administrator dan Finance saja** — bukan ke staff lain, dan bukan ke
-staff yang melakukannya. Penandaan bukan tuduhan; ia hanya minta seseorang melihat.
+lalu laporannya dikirim ke **Administrator dan Finance saja** — bukan ke rider lain, dan bukan ke
+rider yang melakukannya. Penandaan bukan tuduhan; ia hanya minta seseorang melihat.
 
 **Pengecualian per gerobak:** Master Data → Gerobak → **"Zona ramai — jangan tandai transaksi
 besar"**. Menyalakannya menghilangkan laporan untuk gerobak itu dan tidak mengubah apa pun soal
 diterima atau tidaknya transaksi.
 
 **Di CMS:** menu **Operasional → Penjualan Gerobak** (`/admin/sales`) — daftar transaksi per
-gerobak/staff/area, dengan filter "Hari ini" dan "Hanya yang perlu ditinjau", jumlah cups dan
+gerobak/rider/area, dengan filter "Hari ini" dan "Hanya yang perlu ditinjau", jumlah cups dan
 nilai yang dijumlahkan otomatis di bawah kolom, dan badge merah di menu berisi jumlah transaksi
 hari ini yang ditandai. **Read-only, dan itu disengaja:** transaksi sudah menggerakkan stok lewat
 buku besar yang append-only, jadi mengeditnya di panel akan membuat dua sumber angka pendapatan
@@ -689,9 +689,9 @@ dengan transaksi, cups, nilai, jumlah yang ditandai, dan jam transaksi terakhir.
 
 ---
 
-## Aktivitas Staff (lokasi GPS) — ✅ AKTIF (2026-09-10)
+## Aktivitas Rider (lokasi GPS) — ✅ AKTIF (2026-09-10)
 
-Menu **Operasional → Aktivitas Staff** (`/admin/staff-activity`) menjawab dua pertanyaan dari satu
+Menu **Operasional → Aktivitas Rider** (`/admin/staff-activity`) menjawab dua pertanyaan dari satu
 tabel jejak: **di mana gerobak sekarang**, dan **area mana yang ramai pada jam berapa**.
 
 Yang kedua adalah alasan fitur ini diminta, dan disajikan sebagai grid **area × jam dalam cups**
@@ -699,15 +699,15 @@ Yang kedua adalah alasan fitur ini diminta, dan disajikan sebagai grid **area ×
 Cempaka Mas jam 10:00". Jamnya diambil dari **jam server** (R16), bukan jam HP, supaya jam di dua
 gerobak berbeda benar-benar bisa dibandingkan. Ini juga bentuk data yang nanti dibaca AI Insight.
 
-Peta menampilkan satu titik per staff: **terisi** = melapor kurang dari 10 menit lalu,
+Peta menampilkan satu titik per rider: **terisi** = melapor kurang dari 10 menit lalu,
 **kosong** = posisi terakhir yang diketahui (dilabeli, bukan disamarkan sebagai posisi sekarang).
-Klik nama staff di tabel → jejak perjalanannya hari itu, dengan titik penjualan dibedakan dari
+Klik nama rider di tabel → jejak perjalanannya hari itu, dengan titik penjualan dibedakan dari
 titik laporan posisi biasa.
 
 **Yang perlu diketahui jujur soal jangkauannya:**
 
 - Aplikasi melapor **saat aplikasi terbuka di depan**, sekitar sekali per menit, **hanya untuk
-  role STAFF**. Tidak ada pelacakan background: itu butuh foreground service, satu izin Android
+  role RIDER**. Tidak ada pelacakan background: itu butuh foreground service, satu izin Android
   tambahan dengan dialognya sendiri, dan notifikasi permanen — tidak ada yang diminta. Jadi
   deskripsi jujurnya: "di mana gerobak berada selagi HP-nya dipegang", **plus titik presisi di
   setiap transaksi** (server merekam koordinat dari transaksinya sendiri).
@@ -724,11 +724,11 @@ titik laporan posisi biasa.
 
 ## Insiden Pengiriman — ✅ AKTIF (2026-09-10)
 
-Rider melaporkan cups yang rusak di jalan; **Finance/Administrator yang memutuskan** — bukan
-rider. Menu **Operasional → Insiden Pengiriman** (`/admin/delivery-incidents`), dengan badge merah
+Runner melaporkan cups yang rusak di jalan; **Finance/Administrator yang memutuskan** — bukan
+runner. Menu **Operasional → Insiden Pengiriman** (`/admin/delivery-incidents`), dengan badge merah
 berisi jumlah laporan yang menunggu keputusan.
 
-Di HP rider, tombol **Laporkan Insiden** ada di kartu pengiriman yang sama: foto kerusakan
+Di HP runner, tombol **Laporkan Insiden** ada di kartu pengiriman yang sama: foto kerusakan
 (wajib), jumlah rusak per produk, catatan. Layarnya sengaja **tidak** menanyakan apa yang harus
 terjadi selanjutnya, dan menyatakan itu apa adanya di layar.
 
@@ -736,14 +736,14 @@ Dua keputusan, karena hanya ada dua hal yang bisa terjadi secara fisik:
 
 | Keputusan | Akibatnya |
 |---|---|
-| **Lanjut sebagian** | Cups rusak dihapus dari stok dapur (`WASTE_OUT`), dan `qty_prepared` baris terkait dikurangi sebanyak itu — jadi rider hanya bisa mencatat cups yang benar-benar sampai (R4 tetap berlaku). Pengantaran berjalan terus. |
-| **Batalkan pengantaran** | Request menjadi `CANCELLED`, rider kembali ke dapur, cups rusak dihapus dari stok dapur. Cups yang masih layak tetap jadi stok dapur — tidak ada yang dikirim. Alasan **wajib** diisi, karena itulah yang dibaca staff pemohon ketika pesanannya tidak datang. |
+| **Lanjut sebagian** | Cups rusak dihapus dari stok dapur (`WASTE_OUT`), dan `qty_prepared` baris terkait dikurangi sebanyak itu — jadi runner hanya bisa mencatat cups yang benar-benar sampai (R4 tetap berlaku). Pengantaran berjalan terus. |
+| **Batalkan pengantaran** | Request menjadi `CANCELLED`, runner kembali ke dapur, cups rusak dihapus dari stok dapur. Cups yang masih layak tetap jadi stok dapur — tidak ada yang dikirim. Alasan **wajib** diisi, karena itulah yang dibaca rider pemohon ketika pesanannya tidak datang. |
 
 Cups rusak dihapus dari **stok dapur**, bukan dari gerobak: perpindahan dapur→gerobak baru
 diposting saat pengiriman selesai, jadi selama di jalan cups itu masih milik dapur.
 
-**Siapa yang diberi tahu:** Administrator, Finance, dapur yang menyeduhnya, rider-nya, dan **staff
-yang menunggu kiriman itu** — lewat channel pribadinya sendiri, bukan `role.STAFF`. Staff di
+**Siapa yang diberi tahu:** Administrator, Finance, dapur yang menyeduhnya, runner-nya, dan **rider
+yang menunggu kiriman itu** — lewat channel pribadinya sendiri, bukan `role.STAFF`. Rider di
 gerobak lain tidak ada urusan dengan kecelakaan di rute orang lain; pengecualian ini diminta
 eksplisit dan diuji langsung (`DeliveryIncidentTest`).
 
@@ -751,7 +751,7 @@ eksplisit dan diuji langsung (`DeliveryIncidentTest`).
 
 ## Bukti serah terima: foto wajib, tanda tangan opsional (2026-09-10)
 
-Dulu terbalik: tanda tangan wajib, foto tidak dikumpulkan sama sekali. Akibatnya rider yang sedang
+Dulu terbalik: tanda tangan wajib, foto tidak dikumpulkan sama sekali. Akibatnya runner yang sedang
 memegang krat di pinggir jalan bisa tidak dapat menutup pengiriman yang jelas-jelas terjadi,
 sementara barang bukti yang benar-benar menyelesaikan sengketa — foto cups saat diserahkan — tidak
 pernah ada.
@@ -759,22 +759,22 @@ pernah ada.
 Sekarang satu pengiriman selesai dalam salah satu dari tiga bentuk, semuanya sah:
 
 - **foto saja** — bentuk normal;
-- **foto + paraf staff** — E24 tetap berlaku: minimal tiga goresan, satu titik tidak dihitung;
-- **foto + PIN staff** (E7) — PIN tetap diverifikasi, dan **tidak lagi butuh** gambar placeholder
+- **foto + paraf rider** — E24 tetap berlaku: minimal tiga goresan, satu titik tidak dihitung;
+- **foto + PIN rider** (E7) — PIN tetap diverifikasi, dan **tidak lagi butuh** gambar placeholder
   1×1 yang dulu harus dikarang aplikasi.
 
 Foto diunggah lebih dulu lewat `POST /api/v1/media/handover`, lalu pengirimannya menyebut id-nya —
 sama seperti foto bukti refill. Alasannya teknis dan spesifik: klien mobile mengirim **satu berkas
 per request** dengan sengaja (encoder multipart React Native menebak `Content-Length` dan menandai
-body-nya tidak bisa diulang, yang dulu muncul ke staff sebagai "Upload gagal" di jaringan
-seluler). Foto yang sudah dipakai untuk satu pengiriman tidak bisa dipakai lagi, dan foto rider
+body-nya tidak bisa diulang, yang dulu muncul ke runner sebagai "Upload gagal" di jaringan
+seluler). Foto yang sudah dipakai untuk satu pengiriman tidak bisa dipakai lagi, dan foto runner
 lain ditolak.
 
 ---
 
 ## "Alokasi Harian" dihapus dari alur (2026-09-10)
 
-Dua layar hilang dari aplikasi: **Alokasi Harian** (barista) dan **Alokasi Hari Ini** (staff),
+Dua layar hilang dari aplikasi: **Alokasi Harian** (barista) dan **Alokasi Hari Ini** (rider),
 beserta **Approval Alokasi** milik Finance.
 
 Alasannya: **Add Stock sudah mencatat fakta yang sama** sebagai efek samping dari hal yang memang
@@ -849,7 +849,7 @@ Pengecualiannya dibatasi tiga cara, karena aturan tanpa jalan keluar yang sah ti
    | Bentuk | Artinya |
    |---|---|
    | **Absen di titik jualan** | Boleh absen dari lokasi berjualan gerobak itu, bukan dari dapur. Untuk gerobak yang memang berdagang jauh, mis. Blok M. |
-   | **Bebas lokasi** | Tanpa geofence sama sekali. Untuk event, car free day, acara berhari-hari, atau mess staff yang jauh. |
+   | **Bebas lokasi** | Tanpa geofence sama sekali. Untuk event, car free day, acara berhari-hari, atau mess rider yang jauh. |
 
    Izin melekat pada **gerobak**, punya tanggal mulai (dan boleh tanpa tanggal selesai), dan
    **alasannya wajib diisi** — itu yang dibaca saat laporan absensi ditinjau.
@@ -874,7 +874,7 @@ gerobak sekali waktu.
 Finance mengetik **tiga angka saja**: Tunai, QRIS/online, Transfer. Sisanya sudah ada di layar
 sebelum siapa pun mengetik — **cups terjual, cups sisa, dan jumlah yang seharusnya diterima**
 menurut transaksi hari itu, dihitung dari buku besar stok dan dari transaksi penjualannya sendiri.
-Meminta antrean staff membacakan angka yang sudah dipegang sistem adalah cara sebuah rekonsiliasi
+Meminta antrean rider membacakan angka yang sudah dipegang sistem adalah cara sebuah rekonsiliasi
 berubah jadi perdebatan soal hitungan.
 
 **Selisih dicatat, bukan ditolak — tapi wajib diberi alasan.** Menolaknya akan mendorong selisihnya
@@ -903,14 +903,14 @@ dan selisihnya ditulis sebagai kata (**Kurang Rp 20.000** / **Lebih Rp 20.000** 
 ## Penjualan Langsung Kantor — ✅ AKTIF (2026-09-13)
 
 Menu baru **Operasional → Penjualan Langsung Kantor**, khusus Finance dan Administrator, untuk
-pembeli yang datang langsung ke dapur pusat/kantor — bukan lewat gerobak keliling staff.
+pembeli yang datang langsung ke dapur pusat/kantor — bukan lewat gerobak keliling rider.
 
 Stoknya tetap diambil dari **satu gerobak tertentu** yang dipilih manual oleh Finance dari
 dropdown (diberi label penugasan hari ini supaya jelas): gerobak rider yang sedang mangkal di
 depan kantor, atau gerobak yang tidak ditugaskan hari ini (nganggur, fisiknya ada di dapur).
 Mekanisme pengurangan stoknya identik dengan penjualan gerobak biasa — tercatat di buku besar yang
 sama — tapi **disimpan di tabel terpisah** (`direct_sales`), sehingga tidak pernah tercampur dengan
-laporan Penjualan Gerobak, Setoran, atau Aktivitas Staff yang sudah ada. Dashboard mendapat kartu
+laporan Penjualan Gerobak, Setoran, atau Aktivitas Rider yang sudah ada. Dashboard mendapat kartu
 tersendiri untuk pendapatan dari jalur ini.
 
 Bisa dibatalkan (void) dengan alasan wajib oleh Finance/Administrator kapan saja — tanpa batas
@@ -970,7 +970,7 @@ salah selamanya atau diperbaiki lewat penyesuaian stok yang lebih rumit dari mas
 
 | Peran | Batasan |
 |---|---|
-| **Staff** | Hanya transaksinya sendiri, dalam **10 menit** sejak dicatat (`SOUL_SALE_VOID_WINDOW_MINUTES`) |
+| **Rider** | Hanya transaksinya sendiri, dalam **10 menit** sejak dicatat (`SOUL_SALE_VOID_WINDOW_MINUTES`) |
 | **Administrator, Finance** | Transaksi siapa pun, tanpa batas waktu |
 | **Barista** | Tidak bisa sama sekali |
 
@@ -984,8 +984,8 @@ akan menghidupkan kembali cups yang sudah dianggap tuntas dan diam-diam membuat 
 Koreksi setelah rekonsiliasi lewat **Stock Opname**, bukan pembatalan transaksi.
 
 Transaksi yang dibatalkan **dikeluarkan** dari total penjualan, antrean/draft Setoran, papan
-posisi staff langsung, dan badge "perlu ditinjau", tapi **tetap terlihat** (ditandai "Dibatalkan",
-dengan alasannya) di daftar transaksi staff sendiri dan di panel `/admin/sales`.
+posisi rider langsung, dan badge "perlu ditinjau", tapi **tetap terlihat** (ditandai "Dibatalkan",
+dengan alasannya) di daftar transaksi rider sendiri dan di panel `/admin/sales`.
 
 **Di panel:** menu **Operasional → Penjualan Gerobak** kini punya kolom status dan tombol
 "Batalkan" per baris, dengan modal alasan wajib. Tombol ini dikaitkan ke hak **Ubah** pada modul
@@ -1046,7 +1046,7 @@ selama masih ada transaksi menunggu.
 pertama kali disimpan di HP — replay dua kali (dua trigger yang kebetulan bersamaan) tidak pernah
 menjual cups dua kali (R14).
 
-**Baris yang masih menunggu tidak pernah menampilkan nilai rupiah** — R15 berarti akun STAFF
+**Baris yang masih menunggu tidak pernah menampilkan nilai rupiah** — R15 berarti akun RIDER
 memang tidak pernah tahu harga produk, online maupun offline, jadi baris ini hanya menampilkan
 nama produk dan jumlah cups.
 
@@ -1064,4 +1064,4 @@ dari server ditampilkan apa adanya, bukan didiamkan sampai antrean terlihat meng
 | "Tidak dapat menghubungi server" | Cek `https://soulcoffee.rafancloud.com/api/v1/auth/login` masih hidup |
 | "Nomor HP atau kata sandi salah" | Password sudah dirotasi (lihat peringatan di atas) — pakai password baru |
 | Daftar refill/alokasi kosong | Normal — belum ada aktivitas ditulis lewat akun ini |
-| "Anda tidak bertugas di gerobak ini hari ini" | Penugasan staff hanya berlaku untuk tanggal yang di-seed; perlu penugasan baru untuk hari ini |
+| "Anda tidak bertugas di gerobak ini hari ini" | Penugasan rider hanya berlaku untuk tanggal yang di-seed; perlu penugasan baru untuk hari ini |

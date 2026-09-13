@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
 /**
- * Permission for one cart's staff to clock in away from the Dapur Pusat. See the migration for
+ * Permission for one cart's rider to clock in away from the Dapur Pusat. See the migration for
  * why this exists rather than simply loosening the rule.
  */
 class AttendanceExemption extends Model

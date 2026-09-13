@@ -8,7 +8,7 @@ use Illuminate\Validation\Rule;
 /**
  * `POST /showcase/brew` — a barista recording cups they have just brewed into the showcase.
  *
- * No cart and no staff here on purpose: brewing puts cups into central stock and says nothing
+ * No cart and no rider here on purpose: brewing puts cups into central stock and says nothing
  * about where they will go. Handing them out is a separate act (StoreShowcaseHandoverRequest),
  * because in the kitchen they genuinely are two separate moments.
  */

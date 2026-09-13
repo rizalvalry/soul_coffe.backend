@@ -58,7 +58,7 @@ class AttendanceApiTest extends TestCase
         $this->actingAs($this->staff, 'sanctum')
             ->postJson('/api/v1/absen')
             ->assertStatus(422)
-            ->assertJsonPath('message', 'Absen staff belum dibuka. Tunggu barista membuka absen setelah kopi siap.');
+            ->assertJsonPath('message', 'Absen rider belum dibuka. Tunggu barista membuka absen setelah kopi siap.');
     }
 
     public function test_the_full_sequence_works_end_to_end(): void

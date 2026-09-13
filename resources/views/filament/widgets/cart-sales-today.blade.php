@@ -31,7 +31,7 @@
                 @if ($rows === [])
                     <div class="bsi-empty">
                         <p class="bsi-empty__title">Belum ada transaksi hari ini</p>
-                        <p>Baris di sini terisi sendiri begitu staff mencatat penjualan dari gerobaknya.</p>
+                        <p>Baris di sini terisi sendiri begitu rider mencatat penjualan dari gerobaknya.</p>
                     </div>
                 @else
                     <div class="bsi-scroll">
@@ -39,7 +39,7 @@
                             <thead>
                                 <tr>
                                     <th class="bsi-name">Gerobak</th>
-                                    <th>Staff</th>
+                                    <th>Rider</th>
                                     <th>Area</th>
                                     <th class="bsi-num">Transaksi</th>
                                     <th class="bsi-num">Cups</th>

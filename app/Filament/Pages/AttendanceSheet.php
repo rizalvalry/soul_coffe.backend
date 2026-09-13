@@ -54,7 +54,7 @@ class AttendanceSheet extends Page
     /** Selected month, as `Y-m` — a month input's native value. */
     public string $month = '';
 
-    /** Role heading to show, mirroring the sheet's own "RIDER" banner. Empty = all roles. */
+    /** Role heading to show, mirroring the sheet's own "RUNNER" banner. Empty = all roles. */
     public string $role = '';
 
     public static function panelModule(): PanelModule

@@ -34,7 +34,7 @@ class RefillRequest extends Model
      * DELIVERED releases the lock deliberately. If the ledger post fails, E19 requires the
      * request to stay DELIVERED while a queued job retries. Holding the lock through that
      * window would leave the cart unable to request a refill even though the cups have
-     * physically arrived and been signed for — punishing field staff for an internal retry.
+     * physically arrived and been signed for — punishing the field rider for an internal retry.
      *
      * This list is kept only for readability and for callers that want the explicit set.
      */

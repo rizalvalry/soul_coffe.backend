@@ -27,7 +27,7 @@ class PruneLocationPings extends Command
                             {--days= : Keep this many days, defaults to config soul.location_ping_retention_days}
                             {--dry-run : Report how many rows would be deleted without deleting them}';
 
-    protected $description = 'Delete staff GPS trail rows older than the retention window';
+    protected $description = 'Delete rider GPS trail rows older than the retention window';
 
     public function handle(StaffLocationService $locations): int
     {

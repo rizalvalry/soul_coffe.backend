@@ -28,8 +28,8 @@ enum Role: string
             self::ADMINISTRATOR => 'Administrator',
             self::FINANCE => 'Finance',
             self::BARISTA => 'Barista',
-            self::RIDER => 'Rider',
-            self::STAFF => 'Staff',
+            self::RIDER => 'Runner',
+            self::STAFF => 'Rider',
             self::CONTENT_CREATOR => 'Content Creator',
         };
     }
