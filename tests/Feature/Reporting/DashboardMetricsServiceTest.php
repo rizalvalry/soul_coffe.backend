@@ -218,4 +218,48 @@ class DashboardMetricsServiceTest extends TestCase
 
         $this->assertSame(0.0, $trend->first()['rate']);
     }
+
+    // ── directSalesToday ─────────────────────────────────────────────────
+
+    /**
+     * A separate reporting category from `revenue_today_minor`: it sums a different table
+     * (`direct_sales`, not `Settlement::declared_total_minor`) and must not move that figure at
+     * all, and a voided direct sale must not count toward its own total either.
+     */
+    public function test_direct_sales_today_excludes_voided_rows_and_leaves_revenue_today_untouched(): void
+    {
+        $this->settlement(Carbon::today(), declared: 100000);
+
+        \App\Models\DirectSale::query()->create([
+            'uuid' => (string) Str::uuid(),
+            'cart_id' => $this->cart->id,
+            'recorded_by' => $this->staff->id,
+            'occurred_at' => now(),
+            'total_qty' => 2,
+            'total_amount_minor' => 40000,
+            'payment_method' => 'cash',
+        ]);
+
+        \App\Models\DirectSale::query()->create([
+            'uuid' => (string) Str::uuid(),
+            'cart_id' => $this->cart->id,
+            'recorded_by' => $this->staff->id,
+            'occurred_at' => now(),
+            'total_qty' => 5,
+            'total_amount_minor' => 100000,
+            'payment_method' => 'qris',
+            'voided_at' => now(),
+            'voided_by' => $this->staff->id,
+            'void_reason' => 'Salah input',
+        ]);
+
+        $directSales = $this->metrics->directSalesToday();
+
+        $this->assertSame(2, $directSales['total_qty']);
+        $this->assertSame(40000, $directSales['total_amount_minor']);
+        $this->assertSame(1, $directSales['transaction_count']);
+
+        // Untouched: still only the Settlement declared above.
+        $this->assertSame(100000, $this->metrics->todaySnapshot()['revenue_today_minor']);
+    }
 }

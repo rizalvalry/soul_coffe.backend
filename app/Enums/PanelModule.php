@@ -45,6 +45,11 @@ enum PanelModule: string
     case PURCHASE_ORDERS = 'purchase_orders';
     case PRODUCTION = 'production';
 
+    // Phase 3 — a walk-in buyer at the kitchen/office, recorded by Finance/Administrator
+    // straight into a cart's stock. Not read-only, for the same reason SALES is not: the one
+    // legitimate correction is a void, and the matrix's `edit` ability is what gates it.
+    case DIRECT_SALES = 'direct_sales';
+
     public function label(): string
     {
         return match ($this) {
@@ -73,6 +78,7 @@ enum PanelModule: string
             self::RECIPES => 'Resep',
             self::PURCHASE_ORDERS => 'Pembelian Bahan Baku',
             self::PRODUCTION => 'Produksi',
+            self::DIRECT_SALES => 'Penjualan Langsung Kantor',
         };
     }
 

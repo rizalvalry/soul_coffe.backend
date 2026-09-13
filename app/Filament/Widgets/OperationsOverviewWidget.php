@@ -31,7 +31,9 @@ class OperationsOverviewWidget extends StatsOverviewWidget
 
     protected function getStats(): array
     {
-        $s = app(DashboardMetricsService::class)->todaySnapshot();
+        $metrics = app(DashboardMetricsService::class);
+        $s = $metrics->todaySnapshot();
+        $direct = $metrics->directSalesToday();
 
         $revenueDelta = $s['revenue_today_minor'] - $s['revenue_yesterday_minor'];
         $revenueDeltaLabel = $s['revenue_yesterday_minor'] > 0
@@ -62,6 +64,14 @@ class OperationsOverviewWidget extends StatsOverviewWidget
                 ->description($s['variance_today_minor'] === 0 ? 'Belum ada selisih tercatat' : 'Perlu ditinjau Finance')
                 ->descriptionIcon($s['variance_today_minor'] === 0 ? 'heroicon-m-check-circle' : 'heroicon-m-exclamation-triangle')
                 ->color($s['variance_today_minor'] === 0 ? 'success' : 'danger'),
+
+            // A distinct stream from "Pendapatan Hari Ini" above — that card reads
+            // Settlement::declared_total_minor (the gerobak cash reconciliation), this one reads
+            // `direct_sales` (a walk-in buyer at the kitchen/office). They are never merged.
+            Stat::make('Penjualan Langsung Kantor (hari ini)', 'Rp '.Number::format($direct['total_amount_minor'], locale: 'id'))
+                ->description(sprintf('%d transaksi · %d cups', $direct['transaction_count'], $direct['total_qty']))
+                ->descriptionIcon('heroicon-m-building-storefront')
+                ->color('primary'),
         ];
     }
 

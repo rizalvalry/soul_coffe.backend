@@ -5,6 +5,7 @@ namespace App\Services\Reporting;
 use App\Enums\Role;
 use App\Models\Attendance;
 use App\Models\DailyCartAllowance;
+use App\Models\DirectSale;
 use App\Models\RefillRequest;
 use App\Models\Settlement;
 use App\Models\User;
@@ -55,6 +56,31 @@ class DashboardMetricsService
             'staff_total_active' => User::query()->where('role', Role::STAFF)->where('is_active', true)->count(),
             'allowance_disbursed_today_minor' => (int) DailyCartAllowance::query()->whereDate('operating_date', $today)->sum('amount_minor'),
             'variance_today_minor' => (int) Settlement::query()->whereDate('operating_date', $today)->sum('variance_minor'),
+        ];
+    }
+
+    /**
+     * Today's walk-in sales at the kitchen/office — a distinct stream from `revenue_today_minor`
+     * above (sourced from `Settlement::declared_total_minor`, the gerobak cash reconciliation)
+     * and never merged into it, per the explicit requirement that this be a separate reporting
+     * category. A voided direct sale is excluded, the same predicate DirectSaleService's void
+     * writes.
+     *
+     * @return array{total_qty: int, total_amount_minor: int, transaction_count: int}
+     */
+    public function directSalesToday(?Carbon $date = null): array
+    {
+        $today = ($date ?? Carbon::today())->toDateString();
+
+        $rows = DirectSale::query()
+            ->whereNull('voided_at')
+            ->whereDate('occurred_at', $today)
+            ->get(['total_qty', 'total_amount_minor']);
+
+        return [
+            'total_qty' => (int) $rows->sum('total_qty'),
+            'total_amount_minor' => (int) $rows->sum('total_amount_minor'),
+            'transaction_count' => $rows->count(),
         ];
     }
 
