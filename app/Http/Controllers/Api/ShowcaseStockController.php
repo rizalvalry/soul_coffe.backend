@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Services\AllocationService;
 use App\Services\CentralStockService;
 use App\Services\DailyAllowanceService;
+use App\Services\ProductionService;
 use App\Services\StockLedgerService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -40,6 +41,7 @@ class ShowcaseStockController extends Controller implements HasMiddleware
         private readonly CentralStockService $showcase,
         private readonly AllocationService $allocations,
         private readonly DailyAllowanceService $allowances,
+        private readonly ProductionService $production,
     ) {}
 
     /**
@@ -62,7 +64,11 @@ class ShowcaseStockController extends Controller implements HasMiddleware
         );
     }
 
-    /** Cups just brewed — central stock goes up, nothing leaves. */
+    /**
+     * Cups just brewed — central stock goes up, nothing leaves. Since Phase 2 this also consumes
+     * whatever raw materials the brewed products' recipes call for (ProductionService); the
+     * request and response contract here is unchanged.
+     */
     public function brew(StoreShowcaseBrewRequest $request): AnonymousResourceCollection
     {
         $user = $request->user();
@@ -71,7 +77,7 @@ class ShowcaseStockController extends Controller implements HasMiddleware
         $kitchenId = $this->kitchenIdFor($user);
 
         try {
-            $this->showcase->brewIntoShowcase($user, $user->kitchen, $request->quantities());
+            $this->production->brew($kitchenId, $request->quantities(), $user);
         } catch (RuntimeException $e) {
             abort(422, $e->getMessage());
         }

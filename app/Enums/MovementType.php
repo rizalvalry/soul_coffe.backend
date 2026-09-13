@@ -33,4 +33,13 @@ enum MovementType: string
     // The stock-take correction: what a physical count found against what the ledger projected.
     // Signed like ADJUSTMENT, for the same reason — a correction may go either way.
     case OPNAME_ADJUSTMENT = 'OPNAME_ADJUSTMENT';
+
+    // Phase 2 — raw materials & recipes (BOM). A brew consumes raw materials according to the
+    // product's recipe; this is the OUT side at the raw-material store, paired with the
+    // PRODUCTION_IN already posted for the finished product in the same brew.
+    case RECIPE_CONSUME_OUT = 'RECIPE_CONSUME_OUT';
+
+    // A purchase order landing stock in the raw-material store, with a real cost attached
+    // (stock_ledger.cost_minor) — the one honest source for "what did this ingredient cost".
+    case PURCHASE_IN = 'PURCHASE_IN';
 }

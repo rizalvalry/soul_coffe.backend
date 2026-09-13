@@ -54,6 +54,11 @@ class Product extends Model
         return $this->hasMany(StockLedger::class, 'product_id');
     }
 
+    public function recipes(): HasMany
+    {
+        return $this->hasMany(Recipe::class, 'product_id');
+    }
+
     /**
      * The price version in effect right now — the "current" price. §12: price
      * versions are never edited in place, only appended.

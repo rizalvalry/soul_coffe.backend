@@ -36,6 +36,15 @@ enum PanelModule: string
     case PIN_RESET_REQUESTS = 'pin_reset_requests';
     case AI_SETTINGS = 'ai_settings';
 
+    // Phase 2 — raw materials & recipes (BOM), and the purchasing that brings stock in with a
+    // real cost. RAW_MATERIALS/SUPPLIERS/RECIPES/PURCHASE_ORDERS are full-CRUD-shaped modules;
+    // PRODUCTION is a fact log, see isReadOnly() below.
+    case RAW_MATERIALS = 'raw_materials';
+    case SUPPLIERS = 'suppliers';
+    case RECIPES = 'recipes';
+    case PURCHASE_ORDERS = 'purchase_orders';
+    case PRODUCTION = 'production';
+
     public function label(): string
     {
         return match ($this) {
@@ -59,6 +68,11 @@ enum PanelModule: string
             self::AUDIT_LOGS => 'Audit Trail',
             self::PIN_RESET_REQUESTS => 'Permintaan Reset PIN',
             self::AI_SETTINGS => 'Pengaturan AI',
+            self::RAW_MATERIALS => 'Bahan Baku',
+            self::SUPPLIERS => 'Pemasok',
+            self::RECIPES => 'Resep',
+            self::PURCHASE_ORDERS => 'Pembelian Bahan Baku',
+            self::PRODUCTION => 'Produksi',
         };
     }
 
@@ -88,6 +102,9 @@ enum PanelModule: string
             // reconciliation after the fact, with nobody standing there to disagree.
             self::SETTLEMENTS,
             self::STAFF_ACTIVITY,
+            // A brew is a fact about what happened in the kitchen, backed by ledger rows that are
+            // themselves append-only — there is nothing here to create or edit, only to read.
+            self::PRODUCTION,
         ], true);
     }
 }

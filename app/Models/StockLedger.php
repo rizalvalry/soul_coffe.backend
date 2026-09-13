@@ -25,8 +25,10 @@ class StockLedger extends Model
         'location_type',
         'location_id',
         'product_id',
+        'raw_material_id',
         'movement_type',
         'qty_delta',
+        'cost_minor',
         'ref_type',
         'ref_id',
         'actor_id',
@@ -38,12 +40,18 @@ class StockLedger extends Model
         return [
             'movement_type' => MovementType::class,
             'qty_delta' => 'integer',
+            'cost_minor' => 'integer',
         ];
     }
 
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class, 'product_id');
+    }
+
+    public function rawMaterial(): BelongsTo
+    {
+        return $this->belongsTo(RawMaterial::class, 'raw_material_id');
     }
 
     public function actor(): BelongsTo
