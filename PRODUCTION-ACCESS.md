@@ -900,6 +900,33 @@ dan selisihnya ditulis sebagai kata (**Kurang Rp 20.000** / **Lebih Rp 20.000** 
 
 ---
 
+## Penjualan Langsung Kantor — ✅ AKTIF (2026-09-13)
+
+Menu baru **Operasional → Penjualan Langsung Kantor**, khusus Finance dan Administrator, untuk
+pembeli yang datang langsung ke dapur pusat/kantor — bukan lewat gerobak keliling staff.
+
+Stoknya tetap diambil dari **satu gerobak tertentu** yang dipilih manual oleh Finance dari
+dropdown (diberi label penugasan hari ini supaya jelas): gerobak rider yang sedang mangkal di
+depan kantor, atau gerobak yang tidak ditugaskan hari ini (nganggur, fisiknya ada di dapur).
+Mekanisme pengurangan stoknya identik dengan penjualan gerobak biasa — tercatat di buku besar yang
+sama — tapi **disimpan di tabel terpisah** (`direct_sales`), sehingga tidak pernah tercampur dengan
+laporan Penjualan Gerobak, Setoran, atau Aktivitas Staff yang sudah ada. Dashboard mendapat kartu
+tersendiri untuk pendapatan dari jalur ini.
+
+Bisa dibatalkan (void) dengan alasan wajib oleh Finance/Administrator kapan saja — tanpa batas
+waktu, karena hanya kedua peran itu yang mencatatnya — kecuali harinya sudah direkonsiliasi lewat
+Setoran, koreksi setelah itu lewat Stock Opname.
+
+**Catatan untuk Finance:** kalau gerobak yang dipakai Penjualan Langsung Kantor juga disetorkan
+hari itu juga, layar draft Setoran akan menunjukkan cups yang "hilang" tanpa keterangan otomatis —
+itu bukan kesalahan sistem, itu memang cups yang terjual lewat menu ini. Belum ada label penjelas
+otomatis di layar Setoran untuk kasus ini.
+
+Sudah di-deploy dan diverifikasi: migrasi jalan di produksi, rute `admin/direct-sales` dan
+`admin/direct-sales/create` terdaftar di `route:list`.
+
+---
+
 ## Bahan Baku, Resep, Purchase Order & Produksi — ✅ AKTIF (2026-09-13)
 
 Produksi di dapur sekarang benar-benar mengonsumsi bahan baku (susu, kopi, gula, dst.) sesuai resep
