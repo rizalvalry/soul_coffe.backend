@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreSaleRequest;
+use App\Http\Requests\VoidSaleRequest;
 use App\Http\Resources\SaleResource;
 use App\Models\Sale;
 use App\Services\SaleService;
@@ -36,7 +37,11 @@ class SaleController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('role:STAFF'),
+            new Middleware('role:STAFF', only: ['index', 'store']),
+            // Void is reachable by staff (their own sale, inside the window) and by
+            // Administrator/Finance (any time) — see SaleService::void() for the actual rule.
+            // The role check here only decides who reaches the endpoint at all.
+            new Middleware('role:STAFF,ADMINISTRATOR,FINANCE', only: ['void']),
         ];
     }
 
@@ -77,5 +82,23 @@ class SaleController extends Controller implements HasMiddleware
         $sale->load(['lines.product:id,name', 'cart:id,code', 'location:id,name']);
 
         return SaleResource::make($sale)->response()->setStatusCode(201);
+    }
+
+    /**
+     * Undoes a sale. A staff member may only undo their own, and only inside the configured
+     * window; Administrator and Finance are not bound by either — see `SaleService::void()` for
+     * the full rule, which is what actually enforces this, not the middleware above.
+     */
+    public function void(VoidSaleRequest $request, Sale $sale): JsonResponse
+    {
+        try {
+            $voided = $this->sales->void($sale, $request->user(), $request->validated('reason'));
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $voided->load(['lines.product:id,name', 'cart:id,code', 'location:id,name']);
+
+        return SaleResource::make($voided)->response()->setStatusCode(200);
     }
 }

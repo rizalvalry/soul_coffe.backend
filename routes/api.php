@@ -163,6 +163,9 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('sales', [SaleController::class, 'index']);
     Route::post('sales', [SaleController::class, 'store'])
         ->middleware('idempotent:require');
+    // No idempotency key: voiding is naturally idempotent by its own guard (SaleService refuses a
+    // sale that is already voided), and a retried void request should simply see the same result.
+    Route::post('sales/{sale}/void', [SaleController::class, 'void']);
 
     // ── Aktivitas: where the phone is ──────────────────────────────────────
     // Batched, staff-only, and never a precondition for anything else (E10). See

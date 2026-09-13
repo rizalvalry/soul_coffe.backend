@@ -24,6 +24,7 @@ enum PanelModule: string
     case DAILY_TARGETS = 'daily_targets';
     case STAFF_ASSIGNMENTS = 'staff_assignments';
     case CENTRAL_STOCK = 'central_stock';
+    case STOCK_OPNAME = 'stock_opname';
     case SALES = 'sales';
     case SETTLEMENTS = 'settlements';
     case DELIVERY_INCIDENTS = 'delivery_incidents';
@@ -47,6 +48,7 @@ enum PanelModule: string
             self::DAILY_TARGETS => 'Target Harian',
             self::STAFF_ASSIGNMENTS => 'Penugasan Staff',
             self::CENTRAL_STOCK => 'Stok Terpusat',
+            self::STOCK_OPNAME => 'Stock Opname',
             self::SALES => 'Penjualan Gerobak',
             self::SETTLEMENTS => 'Setoran Harian',
             self::DELIVERY_INCIDENTS => 'Insiden Pengiriman',
@@ -64,12 +66,15 @@ enum PanelModule: string
      * Modules that are read-only by nature — there is nothing to create or edit, so the matrix
      * editor offers them only as "Lihat", never "Kelola".
      *
-     * SALES is on this list on purpose. A sale is a thing that happened at a cart, recorded by
-     * the person who made it; letting the panel edit or delete one would put a second, invisible
-     * hand on the revenue figures and on the stock ledger they moved. A mistake is corrected the
-     * same way every other stock mistake is — with an adjustment that says who made it and why.
+     * SALES is deliberately NOT on this list, even though the resource still hardcodes
+     * `canCreate`/`canEdit`/`canDelete` to false and offers no free-form edit form. A sale can be
+     * VOIDED — the one legitimate correction, which reverses the cups through the stock ledger
+     * rather than rewriting the row — and that single action is what the matrix's "edit" ability
+     * governs here (SalesTable::mayVoid()). The same pattern DELIVERY_INCIDENTS already uses for
+     * its two decision buttons.
      *
-     * STAFF_ACTIVITY likewise: the GPS trail is evidence. Evidence that can be edited is not.
+     * STAFF_ACTIVITY stays read-only: the GPS trail is evidence, and evidence that can be edited
+     * is not evidence.
      */
     public function isReadOnly(): bool
     {
@@ -78,7 +83,6 @@ enum PanelModule: string
             self::REPORTS,
             self::AUDIT_LOGS,
             self::CENTRAL_STOCK,
-            self::SALES,
             // Deposits are taken on the phone at the desk, with the money in hand. The panel is
             // where they are read and reported on — editing one here would be rewriting a
             // reconciliation after the fact, with nobody standing there to disagree.

@@ -201,6 +201,7 @@ class StaffLocationService
             ->selectRaw('staff_id, COUNT(*) as trx, COALESCE(SUM(total_qty),0) as cups, COALESCE(SUM(total_amount_minor),0) as revenue, MAX(occurred_at) as last_sale_at')
             ->whereIn('staff_id', $ids)
             ->whereDate('operating_date', $date->toDateString())
+            ->whereNull('voided_at')
             ->groupBy('staff_id')
             ->get()
             ->keyBy('staff_id');

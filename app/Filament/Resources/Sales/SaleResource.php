@@ -20,10 +20,11 @@ use UnitEnum;
 /**
  * "Penjualan Gerobak" — every transaction a staff member recorded, per cart and per area.
  *
- * READ-ONLY, and structurally so (see the three refusals at the bottom). A sale moved real cups
- * out of a real cart through the append-only ledger; editing the row here would leave the ledger
- * saying one thing and this table another, with no record of who changed it. A genuine mistake
- * is corrected the way every other stock mistake is — with an adjustment that names its author.
+ * No free-form create, edit or delete (see the three refusals at the bottom) — a sale moved real
+ * cups through the append-only ledger, and editing the row directly would leave the ledger saying
+ * one thing and this table another, with no record of who changed it. The one legitimate
+ * correction is a VOID (SalesTable's "Batalkan" action, gated on the matrix's `edit` ability),
+ * which reverses the cups through the ledger rather than rewriting the row.
  *
  * The flagged filter is the working queue behind the suspect notification: an Administrator or
  * Finance user opens the notification, lands here, and sees the transaction in the context of
@@ -73,6 +74,8 @@ class SaleResource extends Resource
         $flagged = Sale::query()
             ->where('is_suspect', true)
             ->whereDate('operating_date', now()->toDateString())
+            // Voided means it was already looked at and undone.
+            ->whereNull('voided_at')
             ->count();
 
         return $flagged > 0 ? (string) $flagged : null;

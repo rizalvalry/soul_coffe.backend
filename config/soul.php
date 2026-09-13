@@ -61,6 +61,12 @@ return [
     // reads.
     'sale_suspect_qty_threshold' => (int) env('SOUL_SALE_SUSPECT_QTY_THRESHOLD', 15),
 
+    // A staff member may void their OWN sale within this many minutes of making it — long enough
+    // to correct a mis-tap while the customer is still there, short enough that it cannot be used
+    // to quietly erase a shift's revenue after the fact. Administrator and Finance are not bound
+    // by this window (see SaleService::void()).
+    'sale_void_window_minutes' => (int) env('SOUL_SALE_VOID_WINDOW_MINUTES', 10),
+
     // ── Absen berbasis lokasi ──────────────────────────────────────────────────────────────────
     //
     // How close to the Dapur Pusat someone must be to clock in, in metres. Used when a kitchen

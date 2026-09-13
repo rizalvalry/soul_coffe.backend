@@ -50,7 +50,7 @@ class StockLedgerService
     ): StockLedger {
         $this->assertLocationType($locationType);
 
-        if ($movementType === MovementType::ADJUSTMENT) {
+        if (in_array($movementType, [MovementType::ADJUSTMENT, MovementType::OPNAME_ADJUSTMENT], true)) {
             if ($qty === 0) {
                 throw new RuntimeException('Adjustment tidak boleh nol.');
             }

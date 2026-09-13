@@ -33,6 +33,9 @@ class Sale extends Model
         'note',
         'device_id',
         'idempotency_key',
+        'voided_at',
+        'voided_by',
+        'void_reason',
     ];
 
     protected function casts(): array
@@ -46,7 +49,13 @@ class Sale extends Model
             'gps_lng' => 'decimal:7',
             'gps_unavailable' => 'boolean',
             'is_suspect' => 'boolean',
+            'voided_at' => 'datetime',
         ];
+    }
+
+    public function isVoided(): bool
+    {
+        return $this->voided_at !== null;
     }
 
     public function cart(): BelongsTo
@@ -57,6 +66,11 @@ class Sale extends Model
     public function staff(): BelongsTo
     {
         return $this->belongsTo(User::class, 'staff_id');
+    }
+
+    public function voidedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'voided_by');
     }
 
     public function location(): BelongsTo

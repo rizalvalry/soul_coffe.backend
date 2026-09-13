@@ -69,6 +69,8 @@ class SettlementService
         $sales = DB::table('sales')
             ->selectRaw('cart_id, COUNT(*) as trx, COALESCE(SUM(total_qty),0) as cups, COALESCE(SUM(total_amount_minor),0) as revenue')
             ->whereDate('operating_date', $date->toDateString())
+            // A voided sale is money never actually taken — Finance must not be told to expect it.
+            ->whereNull('voided_at')
             ->groupBy('cart_id')
             ->get()
             ->keyBy('cart_id');
@@ -132,12 +134,14 @@ class SettlementService
         $expected = (int) Sale::query()
             ->where('cart_id', $cart->id)
             ->whereDate('operating_date', $date->toDateString())
+            ->whereNull('voided_at')
             ->sum('total_amount_minor');
 
         $sold = DB::table('sale_lines')
             ->join('sales', 'sales.id', '=', 'sale_lines.sale_id')
             ->where('sales.cart_id', $cart->id)
             ->whereDate('sales.operating_date', $date->toDateString())
+            ->whereNull('sales.voided_at')
             ->groupBy('sale_lines.product_id')
             ->selectRaw('sale_lines.product_id as product_id, SUM(sale_lines.qty) as qty')
             ->pluck('qty', 'product_id')
@@ -146,11 +150,15 @@ class SettlementService
 
         // Everything that ARRIVED on the cart today: the morning hand-over plus any refills.
         // Positive movements only — a sale is negative and would otherwise cancel out the issue.
+        // SALE_VOID_IN and OPNAME_ADJUSTMENT are excluded even though both are positive: neither
+        // is a fresh hand-over, and counting a voided sale's stock coming back — or a stock-take
+        // correction — as "issued today" would inflate the figure Finance reads as "what arrived".
         $issued = StockLedger::query()
             ->where('location_type', StockLedgerService::CART)
             ->where('location_id', $cart->id)
             ->whereDate('created_at', $date->toDateString())
             ->where('qty_delta', '>', 0)
+            ->whereNotIn('movement_type', [MovementType::SALE_VOID_IN->value, MovementType::OPNAME_ADJUSTMENT->value])
             ->groupBy('product_id')
             ->selectRaw('product_id, SUM(qty_delta) as qty')
             ->pluck('qty', 'product_id')

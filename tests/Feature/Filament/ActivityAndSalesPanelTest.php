@@ -184,6 +184,53 @@ class ActivityAndSalesPanelTest extends TestCase
         $this->actingAs($finance)->get(SaleResource::getUrl())->assertSuccessful();
     }
 
+    public function test_voiding_from_the_panel_requires_the_edit_ability_and_a_reason(): void
+    {
+        $finance = User::factory()->role(Role::FINANCE)->create();
+        $sale = $this->sale(9, 6);
+
+        // Granted only "view" — the button must not even appear, let alone work.
+        PermissionMatrix::set(Role::FINANCE, PanelModule::SALES, ['view']);
+        PermissionMatrix::forget();
+
+        Livewire::actingAs($finance)
+            ->test(ListSales::class)
+            ->assertTableActionHidden('void', $sale);
+
+        // Granted "edit" as well — the button appears and voiding reverses the stock.
+        PermissionMatrix::set(Role::FINANCE, PanelModule::SALES, ['view', 'edit']);
+        PermissionMatrix::forget();
+
+        Livewire::actingAs($finance)
+            ->test(ListSales::class)
+            ->assertTableActionVisible('void', $sale)
+            ->callTableAction('void', $sale, ['reason' => ''])
+            ->assertHasTableActionErrors(['reason']);
+
+        $this->assertFalse($sale->fresh()->isVoided());
+
+        Livewire::actingAs($finance)
+            ->test(ListSales::class)
+            ->callTableAction('void', $sale, ['reason' => 'Dobel input'])
+            ->assertHasNoTableActionErrors();
+
+        $this->assertTrue($sale->fresh()->isVoided());
+    }
+
+    public function test_an_already_voided_sale_has_no_void_action(): void
+    {
+        $sale = $this->sale(9, 6);
+
+        Livewire::actingAs($this->admin)
+            ->test(ListSales::class)
+            ->callTableAction('void', $sale, ['reason' => 'Salah input'])
+            ->assertHasNoTableActionErrors();
+
+        Livewire::actingAs($this->admin)
+            ->test(ListSales::class)
+            ->assertTableActionHidden('void', $sale->fresh());
+    }
+
     // ── Aktivitas Staff ──────────────────────────────────────────────────
 
     public function test_the_activity_page_renders_with_no_data_at_all(): void

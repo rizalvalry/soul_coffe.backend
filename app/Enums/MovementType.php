@@ -22,4 +22,15 @@ enum MovementType: string
     case RETURN_OUT = 'RETURN_OUT';
     case WASTE_OUT = 'WASTE_OUT';
     case ADJUSTMENT = 'ADJUSTMENT';
+
+    // Pairs with SALE_OUT: a voided sale gives its cups back to the cart it left. A separate
+    // type rather than reusing ALLOCATION_IN or ADJUSTMENT, because the ledger should say what
+    // actually happened — cups that came back from an undone sale are a different fact from a
+    // fresh hand-over or a stock-take correction, and a report built on movement_type must be
+    // able to tell them apart.
+    case SALE_VOID_IN = 'SALE_VOID_IN';
+
+    // The stock-take correction: what a physical count found against what the ledger projected.
+    // Signed like ADJUSTMENT, for the same reason — a correction may go either way.
+    case OPNAME_ADJUSTMENT = 'OPNAME_ADJUSTMENT';
 }

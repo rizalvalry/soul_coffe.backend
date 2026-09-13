@@ -7,6 +7,7 @@ use App\Enums\Role;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SaleLine;
+use App\Models\Settlement;
 use App\Models\StaffAssignment;
 use App\Models\User;
 use Illuminate\Support\Carbon;
@@ -217,6 +218,140 @@ class SaleService
 
             return $sale->load('lines');
         });
+    }
+
+    /**
+     * Undoes a sale that should never have been recorded: the wrong product, the wrong quantity,
+     * a double tap on a queue that fought back.
+     *
+     * VOIDED, NOT DELETED — see the migration that added these columns. The row stays exactly
+     * where it was; every reader of `sales` (SalesActivityService, SettlementService,
+     * StaffLocationService, SaleController, SaleResource) excludes it by checking `voided_at`,
+     * the same predicate everywhere so a void can never half-apply.
+     *
+     * WHO MAY VOID, AND UNTIL WHEN
+     * ----------------------------
+     * The staff member who made the sale may undo it themselves, but only within a short window
+     * (`soul.sale_void_window_minutes`) — long enough to correct a mis-tap while the customer is
+     * still standing there, short enough that it cannot be used to quietly erase a shift's
+     * revenue after the fact. Administrator and Finance may void at any time, because a mistake
+     * found later — during a settlement review, say — still needs a way back.
+     *
+     * WHY THIS REFUSES ONCE THE DAY IS SETTLED
+     * -----------------------------------------
+     * A RECONCILED settlement already moved the cart's leftover cups through the ledger — some
+     * back to the kitchen, some written off — measured against live stock at that moment (see
+     * SettlementService). Giving cups back to a cart that has since been emptied and reconciled
+     * would resurrect stock nobody is expecting and nobody will notice landed there. Once a day
+     * is settled, a correction goes through a stock opname instead, which is exactly the tool
+     * built for "the ledger and reality disagree, after the fact".
+     */
+    public function void(Sale $sale, User $actor, string $reason): Sale
+    {
+        $reason = trim($reason);
+
+        if ($reason === '') {
+            throw new RuntimeException('Alasan pembatalan wajib diisi.');
+        }
+
+        return DB::transaction(function () use ($sale, $actor, $reason): Sale {
+            $locked = Sale::query()->with('lines')->whereKey($sale->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->isVoided()) {
+                throw new RuntimeException('Transaksi ini sudah dibatalkan sebelumnya.');
+            }
+
+            $this->assertMayVoid($locked, $actor);
+
+            $alreadySettled = Settlement::query()
+                ->where('cart_id', $locked->cart_id)
+                ->whereDate('operating_date', $locked->operating_date)
+                ->where('status', 'RECONCILED')
+                ->exists();
+
+            if ($alreadySettled) {
+                throw new RuntimeException(
+                    'Setoran gerobak ini untuk tanggal tersebut sudah direkonsiliasi. Gunakan Stock Opname untuk koreksi, bukan pembatalan transaksi.'
+                );
+            }
+
+            $cart = $locked->cart;
+
+            foreach ($locked->lines as $line) {
+                $this->ledger->post(
+                    locationType: StockLedgerService::CART,
+                    locationId: $locked->cart_id,
+                    productId: $line->product_id,
+                    movementType: MovementType::SALE_VOID_IN,
+                    qty: $line->qty,
+                    actorId: $actor->id,
+                    kitchenId: (int) $cart->kitchen_id,
+                    refType: 'sale_void',
+                    refId: $locked->id,
+                );
+            }
+
+            $locked->voided_at = now();
+            $locked->voided_by = $actor->id;
+            $locked->void_reason = $reason;
+            $locked->save();
+
+            $this->notifyVoided($locked, $actor);
+
+            return $locked->fresh(['lines']);
+        });
+    }
+
+    /**
+     * Rule 2 of `void()` — see its docblock. Administrator and Finance pass unconditionally; a
+     * staff member must be the one who made the sale, and only inside the configured window.
+     */
+    private function assertMayVoid(Sale $sale, User $actor): void
+    {
+        if (in_array($actor->role, [Role::ADMINISTRATOR, Role::FINANCE], true)) {
+            return;
+        }
+
+        if ($actor->role !== Role::STAFF || $actor->id !== $sale->staff_id) {
+            throw new RuntimeException('Anda tidak berhak membatalkan transaksi ini.');
+        }
+
+        $windowMinutes = (int) config('soul.sale_void_window_minutes', 10);
+
+        if ($sale->occurred_at->lt(now()->subMinutes($windowMinutes))) {
+            throw new RuntimeException(sprintf(
+                'Pembatalan hanya bisa dilakukan dalam %d menit setelah transaksi. Setelah itu, minta Administrator atau Finance membatalkannya.',
+                $windowMinutes,
+            ));
+        }
+    }
+
+    /**
+     * Administrator and Finance are told every void, regardless of who made it — the same
+     * audience as the suspect flag, and for the same reason: a reversed sale is exactly the kind
+     * of thing whoever reconciles the day needs visibility into.
+     */
+    private function notifyVoided(Sale $sale, User $actor): void
+    {
+        $recipients = User::query()
+            ->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE])
+            ->where('is_active', true)
+            ->pluck('id')
+            ->all();
+
+        $this->events->publish(
+            'SaleVoided',
+            'Transaksi dibatalkan',
+            sprintf(
+                '%s membatalkan transaksi %d cups di gerobak %s. Alasan: %s',
+                $actor->name,
+                $sale->total_qty,
+                $sale->cart?->code,
+                $sale->void_reason,
+            ),
+            ['role.ADMINISTRATOR', 'role.FINANCE'],
+            $recipients,
+        );
     }
 
     /**

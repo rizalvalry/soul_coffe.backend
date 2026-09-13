@@ -39,6 +39,8 @@ class SalesActivityService
             ->leftJoin('users', 'users.id', '=', 'sales.staff_id')
             ->leftJoin('locations', 'locations.id', '=', 'sales.location_id')
             ->whereDate('sales.operating_date', $date)
+            // A voided sale never happened, as far as every total on this page is concerned.
+            ->whereNull('sales.voided_at')
             ->groupBy('carts.id', 'carts.code', 'users.id', 'users.name', 'locations.id', 'locations.name')
             ->orderByDesc('cups')
             ->get([
@@ -83,6 +85,7 @@ class SalesActivityService
         $rows = DB::table('sales')
             ->leftJoin('locations', 'locations.id', '=', 'sales.location_id')
             ->whereBetween('sales.operating_date', [$start->toDateString(), $end->toDateString()])
+            ->whereNull('sales.voided_at')
             ->groupBy('area', 'hour')
             ->orderBy('area')
             ->orderBy('hour')
@@ -145,6 +148,9 @@ class SalesActivityService
             ->leftJoin('locations', 'locations.id', '=', 'sales.location_id')
             ->where('sales.is_suspect', true)
             ->whereDate('sales.operating_date', $date)
+            // Voided means it was already looked at and undone — it should not sit in the
+            // review queue forever.
+            ->whereNull('sales.voided_at')
             ->orderByDesc('sales.occurred_at')
             ->limit($limit)
             ->get([
@@ -181,6 +187,7 @@ class SalesActivityService
 
         $row = DB::table('sales')
             ->whereDate('operating_date', $date)
+            ->whereNull('voided_at')
             ->first([
                 DB::raw('COUNT(*) as transactions'),
                 DB::raw('COALESCE(SUM(total_qty), 0) as cups'),
