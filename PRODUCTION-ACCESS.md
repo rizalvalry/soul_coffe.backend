@@ -1,4 +1,4 @@
-# Soul Coffeemate — Akses Build Produksi (v1.5.2)
+# Soul Coffeemate — Akses Build Produksi (v1.5.3)
 
 > **v1.4.0 — cara masuk berubah.** Sekali seorang pengguna membuat PIN 6 angka di menu
 > Pengaturan, **kata sandi tidak lagi bisa dipakai untuk masuk** — hanya PIN itu. Membuat PIN juga
@@ -85,23 +85,32 @@ keenam ini — belum ada API untuk membuat user baru (lihat bagian "Menambah aku
 
 ## APK
 
-**Berkas:** `dist/soul-coffeemate-v1.5.2.apk`
+**Berkas:** `dist/soul-coffeemate-v1.5.3.apk`
 
 **Unduh langsung:**
-`https://github.com/rizalvalry/soul_coffe.backend/raw/main/dist/soul-coffeemate-v1.5.2.apk`
+`https://github.com/rizalvalry/soul_coffe.backend/raw/main/dist/soul-coffeemate-v1.5.3.apk`
 
 | Properti | Nilai |
 |---|---|
-| Ukuran | 24.16 MB (25.335.220 byte) |
+| Ukuran | 24.16 MB (25.335.132 byte) |
 | Package | `id.soulcoffeemate.ops.demo` |
-| Versi | 1.5.2 (versionCode 22) |
+| Versi | 1.5.3 (versionCode 23) |
 | Min Android | **7.0** (API 24) |
 | Target | Android 16 (API 36) |
 | Arsitektur | `arm64-v8a`, `armeabi-v7a` |
-| SHA-256 | `0e939ade4509fd86ff872c8d1eb6164191830af9019a4781f7f0e09187366ce6` |
-| Tanda tangan | SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c` — **sama dengan v1.0.x–v1.5.1**, jadi cukup install di atas versi lama, tidak perlu uninstall |
+| SHA-256 | `f0386488cf84a018d6ce4d39f9e825925cf66bc1a3081f432d833d043d6fc4e4` |
+| Tanda tangan | SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c` — **sama dengan v1.0.x–v1.5.2**, jadi cukup install di atas versi lama, tidak perlu uninstall |
 
 `npm run apk:verify` 13/13 lolos.
+
+**Beda dari v1.5.2 — penamaan peran berubah, tidak ada perubahan alur:**
+
+Istilah bisnis berubah setelah proses yang sebelumnya dummy makin jelas bentuk aslinya. Peran yang
+sebelumnya tampil sebagai **"Staff"** (penjual gerobak) sekarang tampil sebagai **"Rider"**, dan
+peran yang sebelumnya tampil sebagai **"Rider"** (kurir pengantar) sekarang tampil sebagai
+**"Runner"**. Ini murni penggantian label yang tampil di layar — nilai peran yang tersimpan di
+server (dipakai untuk login dan hak akses) tidak berubah sama sekali, jadi akun yang sudah ada
+tetap bisa login seperti biasa tanpa reset apa pun. Barista belum berganti nama.
 
 **Beda dari v1.5.1 — dua fitur baru di layar Catat Penjualan (rider):**
 
