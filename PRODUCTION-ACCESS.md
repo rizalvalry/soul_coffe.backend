@@ -1,4 +1,4 @@
-# Soul Coffeemate — Akses Build Produksi (v1.5.1)
+# Soul Coffeemate — Akses Build Produksi (v1.5.2)
 
 > **v1.4.0 — cara masuk berubah.** Sekali seorang pengguna membuat PIN 6 angka di menu
 > Pengaturan, **kata sandi tidak lagi bisa dipakai untuk masuk** — hanya PIN itu. Membuat PIN juga
@@ -85,23 +85,39 @@ keenam ini — belum ada API untuk membuat user baru (lihat bagian "Menambah aku
 
 ## APK
 
-**Berkas:** `dist/soul-coffeemate-v1.5.1.apk`
+**Berkas:** `dist/soul-coffeemate-v1.5.2.apk`
 
 **Unduh langsung:**
-`https://github.com/rizalvalry/soul_coffe.backend/raw/main/dist/soul-coffeemate-v1.5.1.apk`
+`https://github.com/rizalvalry/soul_coffe.backend/raw/main/dist/soul-coffeemate-v1.5.2.apk`
 
 | Properti | Nilai |
 |---|---|
-| Ukuran | 24.15 MB (25.327.604 byte) |
+| Ukuran | 24.16 MB (25.335.220 byte) |
 | Package | `id.soulcoffeemate.ops.demo` |
-| Versi | 1.5.1 (versionCode 21) |
+| Versi | 1.5.2 (versionCode 22) |
 | Min Android | **7.0** (API 24) |
 | Target | Android 16 (API 36) |
 | Arsitektur | `arm64-v8a`, `armeabi-v7a` |
-| SHA-256 | `722a3e27b7f78ece678676d727e4a15db9de7db6656e74da4f5b4245840bfe7b` |
-| Tanda tangan | SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c` — **sama dengan v1.0.x–v1.5.0**, jadi cukup install di atas versi lama, tidak perlu uninstall |
+| SHA-256 | `0e939ade4509fd86ff872c8d1eb6164191830af9019a4781f7f0e09187366ce6` |
+| Tanda tangan | SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c` — **sama dengan v1.0.x–v1.5.1**, jadi cukup install di atas versi lama, tidak perlu uninstall |
 
 `npm run apk:verify` 13/13 lolos.
+
+**Beda dari v1.5.1 — dua fitur baru di layar Catat Penjualan (staff):**
+
+1. **Batalkan transaksi (void).** Panel yang mengembang inline di setiap baris riwayat transaksi
+   hari itu, dengan alasan wajib diisi. Server yang memutuskan apakah pembatalan masih boleh
+   (jendela waktu, siapa pemilik transaksi, apakah harinya sudah direkonsiliasi); layar hanya
+   mengirim alasannya dan menampilkan kalimat penolakan apa adanya. Lihat bagian "Pembatalan
+   Transaksi (Sale Void)" di bawah.
+2. **Antrean offline.** Transaksi yang gagal terkirim karena benar-benar tidak ada koneksi
+   (bukan ditolak server) disimpan di HP dan otomatis dikirim ulang begitu sinyal kembali, atau
+   lewat tombol "Kirim Sekarang". Baris yang masih menunggu tidak pernah menampilkan nilai
+   rupiah — R15 berarti akun STAFF memang tidak pernah tahu harga, online maupun offline. Lihat
+   bagian "Antrean Penjualan Offline" di bawah.
+
+Kedua fitur ini murni penambahan di layar staff; tidak ada perubahan pada alur Setoran, Absen,
+atau Pengiriman.
 
 **Beda dari v1.5.0 — dua menu baru:**
 
@@ -881,6 +897,102 @@ khusus untuk kasus itu.
 dengan total per jenis pembayaran yang dijumlahkan di bawah kolom, filter “hanya yang ada selisih”,
 dan selisihnya ditulis sebagai kata (**Kurang Rp 20.000** / **Lebih Rp 20.000** / **Pas**), karena
 “Rp -20.000” salah dibaca sekilas dan arah selisih itu justru seluruh makna kolomnya.
+
+---
+
+## Pembatalan Transaksi (Sale Void) — ✅ AKTIF (2026-09-13)
+
+Salah tap atau salah jumlah saat mencatat penjualan sekarang bisa dibatalkan, bukan dibiarkan
+salah selamanya atau diperbaiki lewat penyesuaian stok yang lebih rumit dari masalahnya.
+
+**Siapa boleh, dan sampai kapan:**
+
+| Peran | Batasan |
+|---|---|
+| **Staff** | Hanya transaksinya sendiri, dalam **10 menit** sejak dicatat (`SOUL_SALE_VOID_WINDOW_MINUTES`) |
+| **Administrator, Finance** | Transaksi siapa pun, tanpa batas waktu |
+| **Barista** | Tidak bisa sama sekali |
+
+**Cups yang dibatalkan kembali ke stok gerobak lewat buku besar** (`SALE_VOID_IN`), bukan dengan
+menghapus atau menulis ulang baris `SALE_OUT` aslinya — buku besarnya tetap append-only, dan siapa
+pun bisa menelusuri baris kompensasinya.
+
+**Ditolak setelah gerobak itu untuk tanggal itu sudah direkonsiliasi di Setoran** (Finance sudah
+memisahkan cups sisa terhadap stok yang sebenarnya saat itu). Membatalkan transaksi setelahnya
+akan menghidupkan kembali cups yang sudah dianggap tuntas dan diam-diam membuat stok hantu.
+Koreksi setelah rekonsiliasi lewat **Stock Opname**, bukan pembatalan transaksi.
+
+Transaksi yang dibatalkan **dikeluarkan** dari total penjualan, antrean/draft Setoran, papan
+posisi staff langsung, dan badge "perlu ditinjau", tapi **tetap terlihat** (ditandai "Dibatalkan",
+dengan alasannya) di daftar transaksi staff sendiri dan di panel `/admin/sales`.
+
+**Di panel:** menu **Operasional → Penjualan Gerobak** kini punya kolom status dan tombol
+"Batalkan" per baris, dengan modal alasan wajib. Tombol ini dikaitkan ke hak **Ubah** pada modul
+`Penjualan Gerobak` di Matriks Akses Peran — modul ini **tidak lagi read-only**; peran yang hanya
+diberi "Lihat" tidak melihat tombolnya sama sekali, dan `SaleService::void()` memeriksa perannya
+lagi di belakang.
+
+18 test di `tests/Feature/SaleVoidTest.php`. Sudah di-deploy dan diverifikasi langsung: migrasi
+jalan di produksi, dan `POST /api/v1/sales/{id}/void` terbukti terdaftar (dicoba dengan id
+transaksi yang tidak ada → 404 model-tidak-ditemukan, bukan 404 rute-tidak-ada atau 403 middleware).
+
+---
+
+## Stock Opname — ✅ AKTIF (2026-09-13)
+
+Koreksi stok dapur atau gerobak sekarang punya alur resmi, menggantikan cara lama (tidak ada sama
+sekali — selisih hitung fisik terhadap stok sistem tidak bisa dicatat, hanya didiskusikan).
+
+**Dua langkah, seperti Setoran:**
+
+1. **Hitung** (`/admin/stock-opname-entry`) — pilih dapur atau gerobak, sistem menampilkan angka
+   stok saat ini per produk, lalu angka hasil hitung fisik diisi di sebelahnya. Belum menyentuh
+   stok apa pun di langkah ini — hanya draft.
+2. **Terapkan** (dari daftar di `/admin/stock-opnames`) — selisihnya diposting ke buku besar
+   (`OPNAME_ADJUSTMENT`) **saat itu juga**, dihitung ulang terhadap stok yang sebenarnya berlaku
+   pada detik itu, bukan angka yang tercatat sewaktu draft dibuat. Kalau ada transaksi lain yang
+   sempat menggerakkan stok di antara hitung dan terapkan, opname tetap membawa stok tepat ke
+   angka hasil hitung fisik, bukan menambah/mengurangi berdasarkan selisih yang sudah basi.
+
+Draft yang belum diterapkan bisa **dibatalkan** tanpa menyentuh stok sama sekali.
+
+**Di panel:** menu baru **Operasional → Stock Opname**, dengan badge merah berisi jumlah draft
+yang menunggu. Tombol "Buat Stock Opname", "Terapkan", dan "Batalkan" mengikuti hak **Tambah**
+dan **Ubah** pada modul `Stock Opname` di Matriks Akses Peran.
+
+25 test (`tests/Feature/StockOpnameTest.php` dan `tests/Feature/Filament/StockOpnamePanelTest.php`),
+termasuk satu test yang secara sengaja menyisipkan pergerakan stok lain di antara hitung dan
+terapkan, untuk membuktikan opname tetap membawa stok ke angka hasil hitung yang benar, bukan ke
+angka yang dihitung dari selisih yang sudah tidak berlaku lagi.
+
+Sudah di-deploy dan diverifikasi langsung: migrasi jalan di produksi, dan kedua rute panel
+(`admin/stock-opname-entry`, `admin/stock-opnames`) terbukti terdaftar di `php artisan route:list`.
+
+---
+
+## Antrean Penjualan Offline — ✅ AKTIF (2026-09-13, aplikasi mobile v1.5.2)
+
+Gerobak yang berjualan di titik bersinyal lemah sebelumnya tidak bisa mencatat satu pun transaksi
+sampai sinyal kembali — `Simpan Transaksi` langsung gagal begitu `fetch` gagal, dan satu-satunya
+jalan adalah menghafal penjualan sampai HP menemukan sinyal lagi.
+
+Sekarang transaksi yang gagal terkirim **karena benar-benar tidak ada koneksi** (bukan ditolak
+server) disimpan di HP dan otomatis dikirim ulang begitu koneksi terdeteksi kembali — juga saat
+layar dibuka ulang, dan lewat tombol manual **"Kirim Sekarang"** di kartu status yang muncul
+selama masih ada transaksi menunggu.
+
+**Aman diulang:** setiap transaksi tetap membawa `uuid` yang sama sebagai `Idempotency-Key` sejak
+pertama kali disimpan di HP — replay dua kali (dua trigger yang kebetulan bersamaan) tidak pernah
+menjual cups dua kali (R14).
+
+**Baris yang masih menunggu tidak pernah menampilkan nilai rupiah** — R15 berarti akun STAFF
+memang tidak pernah tahu harga produk, online maupun offline, jadi baris ini hanya menampilkan
+nama produk dan jumlah cups.
+
+**Penolakan sungguhan berbeda dari sekadar tidak ada sinyal:** kalau server memang menolak
+transaksinya (jam absen sudah tutup, penugasan gerobak berubah, stok tidak lagi cukup), entri itu
+dikeluarkan dari antrean retry — mengulanginya tidak akan pernah berhasil — dan pesan penolakan
+dari server ditampilkan apa adanya, bukan didiamkan sampai antrean terlihat mengecil tanpa sebab.
 
 ---
 
