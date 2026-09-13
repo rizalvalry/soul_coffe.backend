@@ -900,6 +900,40 @@ dan selisihnya ditulis sebagai kata (**Kurang Rp 20.000** / **Lebih Rp 20.000** 
 
 ---
 
+## Bahan Baku, Resep, Purchase Order & Produksi — ✅ AKTIF (2026-09-13)
+
+Produksi di dapur sekarang benar-benar mengonsumsi bahan baku (susu, kopi, gula, dst.) sesuai resep
+setiap produk, bukan menciptakan cups dari kekosongan seperti sebelumnya. Stok bahan baku masuk ke
+sistem lewat purchase order yang tercatat siapa pemasoknya dan berapa biayanya.
+
+**Empat menu baru di panel, semuanya di bawah Operasional:**
+
+| Menu | Fungsi |
+|---|---|
+| **Bahan Baku** | Master data bahan baku — kode, nama, satuan (gram/ml/pcs), titik pesan ulang |
+| **Pemasok** | Master data supplier |
+| **Resep** | BOM per produk — daftar bahan baku + jumlah per 1 unit jadi. **Selalu versi baru, tidak pernah mengedit versi lama** — resep yang sudah dipakai untuk memproduksi cups tidak boleh diam-diam berubah biayanya |
+| **Pembelian Bahan Baku** | Purchase order — DRAFT → **Tandai Dipesan** → **Terima** (memposting stok bahan baku dengan biayanya ke buku besar) atau **Batalkan**. Sama seperti Setoran/Stock Opname: sekali diterima, tidak bisa dibatalkan — koreksi lewat Stock Opname |
+
+**Menu Produksi** (read-only) mencatat setiap kejadian brewing: dapur mana, siapa yang menjalankan,
+produk dan bahan baku apa saja yang bergerak.
+
+**Produk tanpa resep tetap bisa diproduksi seperti biasa** (raw-material-blind) — begitu resepnya
+diisi, penegakan kecukupan stok otomatis aktif tanpa saklar terpisah. Endpoint mobile
+`POST /api/v1/showcase/brew` (dipakai barista) **tidak berubah kontraknya sama sekali** — perubahan
+murni di baliknya, jadi APK yang sudah terpasang tidak perlu diperbarui untuk fitur ini.
+
+Kebutuhan bahan baku yang dipakai bersama oleh beberapa produk dalam satu brew (mis. susu dipakai
+latte dan cappuccino sekaligus) dihitung **gabungan sebelum dikunci**, bukan per produk — mencegah
+dua pengecekan yang masing-masing lolos secara terpisah padahal totalnya melebihi stok.
+
+Sudah di-deploy dan diverifikasi langsung: 6 migrasi jalan di produksi, kelima rute panel baru
+(`admin/raw-materials`, `admin/suppliers`, `admin/recipes`, `admin/purchase-orders`,
+`admin/productions`) terdaftar di `route:list`, dan `POST /api/v1/showcase/brew` tetap merespons
+normal (403 untuk peran yang salah, bukan error server).
+
+---
+
 ## Pembatalan Transaksi (Sale Void) — ✅ AKTIF (2026-09-13)
 
 Salah tap atau salah jumlah saat mencatat penjualan sekarang bisa dibatalkan, bukan dibiarkan
