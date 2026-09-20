@@ -13,6 +13,7 @@
     @php
         $snap = $this->snapshot();
         $products = $snap['products'];
+        $rawMaterials = $snap['raw_materials'];
         $colspan = 2 + $products->count();
     @endphp
 
@@ -183,6 +184,83 @@
                             </tfoot>
                         @endif
                     </table>
+                </div>
+            </div>
+        @endif
+
+        {{-- Raw materials sit in their own sheet rather than as extra columns above: they are
+             counted in grams and millilitres, not cups, so adding them to the cups grid would put
+             two different units under one "Total" column. There is no cart column — the
+             raw-material store belongs to a kitchen, and a cart never holds ingredients. --}}
+        @if ($rawMaterials->isNotEmpty())
+            <div class="bsi-sheet">
+                <div class="bsi-sheet__head">
+                    <div class="bsi-sheet__head-left">
+                        <span class="bsi-kicker">Sebelum diseduh</span>
+                        <h2 class="bsi-title">Stok bahan baku di dapur</h2>
+                    </div>
+                    <span class="bsi-serif">{{ $rawMaterials->count() }} bahan</span>
+                </div>
+
+                <div class="bsi-scroll">
+                    <table class="bsi-grid">
+                        <thead>
+                            <tr>
+                                <th class="bsi-name">Dapur Pusat</th>
+                                @foreach ($rawMaterials as $material)
+                                    <th>{{ $material->name }}<br><span class="bsi-th-unit">{{ $material->unit }}</span></th>
+                                @endforeach
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse ($snap['raw_material_rows'] as $row)
+                                <tr>
+                                    <td class="bsi-name">{{ $row['kitchen']->name }}</td>
+                                    @foreach ($rawMaterials as $material)
+                                        @php
+                                            $qty = $row['qty'][$material->id] ?? 0;
+                                            $below = $row['below'][$material->id] ?? false;
+                                        @endphp
+                                        <td class="bsi-num {{ $below ? 'bsi-num--alarm' : ($qty === 0 ? 'bsi-num--quiet' : '') }}">
+                                            {{ number_format($qty, 0, ',', '.') }}
+                                        </td>
+                                    @endforeach
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="{{ 1 + $rawMaterials->count() }}">
+                                        <div class="bsi-empty">
+                                            <p class="bsi-empty__title">Belum ada dapur pusat aktif</p>
+                                            <p>Tambahkan lewat menu Master Data → Dapur Pusat.</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                        @if ($snap['raw_material_rows']->isNotEmpty())
+                            <tfoot>
+                                <tr class="bsi-foot-total">
+                                    <td class="bsi-name">Total seluruh dapur</td>
+                                    @foreach ($rawMaterials as $material)
+                                        <td class="bsi-num">{{ number_format($snap['raw_material_totals'][$material->id] ?? 0, 0, ',', '.') }}</td>
+                                    @endforeach
+                                </tr>
+                            </tfoot>
+                        @endif
+                    </table>
+                </div>
+
+                <div class="bsi-note">
+                    <span class="bsi-kicker">Titik pemesanan ulang</span>
+                    <p>
+                        Angka yang <strong>ditandai</strong> sudah menyentuh atau turun di bawah titik
+                        pemesanan ulang yang disetel di Master Data → Bahan Baku. Bahan yang titiknya
+                        belum disetel tidak pernah ditandai — ambang yang kosong bukan berarti nol.
+                    </p>
+                    <p>
+                        Bahan baku berkurang otomatis saat barista menyeduh, sesuai resep produk yang
+                        diseduh, dan bertambah saat purchase order diterima.
+                    </p>
                 </div>
             </div>
         @endif

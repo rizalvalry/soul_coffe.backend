@@ -7,6 +7,7 @@ use App\Enums\Role;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\Product;
+use App\Models\RawMaterial;
 use App\Models\StockLedger;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -49,19 +50,8 @@ class StockAdjustmentService
         $this->assertMayOperate($actor);
         $this->assertLocation($locationType, $locationId);
 
-        $reason = trim($reason);
-
-        if ($reason === '') {
-            throw new RuntimeException('Alasan penyesuaian wajib diisi.');
-        }
-
-        if (mb_strlen($reason) < 10) {
-            throw new RuntimeException('Alasan penyesuaian wajib diisi (min. 10 karakter).');
-        }
-
-        if ($countedQty < 0) {
-            throw new RuntimeException('Jumlah sebenarnya tidak boleh negatif.');
-        }
+        $reason = $this->assertReason($reason);
+        $this->assertCountedQty($countedQty);
 
         $product = Product::query()->where('is_active', true)->find($productId);
 
@@ -93,6 +83,83 @@ class StockAdjustmentService
                 note: $reason,
             );
         });
+    }
+
+    /**
+     * The raw-material twin of `adjust()`, mirroring the twin methods StockLedgerService already
+     * keeps for the two catalogues (`stockMap`/`rawMaterialStockMap`).
+     *
+     * The location is always a kitchen's raw-material store: ingredients live at a kitchen, never
+     * on a cart. The caller passes the kitchen id and this resolves the store for it.
+     */
+    public function adjustRawMaterial(
+        int $kitchenId,
+        int $rawMaterialId,
+        int $countedQty,
+        string $reason,
+        User $actor,
+    ): StockLedger {
+        $this->assertMayOperate($actor);
+        $this->assertLocation(StockLedgerService::KITCHEN, $kitchenId);
+
+        $reason = $this->assertReason($reason);
+        $this->assertCountedQty($countedQty);
+
+        $material = RawMaterial::query()->where('is_active', true)->find($rawMaterialId);
+
+        if (! $material) {
+            throw new RuntimeException('Bahan baku tidak dikenal atau sudah tidak aktif.');
+        }
+
+        return DB::transaction(function () use ($kitchenId, $rawMaterialId, $countedQty, $reason, $actor): StockLedger {
+            $current = $this->ledger->lockAndProjectRawMaterials(
+                StockLedgerService::RAW_MATERIAL_STORE,
+                $kitchenId,
+                [$rawMaterialId],
+            );
+
+            $delta = $countedQty - ($current[$rawMaterialId] ?? 0);
+
+            if ($delta === 0) {
+                throw new RuntimeException('Jumlah sebenarnya sudah sama dengan stok sistem, tidak ada yang diposting.');
+            }
+
+            return $this->ledger->post(
+                locationType: StockLedgerService::RAW_MATERIAL_STORE,
+                locationId: $kitchenId,
+                productId: null,
+                movementType: MovementType::ADJUSTMENT,
+                qty: $delta,
+                actorId: $actor->id,
+                kitchenId: $kitchenId,
+                refType: 'stock_adjustment',
+                refId: null,
+                rawMaterialId: $rawMaterialId,
+                note: $reason,
+            );
+        });
+    }
+
+    private function assertReason(string $reason): string
+    {
+        $reason = trim($reason);
+
+        if ($reason === '') {
+            throw new RuntimeException('Alasan penyesuaian wajib diisi.');
+        }
+
+        if (mb_strlen($reason) < 10) {
+            throw new RuntimeException('Alasan penyesuaian wajib diisi (min. 10 karakter).');
+        }
+
+        return $reason;
+    }
+
+    private function assertCountedQty(int $countedQty): void
+    {
+        if ($countedQty < 0) {
+            throw new RuntimeException('Jumlah sebenarnya tidak boleh negatif.');
+        }
     }
 
     private function assertMayOperate(User $actor): void

@@ -7,6 +7,7 @@ use App\Filament\Concerns\RenameableModule;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\Product;
+use App\Models\RawMaterial;
 use App\Services\Access\PermissionMatrix;
 use App\Services\Reporting\StockOverviewService;
 use App\Services\StockAdjustmentService;
@@ -85,12 +86,26 @@ class CentralStock extends Page
                 ->modalDescription('Memposting koreksi ke buku besar stok. Bukan mengubah angka pada tabel — selisih dihitung dari stok sistem saat ini.')
                 ->modalSubmitActionLabel('Posting Penyesuaian')
                 ->schema([
+                    Select::make('item_kind')
+                        ->label('Jenis Item')
+                        ->options([
+                            'product' => 'Produk jadi (cups)',
+                            'raw_material' => 'Bahan baku',
+                        ])
+                        ->default('product')
+                        ->required()
+                        ->live(),
+
                     Select::make('location_kind')
                         ->label('Jenis Lokasi')
-                        ->options([
-                            StockLedgerService::KITCHEN => 'Dapur Pusat',
-                            StockLedgerService::CART => 'Gerobak',
-                        ])
+                        // Bahan baku hanya ada di gudang dapur; gerobak tidak pernah menyimpannya.
+                        ->options(fn (Get $get): array => $get('item_kind') === 'raw_material'
+                            ? [StockLedgerService::KITCHEN => 'Dapur Pusat']
+                            : [
+                                StockLedgerService::KITCHEN => 'Dapur Pusat',
+                                StockLedgerService::CART => 'Gerobak',
+                            ])
+                        ->default(StockLedgerService::KITCHEN)
                         ->required()
                         ->live(),
 
@@ -124,7 +139,20 @@ class CentralStock extends Page
                             ->pluck('name', 'id')
                             ->all())
                         ->searchable()
-                        ->required(),
+                        ->visible(fn (Get $get): bool => $get('item_kind') !== 'raw_material')
+                        ->required(fn (Get $get): bool => $get('item_kind') !== 'raw_material'),
+
+                    Select::make('raw_material_id')
+                        ->label('Bahan Baku')
+                        ->options(fn (): array => RawMaterial::query()
+                            ->where('is_active', true)
+                            ->orderBy('sort_order')
+                            ->get(['id', 'name', 'unit'])
+                            ->mapWithKeys(fn (RawMaterial $m): array => [$m->id => $m->name.' ('.$m->unit.')'])
+                            ->all())
+                        ->searchable()
+                        ->visible(fn (Get $get): bool => $get('item_kind') === 'raw_material')
+                        ->required(fn (Get $get): bool => $get('item_kind') === 'raw_material'),
 
                     TextInput::make('counted_qty')
                         ->label('Jumlah sebenarnya')
@@ -141,20 +169,35 @@ class CentralStock extends Page
                         ->helperText('Wajib, minimal 10 karakter. Tercatat pada baris buku besar yang diposting.'),
                 ])
                 ->action(function (array $data): void {
-                    $product = Product::query()->find($data['product_id']);
+                    $isRawMaterial = ($data['item_kind'] ?? 'product') === 'raw_material';
+
+                    $itemLabel = $isRawMaterial
+                        ? (RawMaterial::query()->find($data['raw_material_id'])?->name ?? 'Bahan baku')
+                        : (Product::query()->find($data['product_id'])?->name ?? 'Produk');
+
                     $locationLabel = $data['location_kind'] === StockLedgerService::CART
                         ? 'Gerobak '.(Cart::query()->find($data['location_id'])?->code ?? $data['location_id'])
                         : (CentralKitchen::query()->find($data['location_id'])?->name ?? (string) $data['location_id']);
 
+                    $service = app(StockAdjustmentService::class);
+
                     try {
-                        $posted = app(StockAdjustmentService::class)->adjust(
-                            locationType: $data['location_kind'],
-                            locationId: (int) $data['location_id'],
-                            productId: (int) $data['product_id'],
-                            countedQty: (int) $data['counted_qty'],
-                            reason: $data['reason'],
-                            actor: Auth::user(),
-                        );
+                        $posted = $isRawMaterial
+                            ? $service->adjustRawMaterial(
+                                kitchenId: (int) $data['location_id'],
+                                rawMaterialId: (int) $data['raw_material_id'],
+                                countedQty: (int) $data['counted_qty'],
+                                reason: $data['reason'],
+                                actor: Auth::user(),
+                            )
+                            : $service->adjust(
+                                locationType: $data['location_kind'],
+                                locationId: (int) $data['location_id'],
+                                productId: (int) $data['product_id'],
+                                countedQty: (int) $data['counted_qty'],
+                                reason: $data['reason'],
+                                actor: Auth::user(),
+                            );
                     } catch (RuntimeException $e) {
                         Notification::make()->danger()->title('Tidak bisa memposting penyesuaian')->body($e->getMessage())->send();
 
@@ -168,7 +211,7 @@ class CentralStock extends Page
                         ->title('Penyesuaian stok diposting')
                         ->body(sprintf(
                             '%s di %s disesuaikan %s%d',
-                            $product?->name ?? 'Produk',
+                            $itemLabel,
                             $locationLabel,
                             $delta > 0 ? '+' : '',
                             $delta,

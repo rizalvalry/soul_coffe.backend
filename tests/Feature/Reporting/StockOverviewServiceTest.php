@@ -205,4 +205,114 @@ class StockOverviewServiceTest extends TestCase
 
         $this->assertSame(['Produk Pertama', 'Kopi Susu', 'Teh Manis'], $names);
     }
+
+    // ── Bahan baku ───────────────────────────────────────────────────────
+
+    private function rawMaterial(string $code, string $name, string $unit = 'g', ?int $reorderPoint = null): \App\Models\RawMaterial
+    {
+        return \App\Models\RawMaterial::create([
+            'code' => $code, 'name' => $name, 'unit' => $unit,
+            'reorder_point' => $reorderPoint, 'is_active' => true, 'sort_order' => 1,
+        ]);
+    }
+
+    private function receiveRawMaterial(int $rawMaterialId, int $qty): void
+    {
+        $this->ledger->post(
+            locationType: StockLedgerService::RAW_MATERIAL_STORE,
+            locationId: $this->kitchen->id,
+            productId: null,
+            movementType: MovementType::PURCHASE_IN,
+            qty: $qty,
+            actorId: $this->actor->id,
+            kitchenId: $this->kitchen->id,
+            rawMaterialId: $rawMaterialId,
+        );
+    }
+
+    public function test_raw_material_stock_appears_per_kitchen(): void
+    {
+        $milk = $this->rawMaterial('SUSU', 'Susu', 'ml');
+        $this->receiveRawMaterial($milk->id, 5000);
+
+        $snap = $this->service->snapshot();
+
+        $this->assertSame(['Susu'], $snap['raw_materials']->pluck('name')->all());
+        $this->assertSame(5000, $snap['raw_material_rows']->first()['qty'][$milk->id]);
+        $this->assertSame(5000, $snap['raw_material_totals'][$milk->id]);
+    }
+
+    public function test_raw_material_stock_is_summed_across_kitchens(): void
+    {
+        $second = CentralKitchen::create([
+            'name' => 'Dapur B', 'address' => 'Jl. Uji 2', 'open_at' => '05:00', 'close_at' => '20:00',
+        ]);
+
+        $milk = $this->rawMaterial('SUSU', 'Susu', 'ml');
+        $this->receiveRawMaterial($milk->id, 5000);
+
+        $this->ledger->post(
+            locationType: StockLedgerService::RAW_MATERIAL_STORE,
+            locationId: $second->id,
+            productId: null,
+            movementType: MovementType::PURCHASE_IN,
+            qty: 2000,
+            actorId: $this->actor->id,
+            kitchenId: $second->id,
+            rawMaterialId: $milk->id,
+        );
+
+        $this->assertSame(7000, $this->service->snapshot()['raw_material_totals'][$milk->id]);
+    }
+
+    public function test_a_material_at_or_below_its_reorder_point_is_flagged(): void
+    {
+        $beans = $this->rawMaterial('KOPI', 'Biji Kopi', 'g', 1000);
+        $this->receiveRawMaterial($beans->id, 900);
+
+        $snap = $this->service->snapshot();
+
+        $this->assertTrue($snap['raw_material_below'][$beans->id]);
+        $this->assertTrue($snap['raw_material_rows']->first()['below'][$beans->id]);
+    }
+
+    public function test_a_material_above_its_reorder_point_is_not_flagged(): void
+    {
+        $beans = $this->rawMaterial('KOPI', 'Biji Kopi', 'g', 1000);
+        $this->receiveRawMaterial($beans->id, 1500);
+
+        $this->assertFalse($this->service->snapshot()['raw_material_below'][$beans->id]);
+    }
+
+    /** Ambang yang belum disetel bukan ambang nol: bahan tanpa reorder point tidak pernah ditandai. */
+    public function test_a_material_without_a_reorder_point_is_never_flagged(): void
+    {
+        $sugar = $this->rawMaterial('GULA', 'Gula', 'g');
+
+        $this->assertFalse($this->service->snapshot()['raw_material_below'][$sugar->id]);
+    }
+
+    public function test_inactive_raw_materials_are_not_columns(): void
+    {
+        $this->rawMaterial('SUSU', 'Susu', 'ml');
+        \App\Models\RawMaterial::create([
+            'code' => 'LAMA', 'name' => 'Bahan Lama', 'unit' => 'g',
+            'is_active' => false, 'sort_order' => 9,
+        ]);
+
+        $this->assertSame(['Susu'], $this->service->snapshot()['raw_materials']->pluck('name')->all());
+    }
+
+    public function test_finished_goods_figures_are_untouched_by_raw_materials(): void
+    {
+        $milk = $this->rawMaterial('SUSU', 'Susu', 'ml');
+        $this->receiveRawMaterial($milk->id, 5000);
+        $this->brew($this->coffee->id, 40);
+
+        $snap = $this->service->snapshot();
+
+        // Bahan baku dihitung dalam ml, cups dalam cup: totalnya tidak boleh tercampur.
+        $this->assertSame(40, $snap['grand']);
+        $this->assertSame(40, $snap['kitchen_grand']);
+    }
 }

@@ -379,4 +379,192 @@ class StockAdjustmentTest extends TestCase
             $this->admin,
         );
     }
+
+    // ── Bahan baku ───────────────────────────────────────────────────────
+
+    private function milk(?int $reorderPoint = null): \App\Models\RawMaterial
+    {
+        return \App\Models\RawMaterial::create([
+            'code' => 'SUSU', 'name' => 'Susu', 'unit' => 'ml',
+            'reorder_point' => $reorderPoint, 'is_active' => true, 'sort_order' => 1,
+        ]);
+    }
+
+    private function receiveMilk(int $rawMaterialId, int $qty): void
+    {
+        app(StockLedgerService::class)->post(
+            locationType: StockLedgerService::RAW_MATERIAL_STORE,
+            locationId: $this->kitchen->id,
+            productId: null,
+            movementType: MovementType::PURCHASE_IN,
+            qty: $qty,
+            actorId: $this->admin->id,
+            kitchenId: $this->kitchen->id,
+            rawMaterialId: $rawMaterialId,
+        );
+    }
+
+    private function milkStock(int $rawMaterialId): int
+    {
+        return app(StockLedgerService::class)->rawMaterialStockFor(
+            StockLedgerService::RAW_MATERIAL_STORE,
+            $this->kitchen->id,
+            $rawMaterialId,
+        );
+    }
+
+    public function test_a_raw_material_can_be_adjusted_down(): void
+    {
+        $milk = $this->milk();
+        $this->receiveMilk($milk->id, 5000);
+
+        $row = $this->service()->adjustRawMaterial(
+            $this->kitchen->id,
+            $milk->id,
+            4200,
+            'Sisa di jerigen ternyata kurang',
+            $this->admin,
+        );
+
+        $this->assertSame(-800, $row->qty_delta);
+        $this->assertSame($milk->id, $row->raw_material_id);
+        $this->assertNull($row->product_id);
+        $this->assertSame(4200, $this->milkStock($milk->id));
+    }
+
+    public function test_a_raw_material_can_be_adjusted_up(): void
+    {
+        $milk = $this->milk();
+        $this->receiveMilk($milk->id, 1000);
+
+        $row = $this->service()->adjustRawMaterial(
+            $this->kitchen->id,
+            $milk->id,
+            1500,
+            'Ada satu karton yang belum tercatat',
+            $this->admin,
+        );
+
+        $this->assertSame(500, $row->qty_delta);
+        $this->assertSame(1500, $this->milkStock($milk->id));
+    }
+
+    public function test_a_raw_material_adjustment_is_measured_against_live_stock(): void
+    {
+        $milk = $this->milk();
+        $this->receiveMilk($milk->id, 5000);
+
+        // Konsumsi terjadi setelah operator membaca layar.
+        app(StockLedgerService::class)->post(
+            locationType: StockLedgerService::RAW_MATERIAL_STORE,
+            locationId: $this->kitchen->id,
+            productId: null,
+            movementType: MovementType::RECIPE_CONSUME_OUT,
+            qty: 1000,
+            actorId: $this->admin->id,
+            kitchenId: $this->kitchen->id,
+            rawMaterialId: $milk->id,
+        );
+
+        $this->service()->adjustRawMaterial(
+            $this->kitchen->id,
+            $milk->id,
+            4500,
+            'Hitung fisik jerigen sore hari',
+            $this->admin,
+        );
+
+        $this->assertSame(4500, $this->milkStock($milk->id));
+    }
+
+    public function test_a_raw_material_figure_equal_to_stock_is_refused(): void
+    {
+        $milk = $this->milk();
+        $this->receiveMilk($milk->id, 5000);
+
+        $this->expectException(RuntimeException::class);
+
+        $this->service()->adjustRawMaterial(
+            $this->kitchen->id,
+            $milk->id,
+            5000,
+            'Mencoba menyesuaikan padahal sama',
+            $this->admin,
+        );
+    }
+
+    public function test_a_barista_may_not_adjust_a_raw_material(): void
+    {
+        $milk = $this->milk();
+        $this->receiveMilk($milk->id, 5000);
+
+        $this->expectException(RuntimeException::class);
+
+        $this->service()->adjustRawMaterial(
+            $this->kitchen->id,
+            $milk->id,
+            4000,
+            'Mencoba dari peran yang tidak berhak',
+            $this->barista,
+        );
+    }
+
+    public function test_a_raw_material_reason_is_recorded_and_too_short_is_refused(): void
+    {
+        $milk = $this->milk();
+        $this->receiveMilk($milk->id, 5000);
+
+        try {
+            $this->service()->adjustRawMaterial($this->kitchen->id, $milk->id, 4000, 'kurang', $this->admin);
+            $this->fail('Alasan terlalu pendek seharusnya ditolak.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('10 karakter', $e->getMessage());
+        }
+
+        $row = $this->service()->adjustRawMaterial(
+            $this->kitchen->id,
+            $milk->id,
+            4000,
+            'Tumpah saat pemindahan jerigen',
+            $this->admin,
+        );
+
+        $this->assertSame('Tumpah saat pemindahan jerigen', $row->note);
+        $this->assertSame('stock_adjustment', $row->ref_type);
+    }
+
+    public function test_an_inactive_raw_material_is_refused(): void
+    {
+        $retired = \App\Models\RawMaterial::create([
+            'code' => 'LAMA', 'name' => 'Bahan Lama', 'unit' => 'g',
+            'is_active' => false, 'sort_order' => 9,
+        ]);
+
+        $this->expectException(RuntimeException::class);
+
+        $this->service()->adjustRawMaterial(
+            $this->kitchen->id,
+            $retired->id,
+            10,
+            'Alasan yang cukup panjang untuk lolos',
+            $this->admin,
+        );
+    }
+
+    public function test_adjusting_a_raw_material_never_touches_finished_goods(): void
+    {
+        $this->seedKitchenStock(40);
+        $milk = $this->milk();
+        $this->receiveMilk($milk->id, 5000);
+
+        $this->service()->adjustRawMaterial(
+            $this->kitchen->id,
+            $milk->id,
+            4000,
+            'Koreksi hitung fisik bahan baku',
+            $this->admin,
+        );
+
+        $this->assertSame(40, $this->stockOf(StockLedgerService::KITCHEN, $this->kitchen->id));
+    }
 }

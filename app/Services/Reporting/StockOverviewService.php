@@ -5,11 +5,13 @@ namespace App\Services\Reporting;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\Product;
+use App\Models\RawMaterial;
 use App\Services\StockLedgerService;
 use Illuminate\Support\Collection;
 
 /**
- * Where every cup currently is: still in a kitchen showcase, or already out on a cart.
+ * Where every cup currently is: still in a kitchen showcase, or already out on a cart — and, since
+ * raw materials joined the same ledger, how much of each ingredient is left to brew the next ones.
  *
  * The panel had no answer to "how many cups exist right now" — the barista could see their own
  * kitchen from the phone and each rider their own cart, but nobody could see the total
@@ -34,6 +36,10 @@ class StockOverviewService
      *     kitchen_grand: int,
      *     cart_grand: int,
      *     grand: int,
+     *     raw_materials: Collection<int, RawMaterial>,
+     *     raw_material_rows: Collection<int, array{kitchen: CentralKitchen, qty: array<int,int>, total: int, below: array<int,bool>}>,
+     *     raw_material_totals: array<int,int>,
+     *     raw_material_below: array<int,bool>,
      * }
      */
     public function snapshot(): array
@@ -79,6 +85,14 @@ class StockOverviewService
             $grandTotals[$id] = ($kitchenTotals[$id] ?? 0) + ($cartTotals[$id] ?? 0);
         }
 
+        $rawMaterials = RawMaterial::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->get(['id', 'code', 'name', 'unit', 'reorder_point']);
+
+        $rawMaterialRows = $this->rawMaterialRows($rawMaterials);
+        $rawMaterialTotals = $this->sumColumns($rawMaterialRows, $rawMaterials->pluck('id')->all());
+
         return [
             'products' => $products,
             'kitchens' => $kitchens,
@@ -89,7 +103,65 @@ class StockOverviewService
             'kitchen_grand' => array_sum($kitchenTotals),
             'cart_grand' => array_sum($cartTotals),
             'grand' => array_sum($grandTotals),
+            'raw_materials' => $rawMaterials,
+            'raw_material_rows' => $rawMaterialRows,
+            'raw_material_totals' => $rawMaterialTotals,
+            'raw_material_below' => $this->belowReorderPoint($rawMaterials, $rawMaterialTotals),
         ];
+    }
+
+    /**
+     * Raw material stock, per kitchen.
+     *
+     * There is no cart column here and there never will be: a cart carries finished cups, and the
+     * raw-material store is a location that belongs to one kitchen (`location_id` is the kitchen's
+     * own id — see the Phase 2 migration that introduced `raw_material_store`).
+     *
+     * @param  Collection<int, RawMaterial>  $rawMaterials
+     * @return Collection<int, array{kitchen: CentralKitchen, qty: array<int,int>, total: int, below: array<int,bool>}>
+     */
+    private function rawMaterialRows(Collection $rawMaterials): Collection
+    {
+        $ids = $rawMaterials->pluck('id')->all();
+
+        return CentralKitchen::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get()
+            ->map(function (CentralKitchen $kitchen) use ($rawMaterials, $ids): array {
+                $stock = $this->ledger->rawMaterialStockMap(
+                    StockLedgerService::RAW_MATERIAL_STORE,
+                    $kitchen->id,
+                );
+
+                $row = $this->row('kitchen', $kitchen, $stock, $ids);
+                $row['below'] = $this->belowReorderPoint($rawMaterials, $row['qty']);
+
+                return $row;
+            });
+    }
+
+    /**
+     * Which raw materials have fallen to or below their reorder point.
+     *
+     * `reorder_point` has existed on the master data form since Phase 2 with nothing ever reading
+     * it; this is the first place it changes what anyone sees. A material with no reorder point
+     * set is never flagged — an unset threshold is not a threshold of zero.
+     *
+     * @param  Collection<int, RawMaterial>  $rawMaterials
+     * @param  array<int,int>  $qty
+     * @return array<int,bool>
+     */
+    private function belowReorderPoint(Collection $rawMaterials, array $qty): array
+    {
+        $flags = [];
+
+        foreach ($rawMaterials as $material) {
+            $point = $material->reorder_point;
+            $flags[$material->id] = $point !== null && ($qty[$material->id] ?? 0) <= $point;
+        }
+
+        return $flags;
     }
 
     /**
