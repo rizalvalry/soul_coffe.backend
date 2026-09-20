@@ -602,14 +602,21 @@ membuat izin dan pintu tidak saling bertentangan.
 *dan* Finance. Finance **tidak** diberi menu lain, terutama bukan Pengguna & Role: lihat alasannya
 di bagian Absensi di atas. Sisanya diatur sendiri lewat halaman matriks.
 
-Menu yang sudah masuk matriks: Dashboard, Pengguna & Role, Produk, Gerobak, Lokasi, Dapur Pusat,
-Target Harian, Penugasan Rider, Stok Terpusat, **Penjualan Gerobak**, **Insiden Pengiriman**,
-**Aktivitas Rider**, Laporan Absensi, Laporan & Ekspor, Audit Trail, Permintaan Reset PIN,
-Pengaturan AI.
+Menu yang sudah masuk matriks — **26 modul** per 2026-09-20: Dashboard, Pengguna & Role, Produk,
+Gerobak, Lokasi, Dapur Pusat, Bahan Baku, Resep, Pemasok, Target Harian, Penugasan Rider, Stok
+Terpusat, Stock Opname, Penjualan Gerobak, Penjualan Langsung Kantor, Produksi, Pembelian Bahan
+Baku, Insiden Pengiriman, Aktivitas Rider, Setoran Harian, Laporan Absensi, Izin Absen Luar Lokasi,
+Laporan & Ekspor, Audit Trail, Permintaan Reset PIN, Pengaturan AI.
 
-Empat di antaranya **hanya bisa "Lihat"** karena tidak ada yang bisa dibuat atau diubah di sana:
-Dashboard, Laporan & Ekspor, Audit Trail, Stok Terpusat — ditambah **Penjualan Gerobak** dan
-**Aktivitas Rider**, yang read-only karena keduanya adalah catatan kejadian, bukan formulir.
+**Enam di antaranya hanya bisa "Lihat"**, karena isinya catatan kejadian yang sudah menggerakkan
+buku besar — mengubahnya di panel berarti membuat dua sumber angka yang tidak bisa didamaikan:
+Dashboard, Laporan & Ekspor, Audit Trail, Setoran Harian, Aktivitas Rider, dan Produksi.
+
+Tiga modul **sudah tidak lagi read-only** seiring bertambahnya satu aksi keputusan di masing-masing:
+**Penjualan Gerobak** (tombol batalkan transaksi), **Penjualan Langsung Kantor** (POS walk-in beserta
+pembatalannya), dan **Stok Terpusat** (tombol Penyesuaian Stok). Pola ketiganya sama: hak **Ubah**
+tidak berarti kolomnya bisa diketik ulang, melainkan menentukan siapa yang boleh menekan satu tombol
+keputusan yang menulis ke buku besar.
 
 Satu pengecualian yang perlu diketahui: **Insiden Pengiriman** ikut matriks dan dua tombol
 keputusannya dikaitkan ke hak **Ubah**, bukan ke hak Lihat. Peran yang hanya diberi "Lihat" bisa
@@ -906,6 +913,72 @@ khusus untuk kasus itu.
 dengan total per jenis pembayaran yang dijumlahkan di bawah kolom, filter “hanya yang ada selisih”,
 dan selisihnya ditulis sebagai kata (**Kurang Rp 20.000** / **Lebih Rp 20.000** / **Pas**), karena
 “Rp -20.000” salah dibaca sekilas dan arah selisih itu justru seluruh makna kolomnya.
+
+---
+
+## Stok Terpusat: penyesuaian stok & bahan baku — ✅ AKTIF (2026-09-20)
+
+Menu **Operasional → Stok Terpusat** dulu hanya bisa dibaca. Angka yang jelas-jelas salah — salah
+hitung, cup pecah yang tidak sempat dicatat — tidak punya jalan resmi untuk dibetulkan.
+
+### Tombol Penyesuaian Stok
+
+Sekarang ada tombol **Penyesuaian Stok** di halaman itu. Cara pakainya:
+
+1. Pilih jenis item: **Produk jadi (cups)** atau **Bahan baku**.
+2. Pilih lokasi — Dapur Pusat atau Gerobak untuk cups; khusus bahan baku, lokasinya terkunci ke
+   Dapur Pusat karena gerobak memang tidak pernah menyimpan bahan mentah.
+3. Pilih produk atau bahan bakunya.
+4. Isi **jumlah sebenarnya** — bukan selisihnya. Sistem yang menghitung selisihnya.
+5. Isi **alasan**, wajib, minimal 10 karakter.
+
+**Angka lama tidak pernah ditimpa.** Yang terjadi adalah satu baris koreksi baru diposting ke buku
+besar stok, lengkap dengan siapa yang melakukannya, kapan, dan alasannya. Riwayat sebelumnya tetap
+utuh dan bisa ditelusuri. Ini aturan yang sama yang berlaku di seluruh sistem sejak awal: stok
+adalah penjumlahan mutasi, bukan angka yang bisa diketik ulang.
+
+**Selisih dihitung saat tombol ditekan, bukan dari angka yang tampil di layar.** Kalau ada penjualan
+atau penyeduhan yang terjadi di sela-sela operator membaca grid dan menekan tombol, pergerakan itu
+tidak ikut terhapus. Baris stok dikunci selama perhitungan supaya dua orang tidak bisa mengoreksi
+angka yang sama bersamaan.
+
+**Ditolak kalau jumlahnya sudah sama** dengan stok sistem — tidak ada baris kosong yang diposting.
+
+**Siapa yang boleh:** Administrator dan Finance. Peran lain ditolak di server, bukan sekadar
+tombolnya disembunyikan. Aksesnya diatur lewat **Pengaturan → Management Users Role**: modul
+**Stok Terpusat** tidak lagi read-only, jadi hak **Ubah** bisa diberikan ke peran tertentu. Yang
+hanya diberi hak **Lihat** tidak melihat tombolnya sama sekali.
+
+### Bedanya dengan Stock Opname
+
+| | Stock Opname | Penyesuaian Stok |
+|---|---|---|
+| Cakupan | Satu lokasi penuh, semua produk | Satu item di satu lokasi |
+| Alur | Dua langkah: hitung dulu (draft), lalu terapkan | Satu langkah, langsung diposting |
+| Dipakai untuk | Hitung fisik terjadwal | Satu angka yang jelas salah, betulkan sekarang |
+
+### Bahan baku kini terlihat di Stok Terpusat
+
+Halaman itu sebelumnya hanya menampilkan cups. Bahan baku yang masuk sejak modul Pembelian Bahan
+Baku tidak pernah terlihat di sana. Sekarang ada tabel ketiga: **Stok bahan baku di dapur**.
+
+Tabelnya sengaja dipisah dari grid cups, bukan ditambahkan sebagai kolom — cups dihitung per cup,
+bahan baku per gram dan mililiter, dan satu kolom “Total” tidak bisa menjumlahkan dua satuan
+berbeda. Tidak ada kolom gerobak, karena gudang bahan baku melekat pada dapur.
+
+**Titik pemesanan ulang akhirnya berfungsi.** Kolom itu sudah lama ada di Master Data → Bahan Baku
+tetapi tidak pernah dibaca oleh apa pun. Sekarang angka yang menyentuh atau turun di bawah ambangnya
+**ditandai** di tabel ini. Bahan yang ambangnya belum disetel tidak pernah ditandai — ambang kosong
+bukan berarti nol.
+
+### Catatan rilis
+
+Perubahan ini **hanya di CMS**. Tidak ada perubahan pada aplikasi mobile dan tidak perlu APK baru;
+v1.5.3 yang sudah terpasang tetap berlaku.
+
+Sudah di-deploy dan diverifikasi: berkas terpasang di server, seluruh template blade terkompilasi
+tanpa galat, dan `admin/central-stock` merespons normal. Satu migrasi menyertai fitur ini
+(`add_note_to_stock_ledger`, kolom alasan pada baris buku besar), sudah dijalankan di produksi.
 
 ---
 
