@@ -31,6 +31,7 @@ class StockLedger extends Model
         'cost_minor',
         'ref_type',
         'ref_id',
+        'note',
         'actor_id',
         'kitchen_id',
     ];

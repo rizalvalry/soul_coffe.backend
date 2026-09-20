@@ -1,9 +1,10 @@
 {{--
     Stok Terpusat, in the BSI Black & White system (see public/css/bsi-bw.css).
 
-    Read-only by nature: stock moves by brewing, handing over, refilling and closing out. A
-    number typed into a report would be a second way to change stock that the append-only
-    ledger (R6) could not explain.
+    The grid itself is still never edited directly: stock moves by brewing, handing over,
+    refilling and closing out. The one write this page allows is the "Penyesuaian Stok" header
+    action, which posts an explicit compensating ledger row through StockAdjustmentService
+    instead of typing over a cell — see CentralStock's class docblock.
 
     Every class here is a `bsi-` class from our own stylesheet — this project has no panel build
     step, so a Tailwind utility written here would simply never apply.

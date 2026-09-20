@@ -95,6 +95,13 @@ enum PanelModule: string
      *
      * STAFF_ACTIVITY stays read-only: the GPS trail is evidence, and evidence that can be edited
      * is not evidence.
+     *
+     * CENTRAL_STOCK is deliberately NOT on this list, even though the grid itself is still never
+     * edited directly and the page creates and deletes nothing of its own. The matrix's `edit`
+     * ability now governs the one legitimate write on this page — posting a manual stock
+     * adjustment (StockAdjustmentService), a compensating ledger row with a mandatory reason,
+     * the same "correction is an action, not a cell edit" pattern SALES and DIRECT_SALES already
+     * use for their own single write.
      */
     public function isReadOnly(): bool
     {
@@ -102,7 +109,6 @@ enum PanelModule: string
             self::DASHBOARD,
             self::REPORTS,
             self::AUDIT_LOGS,
-            self::CENTRAL_STOCK,
             // Deposits are taken on the phone at the desk, with the money in hand. The panel is
             // where they are read and reported on — editing one here would be rewriting a
             // reconciliation after the fact, with nobody standing there to disagree.

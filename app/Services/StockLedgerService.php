@@ -61,6 +61,7 @@ class StockLedgerService
         ?int $refId = null,
         ?int $rawMaterialId = null,
         ?int $costMinor = null,
+        ?string $note = null,
     ): StockLedger {
         $this->assertLocationType($locationType);
         $this->assertExactlyOneCatalogue($productId, $rawMaterialId);
@@ -87,6 +88,7 @@ class StockLedgerService
             'cost_minor' => $costMinor,
             'ref_type' => $refType,
             'ref_id' => $refId,
+            'note' => $note,
             'actor_id' => $actorId,
             'kitchen_id' => $kitchenId,
         ]);
