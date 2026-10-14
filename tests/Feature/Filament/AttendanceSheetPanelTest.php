@@ -10,8 +10,9 @@ use App\Models\Attendance;
 use App\Models\AttendanceMark;
 use App\Models\User;
 use App\Services\Access\PermissionMatrix;
-use Illuminate\Support\Carbon;
+use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -36,7 +37,7 @@ class AttendanceSheetPanelTest extends TestCase
         PermissionMatrix::forget();
 
         $this->rider = User::factory()->role(Role::RIDER)->create([
-            'name' => 'AGUNG',
+            'name' => 'Runner Uji Satu',
             'nik' => '240001',
             'uniform_size' => 'M',
             'monthly_libur_quota' => 4,
@@ -80,7 +81,7 @@ class AttendanceSheetPanelTest extends TestCase
         $finance = $this->financeWithAttendanceGrant();
         $this->actingAs($finance);
 
-        foreach (\Filament\Facades\Filament::getPanel('admin')->getResources() as $resource) {
+        foreach (Filament::getPanel('admin')->getResources() as $resource) {
             $this->assertFalse(
                 $resource::canViewAny(),
                 "{$resource} is visible to FINANCE, which was only granted the absensi report.",
@@ -104,7 +105,7 @@ class AttendanceSheetPanelTest extends TestCase
 
         Livewire::test(AttendanceSheet::class)
             ->assertSuccessful()
-            ->assertSee('AGUNG')
+            ->assertSee('Runner Uji Satu')
             ->assertSee('240001')
             ->assertSee('Jatah')
             ->assertSee('Presentase');
@@ -114,11 +115,11 @@ class AttendanceSheetPanelTest extends TestCase
     public function test_the_sheet_lists_users_with_no_separate_roster(): void
     {
         $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create());
-        User::factory()->role(Role::RIDER)->create(['name' => 'BUDI', 'nik' => '240002']);
+        User::factory()->role(Role::RIDER)->create(['name' => 'Rider Uji Empat', 'nik' => '240002']);
 
         Livewire::test(AttendanceSheet::class)
-            ->assertSee('AGUNG')
-            ->assertSee('BUDI');
+            ->assertSee('Runner Uji Satu')
+            ->assertSee('Rider Uji Empat');
     }
 
     public function test_switching_month_moves_the_sheet(): void
@@ -144,7 +145,7 @@ class AttendanceSheetPanelTest extends TestCase
     /** A clock-in shows on the screen, with the time it happened. */
     public function test_a_clock_in_appears_on_the_rendered_sheet(): void
     {
-        $staff = User::factory()->role(Role::STAFF)->create(['name' => 'MUFIT']);
+        $staff = User::factory()->role(Role::STAFF)->create(['name' => 'Rider Uji Satu']);
 
         Attendance::create([
             'operating_date' => '2026-08-05',
@@ -158,7 +159,7 @@ class AttendanceSheetPanelTest extends TestCase
         Livewire::test(AttendanceSheet::class)
             ->set('month', '2026-08')
             ->set('role', Role::STAFF->value)
-            ->assertSee('MUFIT')
+            ->assertSee('Rider Uji Satu')
             ->assertSee('Absen dari aplikasi pukul 07:12');
     }
 
@@ -203,7 +204,7 @@ class AttendanceSheetPanelTest extends TestCase
 
         $component = Livewire::test(AttendanceSheet::class)
             ->assertSuccessful()
-            ->assertSee('AGUNG');
+            ->assertSee('Runner Uji Satu');
 
         $this->assertFalse($component->instance()->canEditCells());
 

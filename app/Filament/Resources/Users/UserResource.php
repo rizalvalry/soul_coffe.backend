@@ -2,6 +2,9 @@
 
 namespace App\Filament\Resources\Users;
 
+use App\Enums\PanelModule;
+use App\Enums\Role;
+use App\Filament\Concerns\MatrixGoverned;
 use App\Filament\Resources\Users\Pages\CreateUser;
 use App\Filament\Resources\Users\Pages\EditUser;
 use App\Filament\Resources\Users\Pages\ListUsers;
@@ -9,17 +12,19 @@ use App\Filament\Resources\Users\Schemas\UserForm;
 use App\Filament\Resources\Users\Tables\UsersTable;
 use App\Models\User;
 use BackedEnum;
-use UnitEnum;
-use App\Enums\PanelModule;
-use App\Filament\Concerns\MatrixGoverned;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use Illuminate\Support\Facades\Auth;
+use UnitEnum;
 
 class UserResource extends Resource
 {
-    use MatrixGoverned;
+    use MatrixGoverned {
+        canEdit as matrixCanEdit;
+        canDelete as matrixCanDelete;
+    }
 
     protected static ?string $model = User::class;
 
@@ -40,6 +45,23 @@ class UserResource extends Resource
     public static function panelModule(): PanelModule
     {
         return PanelModule::USERS;
+    }
+
+    public static function canEdit(mixed $record): bool
+    {
+        return static::matrixCanEdit($record)
+            && ($record->role !== Role::MANAGEMENT || Auth::user()?->role === Role::MANAGEMENT);
+    }
+
+    public static function canDelete(mixed $record): bool
+    {
+        return static::matrixCanDelete($record)
+            && ($record instanceof User && ($record->role !== Role::MANAGEMENT || Auth::user()?->role === Role::MANAGEMENT));
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return false;
     }
 
     public static function form(Schema $schema): Schema

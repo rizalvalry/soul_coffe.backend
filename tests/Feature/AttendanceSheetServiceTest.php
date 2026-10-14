@@ -152,16 +152,16 @@ class AttendanceSheetServiceTest extends TestCase
     {
         // name => [hadir, libur, sakit, late, quota, expected over_quota, expected rate]
         return [
-            'AGUNG (row 1)' => [23, 5, 0, 3, 4, 1, 88.5],
-            'Endi (row 3)' => [13, 18, 0, 0, 4, 14, 50.0],
+            'Runner Uji Satu (row 1)' => [23, 5, 0, 3, 4, 1, 88.5],
+            'Runner Uji Tujuh (row 3)' => [13, 18, 0, 0, 4, 14, 50.0],
             // Fewer days off than the quota, so the "over" column goes negative — the sheet
             // prints -2 here, it does not floor at zero.
-            'ADIT (row 4)' => [28, 2, 0, 1, 4, -2, 107.7],
-            'TENG SENG (row 9)' => [24, 3, 1, 3, 4, -1, 92.3],
+            'Runner Uji Tiga (row 4)' => [28, 2, 0, 1, 4, -2, 107.7],
+            'Runner Uji Empat (row 9)' => [24, 3, 1, 3, 4, -1, 92.3],
             // Barely worked: 1/26 = 3.8%, which the sheet rounds to 4%.
-            'RANGGA (row 12)' => [1, 30, 0, 0, 4, 26, 3.8],
+            'Runner Uji Delapan (row 12)' => [1, 30, 0, 0, 4, 26, 3.8],
             // Over 100% is real and deliberately uncapped — worked through their days off.
-            'AZIS (row 20)' => [30, 1, 0, 0, 4, -3, 115.4],
+            'Runner Uji Lima (row 20)' => [30, 1, 0, 0, 4, -3, 115.4],
         ];
     }
 
@@ -278,16 +278,16 @@ class AttendanceSheetServiceTest extends TestCase
 
     public function test_the_sheet_is_ordered_by_nik_with_people_who_have_none_last(): void
     {
-        $this->employee(Role::RIDER, ['nik' => '240002', 'name' => 'KHAIFAL']);
-        $this->employee(Role::RIDER, ['nik' => null, 'name' => 'IPAN']);
-        $this->employee(Role::RIDER, ['nik' => '240001', 'name' => 'AGUNG']);
-        $this->employee(Role::RIDER, ['nik' => null, 'name' => 'ARYA']);
+        $this->employee(Role::RIDER, ['nik' => '240002', 'name' => 'Runner Uji Enam']);
+        $this->employee(Role::RIDER, ['nik' => null, 'name' => 'Runner Uji B']);
+        $this->employee(Role::RIDER, ['nik' => '240001', 'name' => 'Runner Uji Satu']);
+        $this->employee(Role::RIDER, ['nik' => null, 'name' => 'Runner Uji A']);
 
         $names = $this->service->monthlySheet(Carbon::parse('2026-08-01'), Role::RIDER)
             ->map(fn (array $row): string => $row['user']->name)
             ->all();
 
-        $this->assertSame(['AGUNG', 'KHAIFAL', 'ARYA', 'IPAN'], $names);
+        $this->assertSame(['Runner Uji Satu', 'Runner Uji Enam', 'Runner Uji A', 'Runner Uji B'], $names);
     }
 
     public function test_inactive_employees_are_left_off_the_sheet(): void

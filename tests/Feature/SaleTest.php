@@ -74,7 +74,7 @@ class SaleTest extends TestCase
         $this->coffee = $this->product('KOPI', 'Kopi Susu', 1, sellPrice: 20000);
         $this->tea = $this->product('TEH', 'Teh Manis', 2, sellPrice: 10000);
 
-        $this->staff = User::factory()->role(Role::STAFF)->create(['name' => 'Mufit']);
+        $this->staff = User::factory()->role(Role::STAFF)->create(['name' => 'Rider Uji Satu']);
         $this->barista = User::factory()->role(Role::BARISTA)->create([
             'kitchen_id' => $this->kitchen->id,
         ]);

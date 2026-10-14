@@ -3,12 +3,14 @@
 namespace App\Filament\Resources\Users\Tables;
 
 use App\Enums\Role;
+use App\Models\User;
 use Filament\Actions\EditAction;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
+use Illuminate\Support\Facades\Auth;
 
 class UsersTable
 {
@@ -25,6 +27,12 @@ class UsersTable
                     ->label('Nama')
                     ->searchable()
                     ->sortable(),
+                TextColumn::make('national_id')
+                    ->label('No. KTP')
+                    ->formatStateUsing(fn (?string $state): ?string => Auth::user()?->role === Role::MANAGEMENT ? $state : User::maskSensitiveValue($state)),
+                TextColumn::make('bank_account_number')
+                    ->label('No. Rekening')
+                    ->formatStateUsing(fn (?string $state): ?string => Auth::user()?->role === Role::MANAGEMENT ? $state : User::maskSensitiveValue($state)),
                 TextColumn::make('phone_e164')
                     ->label('Nomor HP')
                     ->searchable()
@@ -72,8 +80,8 @@ class UsersTable
             ->recordActions([
                 EditAction::make(),
             ]);
-            // Deliberately no delete action: users are referenced by refill requests, staff
-            // assignments and audit rows. Deactivating (is_active) is the reversible way to
-            // retire an account without orphaning that history.
+        // Deliberately no delete action: users are referenced by refill requests, staff
+        // assignments and audit rows. Deactivating (is_active) is the reversible way to
+        // retire an account without orphaning that history.
     }
 }

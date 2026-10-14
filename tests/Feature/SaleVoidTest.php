@@ -77,7 +77,7 @@ class SaleVoidTest extends TestCase
             'effective_from' => now()->subDay(),
         ]);
 
-        $this->staff = User::factory()->role(Role::STAFF)->create(['name' => 'Mufit']);
+        $this->staff = User::factory()->role(Role::STAFF)->create(['name' => 'Rider Uji Satu']);
         $this->barista = User::factory()->role(Role::BARISTA)->create(['kitchen_id' => $this->kitchen->id]);
         $this->finance = User::factory()->role(Role::FINANCE)->create();
 

@@ -60,7 +60,7 @@ class ActivityAndSalesPanelTest extends TestCase
         $this->location = Location::create(['name' => 'Pulomas', 'lat' => -6.18, 'lng' => 106.88]);
 
         $this->admin = User::factory()->role(Role::ADMINISTRATOR)->create();
-        $this->staff = User::factory()->role(Role::STAFF)->create(['name' => 'Mufit']);
+        $this->staff = User::factory()->role(Role::STAFF)->create(['name' => 'Rider Uji Satu']);
 
         StaffAssignment::create([
             'user_id' => $this->staff->id,
@@ -132,7 +132,7 @@ class ActivityAndSalesPanelTest extends TestCase
             ->get(SaleResource::getUrl())
             ->assertSuccessful()
             ->assertSee('0018')
-            ->assertSee('Mufit');
+            ->assertSee('Rider Uji Satu');
     }
 
     public function test_the_sales_list_cannot_create_edit_or_delete(): void
@@ -248,7 +248,7 @@ class ActivityAndSalesPanelTest extends TestCase
             ->assertSuccessful()
             ->assertSee('Kapan area mana yang ramai')
             ->assertSee('Pulomas')
-            ->assertSee('Mufit')
+            ->assertSee('Rider Uji Satu')
             ->assertSee('0018');
     }
 
@@ -263,7 +263,7 @@ class ActivityAndSalesPanelTest extends TestCase
             ->mapPayload();
 
         $this->assertCount(1, $payload['staff']);
-        $this->assertSame('Mufit', $payload['staff'][0]['name']);
+        $this->assertSame('Rider Uji Satu', $payload['staff'][0]['name']);
         $this->assertSame('0018', $payload['staff'][0]['cart_code']);
         $this->assertTrue($payload['staff'][0]['is_live']);
         $this->assertSame(10, $payload['staff'][0]['cups']);
@@ -350,7 +350,7 @@ class ActivityAndSalesPanelTest extends TestCase
             ->assertSee('Penjualan gerobak')
             ->assertSee('0018')
             ->assertSee('Pulomas')
-            ->assertSee('Mufit');
+            ->assertSee('Rider Uji Satu');
     }
 
     public function test_the_dashboard_widget_says_so_when_nothing_has_sold_yet(): void

@@ -45,7 +45,7 @@ class SettlementPanelTest extends TestCase
         $cart = Cart::create(['code' => '0018', 'status' => 'active', 'kitchen_id' => $kitchen->id]);
 
         $this->admin = User::factory()->role(Role::ADMINISTRATOR)->create();
-        $staff = User::factory()->role(Role::STAFF)->create(['name' => 'Mufit']);
+        $staff = User::factory()->role(Role::STAFF)->create(['name' => 'Rider Uji Satu']);
 
         $product = Product::create([
             'code' => 'KOPI', 'name' => 'Kopi Susu', 'unit' => 'cup',
@@ -85,7 +85,7 @@ class SettlementPanelTest extends TestCase
             ->get(SettlementResource::getUrl())
             ->assertSuccessful()
             ->assertSee('0018')
-            ->assertSee('Mufit')
+            ->assertSee('Rider Uji Satu')
             // The gap in words, and the reason somebody typed for it, side by side.
             ->assertSee('Kurang Rp 20.000')
             ->assertSee('Uang kembalian kurang');

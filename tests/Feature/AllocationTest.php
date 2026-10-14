@@ -11,7 +11,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Flow A (docs/02 §5, docs/04 §Flow A). Seeded fixtures: cart 0018 has Maufu (STAFF) assigned
+ * Flow A (docs/02 §5, docs/04 §Flow A). Seeded fixtures: cart 0018 has Rider Uji Dua (STAFF) assigned
  * today, daily_targets = 5 cups per sellable product per cart, kitchen stock = 200 per product.
  */
 class AllocationTest extends TestCase

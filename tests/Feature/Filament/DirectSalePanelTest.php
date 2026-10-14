@@ -4,6 +4,7 @@ namespace Tests\Feature\Filament;
 
 use App\Enums\PanelModule;
 use App\Enums\Role;
+use App\Filament\Resources\DirectSales\DirectSaleResource;
 use App\Filament\Resources\DirectSales\Pages\ListDirectSales;
 use App\Filament\Resources\DirectSales\Schemas\DirectSaleForm;
 use App\Models\Cart;
@@ -138,7 +139,7 @@ class DirectSalePanelTest extends TestCase
     public function test_the_create_forms_cart_dropdown_labels_an_assigned_cart(): void
     {
         $location = Location::create(['name' => 'Pulomas', 'lat' => -6.18, 'lng' => 106.88]);
-        $rider = User::factory()->role(Role::RIDER)->create(['name' => 'Mufit']);
+        $rider = User::factory()->role(Role::RIDER)->create(['name' => 'Rider Uji Satu']);
 
         StaffAssignment::create([
             'user_id' => $rider->id,
@@ -151,7 +152,7 @@ class DirectSalePanelTest extends TestCase
 
         $options = DirectSaleForm::cartOptions();
 
-        $this->assertSame('0018 — bertugas hari ini (Mufit)', $options[$this->cart->id]);
+        $this->assertSame('0018 — bertugas hari ini (Rider Uji Satu)', $options[$this->cart->id]);
     }
 
     public function test_the_create_forms_cart_dropdown_labels_an_unassigned_cart(): void
@@ -166,14 +167,14 @@ class DirectSalePanelTest extends TestCase
         $finance = User::factory()->role(Role::FINANCE)->create();
 
         $this->actingAs($finance)
-            ->get(\App\Filament\Resources\DirectSales\DirectSaleResource::getUrl())
+            ->get(DirectSaleResource::getUrl())
             ->assertForbidden();
 
         PermissionMatrix::set(Role::FINANCE, PanelModule::DIRECT_SALES, ['view']);
         PermissionMatrix::forget();
 
         $this->actingAs($finance)
-            ->get(\App\Filament\Resources\DirectSales\DirectSaleResource::getUrl())
+            ->get(DirectSaleResource::getUrl())
             ->assertSuccessful();
     }
 }

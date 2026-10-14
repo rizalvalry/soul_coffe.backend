@@ -16,6 +16,9 @@ use App\Models\StaffAssignment;
 use App\Models\StockLedger;
 use App\Models\User;
 use App\Services\DirectSaleService;
+use App\Services\Reporting\DashboardMetricsService;
+use App\Services\Reporting\SalesActivityService;
+use App\Services\SettlementService;
 use App\Services\StockLedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -76,7 +79,7 @@ class DirectSaleTest extends TestCase
         $this->finance = User::factory()->role(Role::FINANCE)->create();
         $this->admin = User::factory()->role(Role::ADMINISTRATOR)->create();
         $this->staff = User::factory()->role(Role::STAFF)->create();
-        $this->rider = User::factory()->role(Role::RIDER)->create(['name' => 'Rider Mufit']);
+        $this->rider = User::factory()->role(Role::RIDER)->create(['name' => 'Runner Uji Satu']);
 
         $location = Location::create(['name' => 'Pulomas', 'lat' => -6.18, 'lng' => 106.88]);
 
@@ -395,7 +398,7 @@ class DirectSaleTest extends TestCase
 
         $this->service()->void($voided, $this->finance, 'Salah input');
 
-        $metrics = app(\App\Services\Reporting\DashboardMetricsService::class)->directSalesToday();
+        $metrics = app(DashboardMetricsService::class)->directSalesToday();
 
         $this->assertSame(2, $metrics['total_qty']);
         $this->assertSame(40000, $metrics['total_amount_minor']);
@@ -419,12 +422,12 @@ class DirectSaleTest extends TestCase
 
         $this->assertSame(0, Sale::query()->count());
 
-        $activity = app(\App\Services\Reporting\SalesActivityService::class)->dayTotals();
+        $activity = app(SalesActivityService::class)->dayTotals();
         $this->assertSame(0, $activity['transactions']);
         $this->assertSame(0, $activity['cups']);
         $this->assertSame(0, $activity['revenue']);
 
-        $draft = app(\App\Services\SettlementService::class)->draft($this->assignedCart);
+        $draft = app(SettlementService::class)->draft($this->assignedCart);
         $line = collect($draft['lines'])->firstWhere('product_id', $this->coffee->id);
         // Only ALLOCATION_IN counted as issued — the direct sale's SALE_OUT is real stock
         // movement, but qty_sold in the gerobak settlement path comes from `sales`, which this

@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Services\AttendanceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 /**
@@ -73,7 +74,7 @@ class AbsenGeofenceTest extends TestCase
         ]);
 
         $this->barista = User::factory()->role(Role::BARISTA)->create(['kitchen_id' => $this->kitchen->id]);
-        $this->staff = User::factory()->role(Role::STAFF)->create(['name' => 'Mufit']);
+        $this->staff = User::factory()->role(Role::STAFF)->create(['name' => 'Rider Uji Satu']);
 
         StaffAssignment::create([
             'user_id' => $this->staff->id,
@@ -97,7 +98,7 @@ class AbsenGeofenceTest extends TestCase
         $this->service()->openStaffWindow($this->barista);
     }
 
-    private function absen(array $gps, ?User $as = null): \Illuminate\Testing\TestResponse
+    private function absen(array $gps, ?User $as = null): TestResponse
     {
         return $this->actingAs($as ?? $this->staff, 'sanctum')
             ->postJson('/api/v1/absen', $gps);

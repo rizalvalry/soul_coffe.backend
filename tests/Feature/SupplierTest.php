@@ -28,7 +28,7 @@ class SupplierTest extends TestCase
             ->fillForm([
                 'code' => 'SUP-01',
                 'name' => 'Toko Bahan Segar',
-                'contact_name' => 'Budi',
+                'contact_name' => 'Rider Uji Empat',
                 'phone' => '081200000000',
                 'is_active' => true,
             ])

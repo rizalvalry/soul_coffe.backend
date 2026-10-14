@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\StaffLocationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 /**
@@ -43,7 +44,7 @@ class StaffLocationTest extends TestCase
 
         $this->cart = Cart::create(['code' => '0018', 'status' => 'active', 'kitchen_id' => $kitchen->id]);
         $this->location = Location::create(['name' => 'Pulomas', 'lat' => -6.18, 'lng' => 106.88]);
-        $this->staff = User::factory()->role(Role::STAFF)->create(['name' => 'Mufit']);
+        $this->staff = User::factory()->role(Role::STAFF)->create(['name' => 'Rider Uji Satu']);
 
         StaffAssignment::create([
             'user_id' => $this->staff->id,
@@ -61,7 +62,7 @@ class StaffLocationTest extends TestCase
     }
 
     /** @param array<int, array<string, mixed>> $pings */
-    private function report(array $pings, ?User $as = null): \Illuminate\Testing\TestResponse
+    private function report(array $pings, ?User $as = null): TestResponse
     {
         return $this->actingAs($as ?? $this->staff, 'sanctum')
             ->postJson('/api/v1/me/location', ['pings' => $pings, 'device_id' => 'PIXEL-7']);

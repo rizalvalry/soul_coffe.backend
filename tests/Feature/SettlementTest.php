@@ -69,7 +69,7 @@ class SettlementTest extends TestCase
             'effective_from' => now()->subDay(),
         ]);
 
-        $this->staff = User::factory()->role(Role::STAFF)->create(['name' => 'Mufit']);
+        $this->staff = User::factory()->role(Role::STAFF)->create(['name' => 'Rider Uji Satu']);
         $this->barista = User::factory()->role(Role::BARISTA)->create(['kitchen_id' => $this->kitchen->id]);
         $this->finance = User::factory()->role(Role::FINANCE)->create();
 
@@ -146,7 +146,7 @@ class SettlementTest extends TestCase
             ->assertSuccessful();
 
         $this->assertSame('0018', $response->json('data.cart_code'));
-        $this->assertSame('Mufit', $response->json('data.staff_name'));
+        $this->assertSame('Rider Uji Satu', $response->json('data.staff_name'));
         // 12 × 20.000 — the money Finance should be handed, from the transactions themselves.
         $this->assertSame(240000, $response->json('data.expected_total'));
 
@@ -165,7 +165,7 @@ class SettlementTest extends TestCase
 
         $row = $response->json('data.0');
         $this->assertSame('0018', $row['cart_code']);
-        $this->assertSame('Mufit', $row['staff_name']);
+        $this->assertSame('Rider Uji Satu', $row['staff_name']);
         $this->assertSame(5, $row['cups_sold']);
         $this->assertSame(15, $row['cups_remaining']);
         $this->assertSame(100000, $row['expected_total']);
