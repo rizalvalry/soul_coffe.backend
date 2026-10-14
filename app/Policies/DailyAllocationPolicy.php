@@ -20,7 +20,7 @@ class DailyAllocationPolicy
     /** Who may see the full rider-on-shift roster (the barista's allocation worksheet). */
     public function viewAny(User $user): bool
     {
-        return in_array($user->role, [Role::ADMINISTRATOR, Role::FINANCE, Role::BARISTA], true);
+        return in_array($user->role, [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT, Role::BARISTA], true);
     }
 
     /** Who may create an allocation. Requirement 1: barista-owned. */
@@ -33,7 +33,7 @@ class DailyAllocationPolicy
     public function view(User $user, DailyAllocation $allocation): bool
     {
         return match ($user->role) {
-            Role::ADMINISTRATOR, Role::FINANCE, Role::BARISTA => true,
+            Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT, Role::BARISTA => true,
             // A Rider may only see the allocation issued to their own cart.
             Role::STAFF => $allocation->staff_id === $user->id,
             default => false,

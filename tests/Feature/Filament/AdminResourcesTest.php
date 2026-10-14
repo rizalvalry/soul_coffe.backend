@@ -8,7 +8,6 @@ use App\Filament\Resources\Carts\CartResource;
 use App\Filament\Resources\CentralKitchens\CentralKitchenResource;
 use App\Filament\Resources\DailyTargets\DailyTargetResource;
 use App\Filament\Resources\Locations\LocationResource;
-use App\Filament\Resources\Partners\PartnerResource;
 use App\Filament\Resources\Products\ProductResource;
 use App\Filament\Resources\StaffAssignments\StaffAssignmentResource;
 use App\Filament\Resources\Users\UserResource;
@@ -88,5 +87,27 @@ class AdminResourcesTest extends TestCase
 
         // Reading it, however, must work — that is the entire point of the screen.
         $this->get(AuditLogResource::getUrl('view', ['record' => $log]))->assertSuccessful();
+    }
+
+    public function test_management_actor_uses_its_label_in_the_audit_table_and_detail(): void
+    {
+        $management = User::factory()->role(Role::MANAGEMENT)->create();
+        $log = AuditLog::create([
+            'actor_id' => $management->id,
+            'actor_role' => Role::MANAGEMENT->value,
+            'action' => 'test.management',
+            'subject_type' => User::class,
+            'subject_id' => $management->id,
+        ]);
+
+        $this->get(AuditLogResource::getUrl('index'))
+            ->assertSuccessful()
+            ->assertSeeText('Management')
+            ->assertDontSeeText('MANAGEMENT');
+
+        $this->get(AuditLogResource::getUrl('view', ['record' => $log]))
+            ->assertSuccessful()
+            ->assertSeeText('Management')
+            ->assertDontSeeText('MANAGEMENT');
     }
 }

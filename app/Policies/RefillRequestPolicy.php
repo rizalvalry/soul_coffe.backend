@@ -27,7 +27,7 @@ class RefillRequestPolicy
     public function view(User $user, RefillRequest $refill): bool
     {
         return match ($user->role) {
-            Role::ADMINISTRATOR, Role::FINANCE => true,
+            Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT => true,
             Role::BARISTA => $user->kitchen_id === $refill->kitchen_id,
             Role::STAFF => $user->id === $refill->staff_id,
             Role::RIDER => $refill->rider_id === $user->id
@@ -43,12 +43,12 @@ class RefillRequestPolicy
     public function approve(User $user, RefillRequest $refill): bool
     {
         // §2.1 permission matrix: Approve/reject is Finance-only — Admin has read access, not approval.
-        return $user->role === Role::FINANCE;
+        return in_array($user->role, [Role::FINANCE, Role::MANAGEMENT], true);
     }
 
     public function reject(User $user, RefillRequest $refill): bool
     {
-        return $user->role === Role::FINANCE;
+        return in_array($user->role, [Role::FINANCE, Role::MANAGEMENT], true);
     }
 
     public function cancel(User $user, RefillRequest $refill): bool

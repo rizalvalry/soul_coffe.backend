@@ -33,7 +33,7 @@ class RefillRequestResource extends JsonResource
     public function toArray(Request $request): array
     {
         $viewer = $request->user();
-        $canSeeCost = $viewer && in_array($viewer->role, [Role::FINANCE, Role::ADMINISTRATOR], true);
+        $canSeeCost = $viewer && in_array($viewer->role, [Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR], true);
 
         $data = [
             'id' => $this->id,

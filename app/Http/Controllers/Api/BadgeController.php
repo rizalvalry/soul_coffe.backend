@@ -34,6 +34,7 @@ class BadgeController extends Controller
 
         switch ($user->role) {
             case Role::FINANCE:
+            case Role::MANAGEMENT:
                 $counts['pendingApprovals'] = $this->pendingApprovalsCount();
                 break;
 

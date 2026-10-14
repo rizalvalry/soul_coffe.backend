@@ -47,7 +47,7 @@ class DirectSaleService
         string $paymentMethod = 'cash',
         ?string $note = null,
     ): DirectSale {
-        if (! in_array($actor->role, [Role::ADMINISTRATOR, Role::FINANCE], true)) {
+        if (! in_array($actor->role, [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT], true)) {
             throw new RuntimeException('Hanya Finance atau Administrator yang mencatat penjualan langsung kantor.');
         }
 
@@ -157,7 +157,7 @@ class DirectSaleService
             throw new RuntimeException('Alasan pembatalan wajib diisi.');
         }
 
-        if (! in_array($actor->role, [Role::ADMINISTRATOR, Role::FINANCE], true)) {
+        if (! in_array($actor->role, [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT], true)) {
             throw new RuntimeException('Anda tidak berhak membatalkan transaksi ini.');
         }
 

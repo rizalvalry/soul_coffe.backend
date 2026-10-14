@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\DB;
 $roleOf = static function (object $user): string {
     $role = $user->role ?? null;
 
-    if ($role instanceof \BackedEnum) {
+    if ($role instanceof BackedEnum) {
         return strtoupper((string) $role->value);
     }
 
@@ -40,7 +40,7 @@ Broadcast::channel('role.{role}', function ($user, string $role) use ($roleOf): 
 Broadcast::channel('kitchen.{kitchenId}', function ($user, string $kitchenId) use ($roleOf): bool {
     $role = $roleOf($user);
 
-    if (in_array($role, ['ADMINISTRATOR', 'FINANCE'], true)) {
+    if (in_array($role, ['ADMINISTRATOR', 'FINANCE', 'MANAGEMENT'], true)) {
         return true;
     }
 
@@ -50,7 +50,7 @@ Broadcast::channel('kitchen.{kitchenId}', function ($user, string $kitchenId) us
 Broadcast::channel('cart.{cartId}', function ($user, string $cartId) use ($roleOf): bool {
     $role = $roleOf($user);
 
-    if (in_array($role, ['ADMINISTRATOR', 'FINANCE', 'BARISTA'], true)) {
+    if (in_array($role, ['ADMINISTRATOR', 'FINANCE', 'MANAGEMENT', 'BARISTA'], true)) {
         return true;
     }
 
@@ -65,7 +65,7 @@ Broadcast::channel('cart.{cartId}', function ($user, string $cartId) use ($roleO
 Broadcast::channel('refill.{refillId}', function ($user, string $refillId) use ($roleOf): bool {
     $role = $roleOf($user);
 
-    if (in_array($role, ['ADMINISTRATOR', 'FINANCE'], true)) {
+    if (in_array($role, ['ADMINISTRATOR', 'FINANCE', 'MANAGEMENT'], true)) {
         return true;
     }
 

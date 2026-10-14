@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\NewsPosts\Tables;
 
+use App\Enums\Role;
 use App\Models\NewsPost;
 use App\Models\NewsPostEngagement;
 use Filament\Actions\DeleteAction;
@@ -59,7 +60,7 @@ class NewsPostsTable
                     ->label('Untuk')
                     ->badge()
                     ->placeholder('semua')
-                    ->formatStateUsing(fn ($state) => $state),
+                    ->formatStateUsing(fn (string $state): string => Role::tryFrom($state)?->label() ?? $state),
 
                 TextColumn::make('reach')
                     ->label('Dibaca')

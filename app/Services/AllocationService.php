@@ -246,7 +246,7 @@ class AllocationService
                 );
             } else {
                 $escalationRecipients = User::query()
-                    ->whereIn('role', [Role::FINANCE, Role::ADMINISTRATOR])
+                    ->whereIn('role', [Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR])
                     ->pluck('id')
                     ->all();
 
@@ -258,7 +258,7 @@ class AllocationService
                         $cart->code,
                         $overTargetPct,
                     ),
-                    channels: ['role.FINANCE', 'role.ADMINISTRATOR', "kitchen.{$kitchenId}"],
+                    channels: ['role.FINANCE', 'role.MANAGEMENT', 'role.ADMINISTRATOR', "kitchen.{$kitchenId}"],
                     notifyUserIds: $escalationRecipients,
                 );
             }

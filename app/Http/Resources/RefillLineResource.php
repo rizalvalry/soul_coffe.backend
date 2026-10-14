@@ -33,7 +33,7 @@ class RefillLineResource extends JsonResource
 
         $viewer = $request->user();
 
-        if ($viewer && in_array($viewer->role, [Role::FINANCE, Role::ADMINISTRATOR], true)) {
+        if ($viewer && in_array($viewer->role, [Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR], true)) {
             $data['unit_cost'] = $this->unit_cost_minor;
             $data['line_cost'] = $this->line_cost_minor;
         }

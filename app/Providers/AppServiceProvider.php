@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Enums\Role;
+use App\Models\User;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -19,6 +22,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // These gates are deliberately outside the panel matrix: Administrator has no bypass.
+        Gate::define('view-management-reports', fn (User $user): bool => $user->role === Role::MANAGEMENT);
+        Gate::define('manage-payroll', fn (User $user): bool => $user->role === Role::MANAGEMENT);
     }
 }

@@ -113,6 +113,12 @@ class RoleAccessMatrix extends Page
             : self::ABILITIES;
     }
 
+    public function isInherited(PanelModule $module, string $ability): bool
+    {
+        return $this->role === Role::MANAGEMENT->value
+            && in_array($ability, PermissionMatrix::abilitiesFor(Role::FINANCE, $module), true);
+    }
+
     public function save(): void
     {
         $role = Role::from($this->role);
@@ -129,6 +135,20 @@ class RoleAccessMatrix extends Page
             // is always a mistake, so view is implied rather than enforced with an error.
             if ($abilities !== [] && ! in_array('view', $abilities, true)) {
                 $abilities[] = 'view';
+            }
+
+            if ($role === Role::MANAGEMENT) {
+                $inherited = PermissionMatrix::abilitiesFor(Role::FINANCE, $module);
+                $existingOwn = PermissionMatrix::ownAbilitiesFor(Role::MANAGEMENT, $module);
+                $abilities = array_values(array_unique(array_merge(
+                    array_intersect($existingOwn, $inherited, $allowed),
+                    array_diff($abilities, $inherited),
+                )));
+
+                // An extra action must remain reachable if Finance later loses its view grant.
+                if ($abilities !== [] && ! in_array('view', $abilities, true)) {
+                    $abilities[] = 'view';
+                }
             }
 
             PermissionMatrix::set($role, $module, $abilities, Auth::user());

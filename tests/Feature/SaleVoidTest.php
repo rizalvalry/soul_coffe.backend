@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\MovementType;
 use App\Enums\Role;
+use App\Filament\Resources\Sales\SaleResource;
 use App\Models\AppNotification;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
@@ -13,8 +14,11 @@ use App\Models\ProductPriceVersion;
 use App\Models\Sale;
 use App\Models\Settlement;
 use App\Models\StaffAssignment;
+use App\Models\StockLedger;
 use App\Models\User;
 use App\Services\AttendanceService;
+use App\Services\Reporting\SalesActivityService;
+use App\Services\SettlementService;
 use App\Services\StockLedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -166,7 +170,7 @@ class SaleVoidTest extends TestCase
         $this->void($sale)->assertSuccessful();
 
         $this->assertTrue(
-            \App\Models\StockLedger::query()
+            StockLedger::query()
                 ->where('movement_type', MovementType::SALE_VOID_IN)
                 ->where('ref_type', 'sale_void')
                 ->where('ref_id', $sale->id)
@@ -176,7 +180,7 @@ class SaleVoidTest extends TestCase
 
         // The original SALE_OUT row is untouched — the ledger is append-only.
         $this->assertTrue(
-            \App\Models\StockLedger::query()
+            StockLedger::query()
                 ->where('movement_type', MovementType::SALE_OUT)
                 ->where('ref_type', 'sale')
                 ->where('ref_id', $sale->id)
@@ -202,6 +206,7 @@ class SaleVoidTest extends TestCase
     public function test_administrator_and_finance_are_notified_of_every_void(): void
     {
         $admin = User::factory()->role(Role::ADMINISTRATOR)->create();
+        $management = User::factory()->role(Role::MANAGEMENT)->create();
 
         $this->clockIn();
         $this->stockCart(10);
@@ -213,6 +218,7 @@ class SaleVoidTest extends TestCase
 
         $this->assertContains($admin->id, $notified);
         $this->assertContains($this->finance->id, $notified);
+        $this->assertNotContains($management->id, $notified);
     }
 
     // ── The window ───────────────────────────────────────────────────────────
@@ -273,6 +279,20 @@ class SaleVoidTest extends TestCase
         $sale->forceFill(['occurred_at' => now()->subDay()])->save();
 
         $this->void($sale, as: $this->finance)->assertSuccessful();
+    }
+
+    public function test_management_can_void_an_old_sale_like_finance(): void
+    {
+        $management = User::factory()->role(Role::MANAGEMENT)->create();
+
+        $this->clockIn();
+        $this->stockCart(10);
+        $sale = $this->sell(3);
+
+        $sale->forceFill(['occurred_at' => now()->subDay()])->save();
+
+        $this->void($sale, as: $management)->assertSuccessful();
+        $this->assertSame(10, $this->cartStock());
     }
 
     // ── Who else may not void ────────────────────────────────────────────────
@@ -374,7 +394,7 @@ class SaleVoidTest extends TestCase
 
         $this->void($voided, as: $this->finance)->assertSuccessful();
 
-        $totals = app(\App\Services\Reporting\SalesActivityService::class)->dayTotals();
+        $totals = app(SalesActivityService::class)->dayTotals();
 
         $this->assertSame(1, $totals['transactions']);
         $this->assertSame(2, $totals['cups']);
@@ -390,7 +410,7 @@ class SaleVoidTest extends TestCase
 
         $this->void($voided, as: $this->finance)->assertSuccessful();
 
-        $draft = app(\App\Services\SettlementService::class)->draft($this->cart);
+        $draft = app(SettlementService::class)->draft($this->cart);
 
         $this->assertSame(40000, $draft['expected_total']);
 
@@ -410,7 +430,7 @@ class SaleVoidTest extends TestCase
 
         $this->void($sale)->assertSuccessful();
 
-        $draft = app(\App\Services\SettlementService::class)->draft($this->cart);
+        $draft = app(SettlementService::class)->draft($this->cart);
         $line = collect($draft['lines'])->firstWhere('product_id', $this->coffee->id);
 
         // 10 issued via the morning stock, not 13 — the void's SALE_VOID_IN does not count.
@@ -427,7 +447,7 @@ class SaleVoidTest extends TestCase
 
         $this->void($sale, as: $this->finance)->assertSuccessful();
 
-        $this->assertNull(\App\Filament\Resources\Sales\SaleResource::getNavigationBadge());
+        $this->assertNull(SaleResource::getNavigationBadge());
     }
 
     // ── The staff member's own list still shows a voided sale ────────────────

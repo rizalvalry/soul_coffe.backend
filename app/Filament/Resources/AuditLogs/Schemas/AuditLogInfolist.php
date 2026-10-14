@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\AuditLogs\Schemas;
 
+use App\Enums\Role;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
@@ -18,7 +19,10 @@ class AuditLogInfolist
                         TextEntry::make('created_at')->label('Waktu')->dateTime('d M Y H:i:s'),
                         TextEntry::make('action')->label('Aksi')->badge(),
                         TextEntry::make('actor.name')->label('Pelaku')->placeholder('sistem'),
-                        TextEntry::make('actor_role')->label('Role pelaku')->placeholder('-'),
+                        TextEntry::make('actor_role')
+                            ->label('Role pelaku')
+                            ->formatStateUsing(fn (string $state): string => Role::tryFrom($state)?->label() ?? $state)
+                            ->placeholder('-'),
                         TextEntry::make('subject_type')
                             ->label('Objek')
                             ->formatStateUsing(fn (?string $state): string => $state ? class_basename($state) : '-'),
