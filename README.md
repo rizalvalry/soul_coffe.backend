@@ -50,6 +50,11 @@ php artisan storage:link
 php artisan config:cache && php artisan route:cache && php artisan view:cache
 ```
 
+For production, set `DB_PERSISTENT=true` in `.env` and run `php artisan config:cache`.
+To roll back, set `DB_PERSISTENT=false` and run `php artisan config:cache` again.
+The default is `false` when the setting is absent.
+If old persistent sessions must close immediately, recycle the PHP workers after rollback.
+
 **Document root must be `public/`, not the project root.** Pointing a domain at the project root
 exposes `.env`, `storage/`, and `vendor/` to the internet. This is the single most common way a
 Laravel deployment leaks its database credentials.
