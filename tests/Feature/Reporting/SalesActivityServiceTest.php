@@ -60,8 +60,8 @@ class SalesActivityServiceTest extends TestCase
         $this->pulomas = Location::create(['name' => 'Pulomas', 'lat' => -6.18, 'lng' => 106.88]);
         $this->cempaka = Location::create(['name' => 'Cempaka Mas', 'lat' => -6.17, 'lng' => 106.87]);
 
-        $this->staffA = User::factory()->role(Role::STAFF)->create(['name' => 'Mufit']);
-        $this->staffB = User::factory()->role(Role::STAFF)->create(['name' => 'Dimas']);
+        $this->staffA = User::factory()->role(Role::STAFF)->create(['name' => 'Rider Uji Satu']);
+        $this->staffB = User::factory()->role(Role::STAFF)->create(['name' => 'Staf Uji Tiga']);
 
         $this->product = Product::create([
             'code' => 'KOPI', 'name' => 'Kopi Susu', 'unit' => 'cup',
@@ -124,7 +124,7 @@ class SalesActivityServiceTest extends TestCase
 
         // Ordered by cups, so the busiest cart is the first thing an owner reads.
         $this->assertSame('0018', $rows[0]['cart_code']);
-        $this->assertSame('Mufit', $rows[0]['staff_name']);
+        $this->assertSame('Rider Uji Satu', $rows[0]['staff_name']);
         $this->assertSame('Pulomas', $rows[0]['area']);
         $this->assertSame(2, $rows[0]['transactions']);
         $this->assertSame(10, $rows[0]['cups']);
@@ -213,7 +213,7 @@ class SalesActivityServiceTest extends TestCase
 
         $this->assertCount(1, $suspects);
         $this->assertSame('0019', $suspects[0]['cart_code']);
-        $this->assertSame('Dimas', $suspects[0]['staff_name']);
+        $this->assertSame('Staf Uji Tiga', $suspects[0]['staff_name']);
         $this->assertSame(25, $suspects[0]['cups']);
         $this->assertSame('uji', $suspects[0]['reason']);
     }

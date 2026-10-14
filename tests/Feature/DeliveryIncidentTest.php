@@ -82,10 +82,10 @@ class DeliveryIncidentTest extends TestCase
         ]);
 
         $this->admin = User::factory()->role(Role::ADMINISTRATOR)->create();
-        $this->staff = User::factory()->role(Role::STAFF)->create(['name' => 'Mufit']);
+        $this->staff = User::factory()->role(Role::STAFF)->create(['name' => 'Rider Uji Satu']);
         $this->finance = User::factory()->role(Role::FINANCE)->create();
         $this->barista = User::factory()->role(Role::BARISTA)->create(['kitchen_id' => $this->kitchen->id]);
-        $this->rider = User::factory()->role(Role::RIDER)->create(['name' => 'Agung']);
+        $this->rider = User::factory()->role(Role::RIDER)->create(['name' => 'Runner Uji Satu']);
 
         StaffAssignment::create([
             'user_id' => $this->staff->id,
@@ -193,7 +193,7 @@ class DeliveryIncidentTest extends TestCase
             ->assertCreated()
             ->assertJsonPath('data.status', 'REPORTED')
             ->assertJsonPath('data.damaged_qty', 4)
-            ->assertJsonPath('data.rider_name', 'Agung');
+            ->assertJsonPath('data.rider_name', 'Runner Uji Satu');
 
         $incident = DeliveryIncident::query()->firstOrFail();
         $this->assertSame(IncidentStatus::REPORTED, $incident->status);

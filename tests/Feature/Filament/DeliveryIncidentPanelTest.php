@@ -53,8 +53,8 @@ class DeliveryIncidentPanelTest extends TestCase
         $cart = Cart::create(['code' => '0099', 'status' => 'active', 'kitchen_id' => $kitchen->id]);
 
         $this->admin = User::factory()->role(Role::ADMINISTRATOR)->create();
-        $staff = User::factory()->role(Role::STAFF)->create(['name' => 'Mufit']);
-        $rider = User::factory()->role(Role::RIDER)->create(['name' => 'Agung']);
+        $staff = User::factory()->role(Role::STAFF)->create(['name' => 'Rider Uji Satu']);
+        $rider = User::factory()->role(Role::RIDER)->create(['name' => 'Runner Uji Satu']);
 
         $product = Product::create([
             'code' => 'KOPI', 'name' => 'Kopi Susu', 'unit' => 'cup',
@@ -131,7 +131,7 @@ class DeliveryIncidentPanelTest extends TestCase
         $this->actingAs($this->admin)
             ->get(DeliveryIncidentResource::getUrl())
             ->assertSuccessful()
-            ->assertSee('Agung')
+            ->assertSee('Runner Uji Satu')
             ->assertSee('RF-UJI-1');
     }
 

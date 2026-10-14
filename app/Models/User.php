@@ -5,13 +5,14 @@ namespace App\Models;
 use App\Enums\Role;
 use App\Services\Access\PermissionMatrix;
 use Database\Factories\UserFactory;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Models\Contracts\HasName;
 use Filament\Panel;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Support\Facades\Auth;
 use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable implements FilamentUser, HasName
@@ -66,7 +67,18 @@ class User extends Authenticatable implements FilamentUser, HasName
         'password',
         'pin_hash',
         'login_pin_hash',
+        'national_id',
+        'bank_account_number',
     ];
+
+    public function setAttribute($key, $value)
+    {
+        if (in_array($key, ['national_id', 'bank_account_number'], true) && is_string($value) && trim($value) === '') {
+            $value = null;
+        }
+
+        return parent::setAttribute($key, $value);
+    }
 
     /**
      * @return array<string, string>
@@ -81,7 +93,58 @@ class User extends Authenticatable implements FilamentUser, HasName
             'monthly_libur_quota' => 'integer',
             'birth_date' => 'date',
             'joined_at' => 'date',
+            'national_id' => 'encrypted',
+            'bank_account_number' => 'encrypted',
         ];
+    }
+
+    /** Mask all employee financial/identity changes before they reach the audit trail. */
+    protected static function booted(): void
+    {
+        static::created(fn (self $user) => $user->auditSensitiveChanges(true));
+        static::updated(fn (self $user) => $user->auditSensitiveChanges(false));
+    }
+
+    public static function maskSensitiveValue(?string $value): ?string
+    {
+        return $value === null || $value === '' ? null : '****'.(mb_strlen($value) > 4 ? mb_substr($value, -4) : '');
+    }
+
+    private function auditSensitiveChanges(bool $created): void
+    {
+        $before = [];
+        $after = [];
+
+        foreach (['national_id', 'bank_name', 'bank_account_number', 'bank_account_holder'] as $field) {
+            if (! $created && ! array_key_exists($field, $this->getChanges())) {
+                continue;
+            }
+
+            $value = $this->getAttribute($field);
+            if ($created && $value === null) {
+                continue;
+            }
+
+            $before[$field] = $created ? null : self::maskSensitiveValue($this->getOriginal($field));
+            $after[$field] = self::maskSensitiveValue($value);
+        }
+
+        if ($after === []) {
+            return;
+        }
+
+        /** @var self|null $actor */
+        $actor = Auth::user();
+        AuditLog::query()->create([
+            'actor_id' => $actor?->id,
+            'actor_role' => $actor?->role?->value,
+            'action' => $created ? 'employee_sensitive_created' : 'employee_sensitive_updated',
+            'subject_type' => self::class,
+            'subject_id' => $this->getKey(),
+            'before_json' => $before,
+            'after_json' => $after,
+            'ip' => request()?->ip(),
+        ]);
     }
 
     /**

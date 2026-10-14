@@ -7,10 +7,11 @@ use App\Enums\Role;
 use App\Filament\Pages\CentralStock;
 use App\Filament\Pages\ManageAiSettings;
 use App\Filament\Pages\RoleAccessMatrix;
-use App\Filament\Resources\Users\Pages\CreateUser;
-use App\Filament\Resources\Users\Pages\EditUser;
 use App\Filament\Resources\Locations\Pages\CreateLocation;
 use App\Filament\Resources\Products\Pages\CreateProduct;
+use App\Filament\Resources\Users\Pages\CreateUser;
+use App\Filament\Resources\Users\Pages\EditUser;
+use App\Filament\Widgets\OperationsOverviewWidget;
 use App\Models\Product;
 use App\Models\User;
 use App\Services\Access\PermissionMatrix;
@@ -103,6 +104,10 @@ class CmsAdditionsTest extends TestCase
 
     public function test_the_full_profile_saves_when_it_is_filled_in(): void
     {
+        $management = User::factory()->role(Role::MANAGEMENT)->create();
+        PermissionMatrix::set(Role::MANAGEMENT, PanelModule::USERS, ['view', 'create', 'edit']);
+        $this->actingAs($management);
+
         Livewire::test(CreateUser::class)
             ->fillForm([
                 'name' => 'Lengkap Sekali',
@@ -121,7 +126,7 @@ class CmsAdditionsTest extends TestCase
                 'marital_status' => 'menikah',
                 'address' => 'Jl. Sudirman No. 1',
                 'joined_at' => '2026-01-06',
-                'emergency_contact_name' => 'Ibu Ani',
+                'emergency_contact_name' => 'Ibu Kontak Uji',
                 'emergency_contact_phone' => '081200000009',
                 'bank_name' => 'BSI',
                 'bank_account_number' => '7001234567',
@@ -161,7 +166,7 @@ class CmsAdditionsTest extends TestCase
 
     public function test_editing_a_user_can_add_only_a_note_without_touching_anything_else(): void
     {
-        $rider = User::factory()->role(Role::RIDER)->create(['name' => 'Agus']);
+        $rider = User::factory()->role(Role::RIDER)->create(['name' => 'Runner Uji Dua']);
 
         Livewire::test(EditUser::class, ['record' => $rider->getKey()])
             ->fillForm(['notes' => 'Sedang cuti sampai 20 Sept.'])
@@ -170,7 +175,7 @@ class CmsAdditionsTest extends TestCase
 
         $rider->refresh();
         $this->assertSame('Sedang cuti sampai 20 Sept.', $rider->notes);
-        $this->assertSame('Agus', $rider->name);
+        $this->assertSame('Runner Uji Dua', $rider->name);
     }
 
     // ── Product image (#1, CMS side) ─────────────────────────────────────
@@ -285,14 +290,14 @@ class CmsAdditionsTest extends TestCase
         $this->actingAs($finance);
 
         $this->assertFalse(ManageAiSettings::canAccess());
-        $this->assertFalse(\App\Filament\Widgets\OperationsOverviewWidget::canView());
+        $this->assertFalse(OperationsOverviewWidget::canView());
 
         PermissionMatrix::set(Role::FINANCE, PanelModule::AI_SETTINGS, ['view']);
         PermissionMatrix::set(Role::FINANCE, PanelModule::DASHBOARD, ['view']);
         PermissionMatrix::forget();
 
         $this->assertTrue(ManageAiSettings::canAccess());
-        $this->assertTrue(\App\Filament\Widgets\OperationsOverviewWidget::canView());
+        $this->assertTrue(OperationsOverviewWidget::canView());
     }
 
     public function test_the_matrix_no_longer_offers_a_switch_for_the_news_feed(): void

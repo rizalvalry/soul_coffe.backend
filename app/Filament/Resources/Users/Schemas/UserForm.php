@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Users\Schemas;
 
 use App\Enums\Role;
+use App\Models\User;
 use App\Support\PhoneNumber;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
@@ -12,8 +13,8 @@ use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\Rules\Unique;
 
 class UserForm
 {
@@ -37,7 +38,7 @@ class UserForm
                     // The uniqueness check must see the same normalised value the save will
                     // write, otherwise "0811…" and "+62811…" both pass and collide in the DB.
                     ->rule(fn (?object $record) => function (string $attribute, mixed $value, callable $fail) use ($record) {
-                        $exists = \App\Models\User::query()
+                        $exists = User::query()
                             ->where('phone_e164', PhoneNumber::normalize((string) $value))
                             ->when($record, fn ($q) => $q->whereKeyNot($record->getKey()))
                             ->exists();
@@ -49,10 +50,17 @@ class UserForm
 
                 Select::make('role')
                     ->label('Role')
-                    ->options(collect(Role::cases())->mapWithKeys(
+                    ->options(collect(Role::cases())->filter(
+                        fn (Role $role): bool => $role !== Role::MANAGEMENT || self::canManageSensitiveData()
+                    )->mapWithKeys(
                         fn (Role $role) => [$role->value => $role->label()]
                     ))
                     ->required()
+                    ->rule(fn () => function (string $attribute, mixed $value, callable $fail): void {
+                        if ($value === Role::MANAGEMENT->value && ! self::canManageSensitiveData()) {
+                            $fail('Hanya Management yang dapat menetapkan role Management.');
+                        }
+                    })
                     ->live(),
 
                 // ── Employment profile ────────────────────────────────────────────────
@@ -102,8 +110,8 @@ class UserForm
                         ? 'Kosongkan bila tidak ingin mengubah kata sandi.'
                         : null)
                     ->dehydrated(fn (?string $state): bool => filled($state)),
-                    // No manual Hash::make here: the model casts `password => 'hashed'`, and
-                    // hashing twice would produce a hash of a hash that no login can match.
+                // No manual Hash::make here: the model casts `password => 'hashed'`, and
+                // hashing twice would produce a hash of a hash that no login can match.
 
                 TextInput::make('pin_hash')
                     ->label('PIN Rider')
@@ -147,6 +155,9 @@ class UserForm
                         TextInput::make('national_id')
                             ->label('No. KTP')
                             ->maxLength(32)
+                            ->formatStateUsing(fn (?string $state): ?string => self::canManageSensitiveData() ? $state : User::maskSensitiveValue($state))
+                            ->disabled(fn (): bool => ! self::canManageSensitiveData())
+                            ->dehydrated(fn (): bool => self::canManageSensitiveData())
                             ->helperText('Berbeda dari NIK karyawan di atas.'),
 
                         DatePicker::make('birth_date')
@@ -194,15 +205,24 @@ class UserForm
 
                         TextInput::make('bank_name')
                             ->label('Bank')
-                            ->maxLength(255),
+                            ->maxLength(255)
+                            ->formatStateUsing(fn (?string $state): ?string => self::canManageSensitiveData() ? $state : User::maskSensitiveValue($state))
+                            ->disabled(fn (): bool => ! self::canManageSensitiveData())
+                            ->dehydrated(fn (): bool => self::canManageSensitiveData()),
 
                         TextInput::make('bank_account_number')
                             ->label('No. Rekening')
-                            ->maxLength(64),
+                            ->maxLength(64)
+                            ->formatStateUsing(fn (?string $state): ?string => self::canManageSensitiveData() ? $state : User::maskSensitiveValue($state))
+                            ->disabled(fn (): bool => ! self::canManageSensitiveData())
+                            ->dehydrated(fn (): bool => self::canManageSensitiveData()),
 
                         TextInput::make('bank_account_holder')
                             ->label('Nama Pemilik Rekening')
                             ->maxLength(255)
+                            ->formatStateUsing(fn (?string $state): ?string => self::canManageSensitiveData() ? $state : User::maskSensitiveValue($state))
+                            ->disabled(fn (): bool => ! self::canManageSensitiveData())
+                            ->dehydrated(fn (): bool => self::canManageSensitiveData())
                             ->helperText('Isi bila berbeda dari nama karyawan.'),
                     ]),
 
@@ -213,5 +233,10 @@ class UserForm
                     ->helperText('Catatan bebas tentang orang ini — hal yang tidak punya kolomnya sendiri.')
                     ->columnSpanFull(),
             ]);
+    }
+
+    private static function canManageSensitiveData(): bool
+    {
+        return Auth::user()?->role === Role::MANAGEMENT;
     }
 }

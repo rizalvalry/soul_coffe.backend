@@ -17,7 +17,7 @@ use Tests\TestCase;
 /**
  * The showcase flow: brew into central stock, hand cups to a cart, reconcile what comes back.
  *
- * Seeded fixtures (see AllocationTest): cart 0018 has Maufu (STAFF) assigned today,
+ * Seeded fixtures (see AllocationTest): cart 0018 has Rider Uji Dua (STAFF) assigned today,
  * kitchen stock = 200 per product.
  */
 class CentralStockTest extends TestCase

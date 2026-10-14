@@ -41,7 +41,7 @@ class AdminBusinessRulesTest extends TestCase
     {
         Livewire::test(CreateUser::class)
             ->fillForm([
-                'name' => 'Budi Staff',
+                'name' => 'Rider Uji Empat Staff',
                 // Typed the way an Indonesian admin actually types it.
                 'phone_e164' => '081298765432',
                 'role' => Role::STAFF->value,

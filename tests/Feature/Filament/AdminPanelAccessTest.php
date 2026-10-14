@@ -61,7 +61,7 @@ class AdminPanelAccessTest extends TestCase
     public function test_login_accepts_a_local_format_number_and_normalises_it(): void
     {
         $admin = User::create([
-            'name' => 'Rizal Admin',
+            'name' => 'Administrator Uji',
             'phone_e164' => '081100000001',
             'password' => 'admin123',
             'role' => Role::ADMINISTRATOR,
@@ -83,7 +83,7 @@ class AdminPanelAccessTest extends TestCase
     public function test_login_rejects_a_wrong_password(): void
     {
         User::create([
-            'name' => 'Rizal Admin',
+            'name' => 'Administrator Uji',
             'phone_e164' => '081100000001',
             'password' => 'admin123',
             'role' => Role::ADMINISTRATOR,
