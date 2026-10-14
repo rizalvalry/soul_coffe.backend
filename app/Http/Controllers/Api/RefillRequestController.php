@@ -38,7 +38,7 @@ class RefillRequestController extends Controller
             Role::STAFF => $query->where('staff_id', $user->id),
             Role::BARISTA => $query->where('kitchen_id', $user->kitchen_id),
             Role::RIDER => $this->scopeRider($query, $user->id, (string) $request->query('scope')),
-            Role::FINANCE, Role::ADMINISTRATOR => null,
+            Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR => null,
         };
 
         if ($request->filled('status')) {

@@ -295,7 +295,7 @@ class CentralStockService
                     array_sum($returned),
                     array_sum($rejected),
                 ),
-                ['cart.'.$cart->id, 'kitchen.'.$kitchenId, 'role.ADMINISTRATOR', 'role.FINANCE'],
+                ['cart.'.$cart->id, 'kitchen.'.$kitchenId, 'role.ADMINISTRATOR', 'role.FINANCE', 'role.MANAGEMENT'],
                 array_merge($this->cartStaffIds($cart, Carbon::today()), $this->kitchenWatcherIds($kitchenId)),
             );
         });
@@ -434,7 +434,7 @@ class CentralStockService
         return User::query()
             ->where('is_active', true)
             ->where(function ($query) use ($kitchenId): void {
-                $query->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE])
+                $query->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT])
                     ->orWhere(fn ($q) => $q->where('role', Role::BARISTA)->where('kitchen_id', $kitchenId));
             })
             ->pluck('id')

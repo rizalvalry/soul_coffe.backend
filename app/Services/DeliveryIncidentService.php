@@ -187,7 +187,7 @@ class DeliveryIncidentService
         string $mode,
         ?string $note = null,
     ): DeliveryIncident {
-        if (! in_array($decider->role, [Role::FINANCE, Role::ADMINISTRATOR], true)) {
+        if (! in_array($decider->role, [Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR], true)) {
             abort(403, 'Hanya Finance atau Administrator yang memutuskan insiden.');
         }
 
@@ -297,6 +297,7 @@ class DeliveryIncidentService
             'kitchen.'.$refill->kitchen_id,
             'role.ADMINISTRATOR',
             'role.FINANCE',
+            'role.MANAGEMENT',
             // The one staff member this concerns, by name. `role.STAFF` would tell every cart in
             // the city about an accident on somebody else's route.
             $refill->staff_id ? 'user.'.$refill->staff_id : null,
@@ -310,7 +311,7 @@ class DeliveryIncidentService
     private function recipientsFor(RefillRequest $refill, ?User $rider): array
     {
         $supervisors = User::query()
-            ->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE])
+            ->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT])
             ->where('is_active', true)
             ->pluck('id')
             ->all();

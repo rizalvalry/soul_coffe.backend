@@ -4,6 +4,7 @@ namespace Tests\Feature\Access;
 
 use App\Enums\PanelModule;
 use App\Enums\Role;
+use App\Models\RolePermission;
 use App\Models\User;
 use App\Services\Access\PermissionMatrix;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -29,7 +30,7 @@ class PermissionMatrixTest extends TestCase
     {
         $admin = User::factory()->role(Role::ADMINISTRATOR)->create();
 
-        $this->assertSame(0, \App\Models\RolePermission::query()->count());
+        $this->assertSame(0, RolePermission::query()->count());
 
         foreach (PanelModule::cases() as $module) {
             foreach (['view', 'create', 'edit', 'delete'] as $ability) {
@@ -80,6 +81,24 @@ class PermissionMatrixTest extends TestCase
         $this->assertFalse(PermissionMatrix::can($finance, PanelModule::USERS, 'view'));
     }
 
+    public function test_management_inherits_current_finance_grants_and_keeps_its_own(): void
+    {
+        $management = User::factory()->role(Role::MANAGEMENT)->create();
+
+        $this->assertFalse(PermissionMatrix::hasAnyModule(Role::MANAGEMENT));
+        PermissionMatrix::set(Role::FINANCE, PanelModule::SETTLEMENTS, ['view']);
+
+        $this->assertTrue(PermissionMatrix::hasAnyModule(Role::MANAGEMENT));
+        $this->assertTrue(PermissionMatrix::can($management, PanelModule::SETTLEMENTS, 'view'));
+
+        PermissionMatrix::set(Role::MANAGEMENT, PanelModule::REPORTS, ['view']);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::SETTLEMENTS, []);
+
+        $this->assertFalse(PermissionMatrix::can($management, PanelModule::SETTLEMENTS, 'view'));
+        $this->assertTrue(PermissionMatrix::can($management, PanelModule::REPORTS, 'view'));
+        $this->assertSame(['view'], PermissionMatrix::abilitiesFor(Role::MANAGEMENT, PanelModule::REPORTS));
+    }
+
     public function test_setting_an_empty_ability_list_removes_the_row_entirely(): void
     {
         PermissionMatrix::set(Role::BARISTA, PanelModule::PRODUCTS, ['view']);
@@ -111,9 +130,13 @@ class PermissionMatrixTest extends TestCase
         PermissionMatrix::forget();
 
         $finance = User::query()->where('role', Role::FINANCE)->firstOrFail();
+        $management = User::factory()->role(Role::MANAGEMENT)->create();
 
         $this->assertTrue(PermissionMatrix::can($finance, PanelModule::ATTENDANCE, 'view'));
         $this->assertTrue(PermissionMatrix::can($finance, PanelModule::ATTENDANCE, 'edit'));
+        $this->assertTrue(PermissionMatrix::can($management, PanelModule::ATTENDANCE, 'edit'));
+        $this->assertTrue(PermissionMatrix::can($management, PanelModule::SETTLEMENTS, 'view'));
+        $this->assertTrue(PermissionMatrix::hasAnyModule(Role::MANAGEMENT));
 
         // The rest of the panel is untouched by that default — `users` above all, since that is
         // where roles and passwords are changed.

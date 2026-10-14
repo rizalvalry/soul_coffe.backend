@@ -9,6 +9,7 @@ namespace App\Enums;
 enum Role: string
 {
     case ADMINISTRATOR = 'ADMINISTRATOR';
+    case MANAGEMENT = 'MANAGEMENT';
     case FINANCE = 'FINANCE';
     case BARISTA = 'BARISTA';
     case RIDER = 'RIDER';
@@ -26,6 +27,7 @@ enum Role: string
     {
         return match ($this) {
             self::ADMINISTRATOR => 'Administrator',
+            self::MANAGEMENT => 'Management',
             self::FINANCE => 'Finance',
             self::BARISTA => 'Barista',
             self::RIDER => 'Runner',

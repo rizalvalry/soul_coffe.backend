@@ -41,7 +41,7 @@ class ProductResource extends JsonResource
         ];
 
         $user = $request->user();
-        $canSeeCost = $user && in_array($user->role, [Role::FINANCE, Role::ADMINISTRATOR], true);
+        $canSeeCost = $user && in_array($user->role, [Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR], true);
 
         if ($canSeeCost) {
             $priceVersion = $product->relationLoaded('priceVersions')

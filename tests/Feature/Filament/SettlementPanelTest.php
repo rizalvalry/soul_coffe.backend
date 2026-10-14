@@ -119,6 +119,24 @@ class SettlementPanelTest extends TestCase
         $this->actingAs($rider)->get(SettlementResource::getUrl())->assertForbidden();
     }
 
+    public function test_management_inherits_finance_access_to_the_settlement_resource(): void
+    {
+        $management = User::factory()->role(Role::MANAGEMENT)->create();
+
+        $this->actingAs($management)->get(SettlementResource::getUrl())->assertForbidden();
+
+        PermissionMatrix::set(Role::FINANCE, PanelModule::SETTLEMENTS, ['view']);
+
+        $this->actingAs($management)
+            ->get(SettlementResource::getUrl())
+            ->assertSuccessful()
+            ->assertSee('0018');
+
+        PermissionMatrix::set(Role::FINANCE, PanelModule::SETTLEMENTS, []);
+
+        $this->actingAs($management)->get(SettlementResource::getUrl())->assertForbidden();
+    }
+
     /** Read-only by nature, so the matrix editor must not offer create/edit/delete for it. */
     public function test_the_module_is_marked_read_only(): void
     {

@@ -173,7 +173,7 @@ class RefillRequestStateMachine
                 'RefillRequestSubmitted',
                 'Request refill baru',
                 "{$refill->code} · Gerobak {$refill->cart->code} · {$totalQty} cups",
-                ['refill.'.$refill->id, 'role.FINANCE', 'kitchen.'.$kitchenId, 'cart.'.$cartId],
+                ['refill.'.$refill->id, 'role.FINANCE', 'role.MANAGEMENT', 'kitchen.'.$kitchenId, 'cart.'.$cartId],
                 array_merge($this->userIdsWithRole(Role::FINANCE), [$staff->id]),
                 $refill->id,
                 RefillStatus::SUBMITTED->value,
@@ -332,7 +332,7 @@ class RefillRequestStateMachine
                 'RefillRequestCancelled',
                 'Permintaan dibatalkan',
                 (string) $locked->code,
-                ['refill.'.$locked->id, 'role.FINANCE', 'kitchen.'.$locked->kitchen_id],
+                ['refill.'.$locked->id, 'role.FINANCE', 'role.MANAGEMENT', 'kitchen.'.$locked->kitchen_id],
                 $this->userIdsWithRole(Role::FINANCE),
                 $locked->id,
                 RefillStatus::CANCELLED->value,
@@ -676,7 +676,7 @@ class RefillRequestStateMachine
                 'RefillDelivered',
                 'Refill terkirim',
                 "{$locked->code} · Gerobak {$locked->cart->code}",
-                ['refill.'.$locked->id, 'kitchen.'.$locked->kitchen_id, 'cart.'.$locked->cart_id, 'role.FINANCE'],
+                ['refill.'.$locked->id, 'kitchen.'.$locked->kitchen_id, 'cart.'.$locked->cart_id, 'role.FINANCE', 'role.MANAGEMENT'],
                 array_filter(array_merge(
                     $this->userIdsWithRole(Role::FINANCE),
                     $this->userIdsWithRole(Role::ADMINISTRATOR),
@@ -867,7 +867,8 @@ class RefillRequestStateMachine
      */
     private function userIdsWithRole(Role $role, ?int $kitchenId = null): array
     {
-        $query = User::query()->where('role', $role);
+        $roles = $role === Role::FINANCE ? [Role::FINANCE, Role::MANAGEMENT] : [$role];
+        $query = User::query()->whereIn('role', $roles);
 
         if ($kitchenId !== null) {
             $query->where('kitchen_id', $kitchenId);

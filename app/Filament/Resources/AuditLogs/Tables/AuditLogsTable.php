@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\AuditLogs\Tables;
 
+use App\Enums\Role;
 use App\Models\AuditLog;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
@@ -27,6 +28,7 @@ class AuditLogsTable
                 TextColumn::make('actor_role')
                     ->label('Role')
                     ->badge()
+                    ->formatStateUsing(fn (string $state): string => Role::tryFrom($state)?->label() ?? $state)
                     ->placeholder('-'),
                 TextColumn::make('action')
                     ->label('Aksi')
@@ -65,6 +67,7 @@ class AuditLogsTable
                         ->distinct()
                         ->orderBy('actor_role')
                         ->pluck('actor_role', 'actor_role')
+                        ->map(fn (string $role): string => Role::tryFrom($role)?->label() ?? $role)
                         ->all()),
                 Filter::make('hari_ini')
                     ->label('Hari ini')

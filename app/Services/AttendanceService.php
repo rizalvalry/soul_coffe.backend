@@ -95,7 +95,7 @@ class AttendanceService
                 'AttendanceClockedIn',
                 'Absen masuk',
                 sprintf('%s (%s) absen pukul %s.', $user->name, $user->role->label(), $attendance->clocked_in_at->format('H:i')),
-                ['role.ADMINISTRATOR', 'role.FINANCE'],
+                ['role.ADMINISTRATOR', 'role.FINANCE', 'role.MANAGEMENT'],
                 $this->supervisorIds(),
                 null,
                 null,
@@ -173,7 +173,7 @@ class AttendanceService
     private function supervisorIds(): array
     {
         return User::query()
-            ->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE])
+            ->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT])
             ->where('is_active', true)
             ->pluck('id')
             ->all();

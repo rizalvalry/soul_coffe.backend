@@ -92,7 +92,7 @@ class PurchaseOrderService
     {
         $this->assertMayOperate($actor);
 
-        return DB::transaction(function () use ($po, $actor): PurchaseOrder {
+        return DB::transaction(function () use ($po): PurchaseOrder {
             $locked = PurchaseOrder::query()->whereKey($po->id)->lockForUpdate()->firstOrFail();
 
             if (! $locked->status->isDraft()) {
@@ -196,7 +196,7 @@ class PurchaseOrderService
     {
         $this->assertMayOperate($actor);
 
-        return DB::transaction(function () use ($po, $actor): PurchaseOrder {
+        return DB::transaction(function () use ($po): PurchaseOrder {
             $locked = PurchaseOrder::query()->whereKey($po->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->status->isReceived()) {
@@ -212,7 +212,7 @@ class PurchaseOrderService
 
     private function assertMayOperate(User $actor): void
     {
-        if (! in_array($actor->role, [Role::ADMINISTRATOR, Role::FINANCE], true)) {
+        if (! in_array($actor->role, [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT], true)) {
             throw new RuntimeException('Hanya Administrator atau Finance yang dapat mengelola purchase order.');
         }
     }

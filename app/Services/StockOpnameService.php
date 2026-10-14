@@ -220,7 +220,7 @@ class StockOpnameService
 
     private function assertMayOperate(User $actor): void
     {
-        if (! in_array($actor->role, [Role::ADMINISTRATOR, Role::FINANCE], true)) {
+        if (! in_array($actor->role, [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT], true)) {
             throw new RuntimeException('Hanya Administrator atau Finance yang dapat melakukan stock opname.');
         }
     }

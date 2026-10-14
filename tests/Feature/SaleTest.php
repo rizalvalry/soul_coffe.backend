@@ -334,6 +334,7 @@ class SaleTest extends TestCase
     {
         $admin = User::factory()->role(Role::ADMINISTRATOR)->create();
         $finance = User::factory()->role(Role::FINANCE)->create();
+        $management = User::factory()->role(Role::MANAGEMENT)->create();
         $otherStaff = User::factory()->role(Role::STAFF)->create();
 
         $this->clockIn();
@@ -348,6 +349,7 @@ class SaleTest extends TestCase
 
         $this->assertContains($admin->id, $notified);
         $this->assertContains($finance->id, $notified);
+        $this->assertNotContains($management->id, $notified);
         // Not the colleague, and not the staff member who made the sale: a flag is a prompt for
         // someone to look, not an accusation to broadcast.
         $this->assertNotContains($otherStaff->id, $notified);

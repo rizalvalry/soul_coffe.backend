@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -69,6 +70,20 @@ class AuthTest extends TestCase
 
         $response->assertStatus(200)
             ->assertJsonPath('data.user.role', 'STAFF');
+    }
+
+    public function test_management_account_can_log_in_with_its_server_assigned_role(): void
+    {
+        $management = User::factory()->role(Role::MANAGEMENT)->create();
+
+        $this->postJson('/api/v1/auth/login', [
+            'phone' => $management->phone_e164,
+            'password' => 'password',
+            'device_name' => 'phpunit',
+            'role' => Role::FINANCE->value,
+        ])
+            ->assertSuccessful()
+            ->assertJsonPath('data.user.role', Role::MANAGEMENT->value);
     }
 
     public function test_bad_password_returns_401_with_exact_indonesian_message(): void

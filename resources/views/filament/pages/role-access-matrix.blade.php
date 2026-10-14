@@ -37,6 +37,9 @@
                 Peran operasional otomatis bisa masuk panel begitu diberi minimal satu menu.
                 Content Creator tetap khusus News Feed dan tidak diatur dari sini.
             </p>
+            @if ($this->role === \App\Enums\Role::MANAGEMENT->value)
+                <p>Management mewarisi hak Finance. Centang hak Finance terkunci dan berubah bersama hak Finance.</p>
+            @endif
         </div>
 
         <div class="bsi-sheet">
@@ -77,6 +80,7 @@
                                             type="checkbox"
                                             class="bsi-check"
                                             wire:model="grants.{{ $module->value }}.{{ $ability }}"
+                                            @disabled($this->isInherited($module, $ability))
                                             aria-label="{{ \App\Services\Menu\MenuLabels::for($module) }} — {{ $label }}"
                                         >
                                     @else

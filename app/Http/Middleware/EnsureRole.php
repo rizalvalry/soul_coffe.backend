@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Enums\Role;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -24,7 +25,8 @@ class EnsureRole
     {
         $user = $request->user();
 
-        if (! $user || ! in_array($user->role->value, $roles, true)) {
+        if (! $user || (! in_array($user->role->value, $roles, true)
+            && ! ($user->role === Role::MANAGEMENT && in_array('FINANCE', $roles, true)))) {
             abort(403, 'Anda tidak memiliki akses untuk aksi ini.');
         }
 

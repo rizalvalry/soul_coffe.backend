@@ -13,6 +13,7 @@ use App\Models\Settlement;
 use App\Models\StaffAssignment;
 use App\Models\User;
 use App\Services\AttendanceService;
+use App\Services\CentralStockService;
 use App\Services\SaleService;
 use App\Services\StockLedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -193,6 +194,50 @@ class SettlementTest extends TestCase
             ->assertJsonPath('data.status', 'SUBMITTED');
     }
 
+    public function test_management_can_read_the_queue_and_record_a_deposit(): void
+    {
+        $this->issue(10);
+        $this->sell(1);
+
+        $management = User::factory()->role(Role::MANAGEMENT)->create();
+        $this->actingAs($management, 'sanctum')
+            ->getJson('/api/v1/settlements/queue')
+            ->assertSuccessful();
+
+        $this->actingAs($management, 'sanctum')
+            ->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', [
+                'cart_id' => $this->cart->id,
+                'cash' => 20000,
+                'qris' => 0,
+                'transfer' => 0,
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.expected_total', 20000)
+            ->assertJsonPath('data.status', 'SUBMITTED');
+    }
+
+    public function test_staff_and_runner_cannot_use_finance_settlement_endpoints(): void
+    {
+        foreach ([Role::STAFF, Role::RIDER] as $role) {
+            $user = User::factory()->role($role)->create();
+
+            $this->actingAs($user, 'sanctum')
+                ->getJson('/api/v1/settlements/queue')
+                ->assertForbidden();
+
+            $this->actingAs($user, 'sanctum')
+                ->withHeader('Idempotency-Key', (string) Str::uuid())
+                ->postJson('/api/v1/settlements', [
+                    'cart_id' => $this->cart->id,
+                    'cash' => 0,
+                    'qris' => 0,
+                    'transfer' => 0,
+                ])
+                ->assertForbidden();
+        }
+    }
+
     /**
      * A gap is recorded, not refused — but it has to be explained.
      *
@@ -334,7 +379,7 @@ class SettlementTest extends TestCase
             ])->json('data.id');
 
         // The barista gets there first and empties the cart.
-        app(\App\Services\CentralStockService::class)->closeOutCart(
+        app(CentralStockService::class)->closeOutCart(
             $this->barista,
             $this->cart,
             [$this->coffee->id => 8],

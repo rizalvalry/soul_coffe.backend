@@ -4,6 +4,7 @@ namespace Tests\Feature\Filament;
 
 use App\Enums\Role;
 use App\Filament\Resources\NewsPosts\NewsPostResource;
+use App\Models\NewsPost;
 use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -68,6 +69,24 @@ class ContentCreatorPanelTest extends TestCase
 
         $this->get(NewsPostResource::getUrl('index'))->assertSuccessful();
         $this->get(NewsPostResource::getUrl('create'))->assertSuccessful();
+    }
+
+    public function test_management_news_audience_is_shown_by_label(): void
+    {
+        $creator = $this->makeUser(Role::CONTENT_CREATOR);
+        NewsPost::create([
+            'title' => 'Kabar Management',
+            'slug' => 'kabar-management',
+            'body' => 'Kabar untuk tim.',
+            'audience_roles' => [Role::MANAGEMENT->value],
+            'author_id' => $creator->id,
+        ]);
+
+        $this->actingAs($creator)
+            ->get(NewsPostResource::getUrl('index'))
+            ->assertSuccessful()
+            ->assertSeeText('Management')
+            ->assertDontSeeText('MANAGEMENT');
     }
 
     /**
