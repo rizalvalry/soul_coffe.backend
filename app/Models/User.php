@@ -11,6 +11,7 @@ use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Support\Facades\Auth;
 use Laravel\Sanctum\HasApiTokens;
@@ -34,9 +35,9 @@ class User extends Authenticatable implements FilamentUser, HasName
         'pin_hash',
         'login_pin_hash',
         'is_active',
-        // Employment profile, read by the monthly absensi sheet. These live here rather than in
-        // a separate roster because they describe the same person this row already describes —
-        // see the move_employment_profile_onto_users migration.
+        'roster_onboarding',
+        // Absensi fields remain on the user; payroll-specific fields live in employee_profiles.
+        // Both refer to this one identity, rather than creating a second roster of people.
         'nik',
         'uniform_size',
         'monthly_libur_quota',
@@ -69,6 +70,7 @@ class User extends Authenticatable implements FilamentUser, HasName
         'login_pin_hash',
         'national_id',
         'bank_account_number',
+        'roster_onboarding',
     ];
 
     public function setAttribute($key, $value)
@@ -89,6 +91,7 @@ class User extends Authenticatable implements FilamentUser, HasName
             'password' => 'hashed',
             'role' => Role::class,
             'is_active' => 'boolean',
+            'roster_onboarding' => 'boolean',
             'login_pin_locked_until' => 'datetime',
             'monthly_libur_quota' => 'integer',
             'birth_date' => 'date',
@@ -194,6 +197,11 @@ class User extends Authenticatable implements FilamentUser, HasName
     public function staffAssignments(): HasMany
     {
         return $this->hasMany(StaffAssignment::class, 'user_id');
+    }
+
+    public function employeeProfile(): HasOne
+    {
+        return $this->hasOne(EmployeeProfile::class);
     }
 
     public function refillRequestsAsStaff(): HasMany

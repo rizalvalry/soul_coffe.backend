@@ -38,6 +38,7 @@ class MenuLabels
      */
     private const EXTRA_MODULES = [
         'news_feed' => 'News Feed',
+        'employees' => 'Karyawan',
         'menu_naming' => 'Penamaan Menu',
         'role_matrix' => 'Management Users Role',
     ];

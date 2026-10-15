@@ -56,7 +56,9 @@ class UserResource extends Resource
     public static function canDelete(mixed $record): bool
     {
         return static::matrixCanDelete($record)
-            && ($record instanceof User && ($record->role !== Role::MANAGEMENT || Auth::user()?->role === Role::MANAGEMENT));
+            && ($record instanceof User
+                && ! $record->employeeProfile()->exists()
+                && ($record->role !== Role::MANAGEMENT || Auth::user()?->role === Role::MANAGEMENT));
     }
 
     public static function canDeleteAny(): bool

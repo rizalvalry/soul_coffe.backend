@@ -134,7 +134,7 @@ class UserForm
                 Toggle::make('is_active')
                     ->label('Aktif')
                     ->default(true)
-                    ->helperText('Akun nonaktif tidak bisa login, baik di aplikasi maupun panel ini.'),
+                    ->helperText('Akun impor baru dapat diaktifkan setelah nomor HP, kata sandi, dan PIN Rider (bila role Rider) diisi.'),
 
                 // ── Biodata ───────────────────────────────────────────────────────────
                 // Collapsed by default: adding a person needs a name, a phone and a role, and
