@@ -44,14 +44,14 @@ class EditUser extends EditRecord
 
         $errors = [];
         if (blank($data['phone_e164'] ?? null)) {
-            $errors['phone_e164'] = 'Nomor HP wajib diisi sebelum akun impor diaktifkan.';
+            $errors['data.phone_e164'] = 'Nomor HP wajib diisi sebelum akun impor diaktifkan.';
         }
         if (blank($data['password'] ?? null)) {
-            $errors['password'] = 'Buat kata sandi sebelum akun impor diaktifkan.';
+            $errors['data.password'] = 'Buat kata sandi sebelum akun impor diaktifkan.';
         }
         $role = Role::tryFrom((string) ($data['role'] ?? $user->role->value));
         if ($role === Role::STAFF && blank($data['pin_hash'] ?? null)) {
-            $errors['pin_hash'] = 'Buat PIN Rider sebelum akun impor diaktifkan.';
+            $errors['data.pin_hash'] = 'Buat PIN Rider sebelum akun impor diaktifkan.';
         }
 
         if ($errors !== []) {

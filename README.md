@@ -55,9 +55,9 @@ CSV row or cart mapping is invalid. It matches existing accounts by normalized n
 role, preserves their phone and PIN, and creates new accounts inactive without a usable password.
 An authorized panel user must set a phone and new password before activation; Rider accounts also
 need a handover PIN. Management accounts remain subject to the Management-only provisioning rule.
-Before onboarding Management accounts, provision the first Management account through an Owner
-approved bootstrap path and grant that role view/edit access to the Users module in the access
-matrix. The current panel policy does not let Administrator edit a Management account.
+Before onboarding Management accounts, the first Management bootstrap procedure must be decided
+and that role needs view/edit access to the Users module in the access matrix. The current panel
+policy does not let Administrator edit a Management account.
 `default_cart_id` is an HR reference and does not create a daily cart assignment. Re-running the
 same roster does not create a second profile for an existing name and role.
 

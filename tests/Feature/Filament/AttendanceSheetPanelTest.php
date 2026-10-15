@@ -6,6 +6,8 @@ use App\Enums\AttendanceCode;
 use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Filament\Pages\AttendanceSheet;
+use App\Filament\Resources\EmployeeProfiles\EmployeeProfileResource;
+use App\Filament\Resources\Users\UserResource;
 use App\Models\Attendance;
 use App\Models\AttendanceMark;
 use App\Models\User;
@@ -73,20 +75,22 @@ class AttendanceSheetPanelTest extends TestCase
     }
 
     /**
-     * Finance records days; it does not get the Users menu, which is where roles and passwords
-     * are changed — see RolePermissionSeeder for why that separation is deliberate.
+     * Finance records days and can view HR profiles. It cannot open Users, where roles and
+     * passwords are changed.
      */
-    public function test_finance_sees_no_other_menu_including_users(): void
+    public function test_finance_sees_employee_profiles_without_users_or_other_resources(): void
     {
         $finance = $this->financeWithAttendanceGrant();
         $this->actingAs($finance);
 
         foreach (Filament::getPanel('admin')->getResources() as $resource) {
-            $this->assertFalse(
+            $this->assertSame(
+                $resource === EmployeeProfileResource::class,
                 $resource::canViewAny(),
-                "{$resource} is visible to FINANCE, which was only granted the absensi report.",
+                "{$resource} has the wrong visibility for FINANCE with only an attendance grant.",
             );
         }
+        $this->assertFalse(UserResource::canViewAny());
     }
 
     public function test_a_role_with_no_grant_cannot_reach_the_sheet_or_the_panel(): void
