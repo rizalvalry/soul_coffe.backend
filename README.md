@@ -1,9 +1,10 @@
 # Soul Coffeemate — Backend API
 
 Internal field-operations API for the SOUL COFFEEMATE electric-motorbike coffee-cart fleet.
-Five roles: Administrator, Finance, Barista, Runner, Rider. No customer ever logs in.
+Seven employee roles: Administrator, Management, Finance, Barista, Runner, Rider, and Content Creator.
+No customer logs into the operational app.
 
-**Laravel 12 · PHP 8.2 · MySQL 8 · Sanctum · Reverb**
+**Laravel 12 · PHP 8.2 · MySQL 8 · Sanctum · Pusher in production (Reverb installed)**
 
 The mobile client is a separate Expo/React Native app that ships as an Android APK.
 
@@ -38,6 +39,33 @@ php artisan queue:work        # outbox publishing, notifications, ledger retries
 ```
 
 ## Production deployment
+
+### Employee roster (T-006)
+
+After the T-006 migration, import the private roster CSV from outside this public repository:
+
+```bash
+php artisan soul:import-roster <absolute-private-csv-path> --dry-run
+php artisan soul:import-roster <absolute-private-csv-path>
+```
+
+Review the dry-run counts and resolve every reported issue before importing. The command prints
+row numbers and counts, not employee names. It aborts the write before any row is committed if a
+CSV row or cart mapping is invalid. It matches existing accounts by normalized name and
+role, preserves their phone and PIN, and creates new accounts inactive without a usable password.
+An authorized panel user must set a phone and new password before activation; Rider accounts also
+need a handover PIN. Management accounts remain subject to the Management-only provisioning rule.
+Before onboarding Management accounts, the first Management bootstrap procedure must be decided
+and that role needs view/edit access to the Users module in the access matrix. The current panel
+policy does not let Administrator edit a Management account.
+`default_cart_id` is an HR reference and does not create a daily cart assignment. Re-running the
+same roster does not create a second profile for an existing name and role.
+Creating a new user in the CMS also creates an empty employee profile, which can then be completed
+in Karyawan. Payroll audit values are encrypted in the audit record and displayed only to
+Management when that role has Audit Trail view access.
+
+The T-006 rollback refuses to discard employee profiles or restore a non-null phone column while
+phone-less roster accounts exist. Resolve those records or restore the pre-deploy backup first.
 
 **Requirements:** PHP 8.2+ (`pdo_mysql`, `mbstring`, `openssl`, `tokenizer`, `xml`, `ctype`,
 `json`, `fileinfo`, `curl`, `bcmath`), MySQL 8, Composer, and a process supervisor.
