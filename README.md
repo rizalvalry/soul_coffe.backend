@@ -60,6 +60,9 @@ and that role needs view/edit access to the Users module in the access matrix. T
 policy does not let Administrator edit a Management account.
 `default_cart_id` is an HR reference and does not create a daily cart assignment. Re-running the
 same roster does not create a second profile for an existing name and role.
+Creating a new user in the CMS also creates an empty employee profile, which can then be completed
+in Karyawan. Payroll audit values are encrypted in the audit record and displayed only to
+Management when that role has Audit Trail view access.
 
 The T-006 rollback refuses to discard employee profiles or restore a non-null phone column while
 phone-less roster accounts exist. Resolve those records or restore the pre-deploy backup first.

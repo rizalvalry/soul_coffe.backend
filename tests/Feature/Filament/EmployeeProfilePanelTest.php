@@ -4,9 +4,11 @@ namespace Tests\Feature\Filament;
 
 use App\Enums\PanelModule;
 use App\Enums\Role;
+use App\Filament\Resources\AuditLogs\Pages\ViewAuditLog;
 use App\Filament\Resources\EmployeeProfiles\EmployeeProfileResource;
 use App\Filament\Resources\EmployeeProfiles\Pages\EditEmployeeProfile;
 use App\Filament\Resources\EmployeeProfiles\Pages\ListEmployeeProfiles;
+use App\Filament\Resources\Users\Pages\CreateUser;
 use App\Models\AuditLog;
 use App\Models\EmployeeProfile;
 use App\Models\User;
@@ -73,7 +75,7 @@ class EmployeeProfilePanelTest extends TestCase
         $this->assertFalse(EmployeeProfileResource::canViewAny());
     }
 
-    public function test_management_can_edit_payroll_with_redacted_audit(): void
+    public function test_management_can_edit_payroll_and_only_management_sees_audit_values(): void
     {
         $profile = $this->profile();
         $manager = User::factory()->role(Role::MANAGEMENT)->create();
@@ -94,6 +96,19 @@ class EmployeeProfilePanelTest extends TestCase
         $this->assertSame('[redacted]', $audit->after_json['base_salary_minor']);
         $this->assertStringNotContainsString('8100000', json_encode($audit->after_json));
         $this->assertStringNotContainsString('987654321098765', json_encode($audit->after_json));
+        $this->assertSame(7800000, $audit->displayChanges('before')['base_salary_minor']);
+        $this->assertSame(8100000, $audit->displayChanges('after')['base_salary_minor']);
+
+        PermissionMatrix::set(Role::MANAGEMENT, PanelModule::AUDIT_LOGS, ['view']);
+        $this->get(ViewAuditLog::getUrl(['record' => $audit]))->assertSuccessful()
+            ->assertSee('7800000')->assertSee('8100000');
+
+        $this->actingAs(User::factory()->role(Role::FINANCE)->create());
+        $this->assertSame('[redacted]', $audit->displayChanges('before')['base_salary_minor']);
+        $this->assertSame('[redacted]', $audit->displayChanges('after')['base_salary_minor']);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::AUDIT_LOGS, ['view']);
+        $this->get(ViewAuditLog::getUrl(['record' => $audit]))->assertSuccessful()
+            ->assertDontSee('7800000')->assertDontSee('8100000')->assertDontSee('_payroll_ciphertext');
     }
 
     public function test_only_management_can_edit_management_profile(): void
@@ -103,6 +118,23 @@ class EmployeeProfilePanelTest extends TestCase
         $this->get(EditEmployeeProfile::getUrl(['record' => $profile]))->assertForbidden();
 
         $this->actingAs(User::factory()->role(Role::MANAGEMENT)->create());
+        $this->get(EditEmployeeProfile::getUrl(['record' => $profile]))->assertSuccessful();
+    }
+
+    public function test_new_user_created_in_cms_gets_an_editable_employee_profile(): void
+    {
+        $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create());
+        Livewire::test(CreateUser::class)
+            ->fillForm([
+                'name' => 'Karyawan Rekrut Baru',
+                'phone_e164' => '081234560030',
+                'role' => Role::STAFF->value,
+                'password' => 'newsecret',
+            ])
+            ->call('create')->assertHasNoFormErrors();
+
+        $employee = User::query()->where('phone_e164', '081234560030')->firstOrFail();
+        $profile = $employee->employeeProfile()->firstOrFail();
         $this->get(EditEmployeeProfile::getUrl(['record' => $profile]))->assertSuccessful();
     }
 }

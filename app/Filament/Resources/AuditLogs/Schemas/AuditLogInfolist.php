@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\AuditLogs\Schemas;
 
 use App\Enums\Role;
+use App\Models\AuditLog;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
@@ -39,11 +40,11 @@ class AuditLogInfolist
                         TextEntry::make('before_json')
                             ->label('Sebelum')
                             ->placeholder('-')
-                            ->formatStateUsing(fn (mixed $state): string => json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '-'),
+                            ->formatStateUsing(fn (AuditLog $record): string => json_encode($record->displayChanges('before'), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '-'),
                         TextEntry::make('after_json')
                             ->label('Sesudah')
                             ->placeholder('-')
-                            ->formatStateUsing(fn (mixed $state): string => json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '-'),
+                            ->formatStateUsing(fn (AuditLog $record): string => json_encode($record->displayChanges('after'), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '-'),
                     ]),
             ]);
     }

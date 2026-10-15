@@ -21,24 +21,37 @@ class RosterImportService
     public function import(string $path, bool $dryRun = false): array
     {
         $rows = $this->readCsv($path);
-        $preview = $this->process($rows, true);
-        if ($dryRun) {
-            return [...$preview, 'aborted' => false];
-        }
-        if ($preview['issues'] > 0) {
-            return [...$preview, 'aborted' => true];
+        $connection = DB::connection();
+        // MySQL advisory locks are connection scoped, not transaction scoped. Read and write on
+        // the primary connection so two CLI processes cannot both create the same identity.
+        $lock = 'soul:roster:'.sha1($connection->getDatabaseName());
+        $acquired = $connection->selectOne('SELECT GET_LOCK(?, 0) AS acquired', [$lock], false);
+        if ((int) ($acquired->acquired ?? 0) !== 1) {
+            throw new RuntimeException('Impor roster lain sedang berjalan.');
         }
 
-        $result = DB::transaction(function () use ($rows): array {
-            $result = $this->process($rows, false);
-            if ($result['issues'] > 0) {
-                throw new RuntimeException('Impor dibatalkan karena data berubah sejak pratinjau.');
+        try {
+            $preview = $this->process($rows, true);
+            if ($dryRun) {
+                return [...$preview, 'aborted' => false];
+            }
+            if ($preview['issues'] > 0) {
+                return [...$preview, 'aborted' => true];
             }
 
-            return $result;
-        });
+            $result = DB::transaction(function () use ($rows): array {
+                $result = $this->process($rows, false);
+                if ($result['issues'] > 0) {
+                    throw new RuntimeException('Impor dibatalkan karena data berubah sejak pratinjau.');
+                }
 
-        return [...$result, 'aborted' => false];
+                return $result;
+            });
+
+            return [...$result, 'aborted' => false];
+        } finally {
+            $connection->selectOne('SELECT RELEASE_LOCK(?) AS released', [$lock], false);
+        }
     }
 
     /**
@@ -235,6 +248,10 @@ class RosterImportService
                 }
                 $data = array_combine($header, $values);
                 $out[] = ['line' => $line, 'data' => array_map(fn ($value): string => (string) $value, $data)];
+            }
+
+            if ($out === []) {
+                throw new RuntimeException('CSV tidak berisi baris karyawan.');
             }
 
             return $out;

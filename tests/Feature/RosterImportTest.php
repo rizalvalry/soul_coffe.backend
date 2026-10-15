@@ -12,6 +12,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Livewire\Livewire;
+use PDO;
+use RuntimeException;
 use Tests\TestCase;
 
 class RosterImportTest extends TestCase
@@ -83,6 +85,40 @@ class RosterImportTest extends TestCase
         $this->assertSame('kode gerobak tidak ditemukan', $result['rows'][0]['reason']);
         $this->assertSame(0, User::query()->count());
         $this->assertSame(0, DB::table('employee_profiles')->count());
+    }
+
+    public function test_header_only_csv_is_rejected(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('CSV tidak berisi baris karyawan.');
+
+        app(RosterImportService::class)->import($this->fixture('roster_header_only.csv'), true);
+    }
+
+    public function test_second_import_cannot_enter_while_another_connection_holds_lock(): void
+    {
+        $config = config('database.connections.mysql');
+        $other = new PDO(
+            "mysql:host={$config['host']};port={$config['port']};dbname={$config['database']}",
+            $config['username'],
+            $config['password'],
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION],
+        );
+        $lock = 'soul:roster:'.sha1(DB::connection()->getDatabaseName());
+        $acquire = $other->prepare('SELECT GET_LOCK(?, 0)');
+        $acquire->execute([$lock]);
+        $this->assertSame(1, (int) $acquire->fetchColumn());
+
+        try {
+            app(RosterImportService::class)->import($this->fixture('roster_synthetic.csv'));
+            $this->fail('Concurrent import should be refused before any database read.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Impor roster lain sedang berjalan.', $exception->getMessage());
+            $this->assertSame(0, User::query()->count());
+        } finally {
+            $release = $other->prepare('SELECT RELEASE_LOCK(?)');
+            $release->execute([$lock]);
+        }
     }
 
     public function test_imported_rider_needs_real_credentials_before_activation(): void

@@ -22,8 +22,10 @@ class ImportRoster extends Command
                 'CSV tidak dapat dibaca.',
                 'CSV tidak dapat dibuka.',
                 'CSV kosong.',
+                'CSV tidak berisi baris karyawan.',
                 'CSV roster harus berada di luar repo backend.',
                 'Header CSV wajib berisi divisi,jabatan,nama,kode_cart,role_sistem.',
+                'Impor roster lain sedang berjalan.',
                 'Impor dibatalkan karena data berubah sejak pratinjau.',
             ];
             $this->error(in_array($exception->getMessage(), $safe, true)

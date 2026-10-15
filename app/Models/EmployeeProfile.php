@@ -6,6 +6,7 @@ use App\Casts\EncryptedInteger;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Crypt;
 use InvalidArgumentException;
 
 class EmployeeProfile extends Model
@@ -86,10 +87,16 @@ class EmployeeProfile extends Model
         $actor = Auth::user();
         $before = [];
         $after = [];
+        $detail = ['before' => [], 'after' => []];
         foreach ($changed as $field) {
             $before[$field] = $created || $this->getRawOriginal($field) === null ? null : '[redacted]';
             $after[$field] = $this->getAttribute($field) === null ? null : '[redacted]';
+            $detail['before'][$field] = $created ? null : $this->getOriginal($field);
+            $detail['after'][$field] = $this->getAttribute($field);
         }
+        // The generic audit JSON remains safe for Administrator and Finance. Management can
+        // reconstruct the old and new values through the payroll gate in AuditLog::displayChanges.
+        $after['_payroll_ciphertext'] = Crypt::encryptString(json_encode($detail, JSON_THROW_ON_ERROR));
 
         AuditLog::query()->create([
             'actor_id' => $actor?->id,
