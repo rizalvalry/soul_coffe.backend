@@ -1,0 +1,32 @@
+<?php
+
+namespace App\Filament\Resources\Accounts\Pages;
+
+use App\Filament\Resources\Accounts\AccountResource;
+use App\Models\Account;
+use Filament\Resources\Pages\CreateRecord;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
+
+class CreateAccount extends CreateRecord
+{
+    protected static string $resource = AccountResource::class;
+
+    protected function handleRecordCreation(array $data): Model
+    {
+        Gate::authorize('manage-accounting-periods');
+        if (! in_array($data['type'], ['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'COGS', 'EXPENSE'], true)) {
+            throw ValidationException::withMessages(['type' => 'Jenis akun tidak valid.']);
+        }
+        if (! empty($data['parent_id']) && Account::query()->whereKey($data['parent_id'])
+            ->where('type', $data['type'])->where('is_active', true)->doesntExist()) {
+            throw ValidationException::withMessages(['parent_id' => 'Akun induk harus aktif dan sejenis.']);
+        }
+
+        return Account::query()->create([
+            ...$data,
+            'normal_balance' => in_array($data['type'], ['ASSET', 'COGS', 'EXPENSE'], true) ? 'DEBIT' : 'CREDIT',
+        ]);
+    }
+}
