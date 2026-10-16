@@ -263,6 +263,7 @@ class DirectSaleTest extends TestCase
 
         $this->assertSame(40000, $sale->total_amount_minor);
         $this->assertSame(20000, $sale->lines->first()->unit_price_minor);
+        $this->assertSame(10000, $sale->lines->first()->unit_cost_minor);
 
         // A later price change must not rewrite what was already recorded.
         ProductPriceVersion::create([
@@ -273,6 +274,7 @@ class DirectSaleTest extends TestCase
         ]);
 
         $this->assertSame(20000, $sale->fresh(['lines'])->lines->first()->unit_price_minor);
+        $this->assertSame(10000, $sale->fresh(['lines'])->lines->first()->unit_cost_minor);
     }
 
     // ── Void ─────────────────────────────────────────────────────────────────

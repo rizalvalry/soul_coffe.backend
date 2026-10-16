@@ -167,4 +167,53 @@ class RecipeServiceTest extends TestCase
 
         $this->assertNull($recipe->fresh()->computed_cost_minor);
     }
+
+    public function test_purchase_unit_cost_uses_integer_half_up_rounding(): void
+    {
+        $recipe = $this->service()->create($this->product->id, [
+            ['raw_material_id' => $this->milk->id, 'qty_per_unit' => 3],
+        ], $this->admin);
+
+        foreach ([
+            [1, 3, 0], // Below half.
+            [4, 3, 3], // Above half: 4/3 rounds to 1, times 3.
+            [5, 2, 9], // Exactly half: 5/2 rounds to 3, times 3.
+        ] as [$cost, $qty, $expected]) {
+            app(StockLedgerService::class)->post(
+                locationType: StockLedgerService::RAW_MATERIAL_STORE,
+                locationId: $this->kitchen->id,
+                productId: null,
+                movementType: MovementType::PURCHASE_IN,
+                qty: $qty,
+                actorId: $this->admin->id,
+                kitchenId: $this->kitchen->id,
+                rawMaterialId: $this->milk->id,
+                costMinor: $cost,
+            );
+            $this->service()->refreshCostsForRawMaterials([$this->milk->id], $this->kitchen->id);
+            $this->assertSame($expected, $recipe->fresh()->computed_cost_minor);
+        }
+    }
+
+    public function test_recipe_cost_stays_null_when_integer_multiplication_would_overflow(): void
+    {
+        $recipe = $this->service()->create($this->product->id, [
+            ['raw_material_id' => $this->milk->id, 'qty_per_unit' => 2],
+        ], $this->admin);
+        app(StockLedgerService::class)->post(
+            locationType: StockLedgerService::RAW_MATERIAL_STORE,
+            locationId: $this->kitchen->id,
+            productId: null,
+            movementType: MovementType::PURCHASE_IN,
+            qty: 1,
+            actorId: $this->admin->id,
+            kitchenId: $this->kitchen->id,
+            rawMaterialId: $this->milk->id,
+            costMinor: PHP_INT_MAX,
+        );
+
+        $this->service()->refreshCostsForRawMaterials([$this->milk->id], $this->kitchen->id);
+
+        $this->assertNull($recipe->fresh()->computed_cost_minor);
+    }
 }

@@ -255,6 +255,86 @@ class SaleTest extends TestCase
         $this->assertSame(27, $this->cartStock($this->coffee));
     }
 
+    public function test_sale_pins_cost_from_the_same_effective_version_as_the_selling_price(): void
+    {
+        $this->clockIn();
+        $this->stockCart($this->coffee, 3);
+
+        $response = $this->sell([['product_id' => $this->coffee->id, 'qty' => 2]])->assertCreated();
+        $line = Sale::query()->firstOrFail()->lines()->sole();
+        $this->assertSame(20000, $line->unit_price_minor);
+        $this->assertSame(10000, $line->unit_cost_minor);
+        $this->assertArrayNotHasKey('unit_cost_minor', $response->json('data.lines.0'));
+
+        ProductPriceVersion::create([
+            'product_id' => $this->coffee->id,
+            'cost_price_minor' => 12000,
+            'sell_price_minor' => 25000,
+            'effective_from' => now(),
+        ]);
+
+        $this->assertSame(10000, $line->fresh()->unit_cost_minor);
+    }
+
+    public function test_sale_cost_is_null_when_no_price_version_exists(): void
+    {
+        $unpriced = Product::create([
+            'code' => 'NO-PRICE', 'name' => 'Belum ada harga', 'unit' => 'cup',
+            'is_sellable' => true, 'sort_order' => 3, 'is_active' => true,
+        ]);
+        $this->clockIn();
+        $this->stockCart($unpriced, 1);
+
+        $this->sell([['product_id' => $unpriced->id, 'qty' => 1]])->assertCreated();
+
+        $this->assertNull(Sale::query()->firstOrFail()->lines()->sole()->unit_cost_minor);
+    }
+
+    public function test_tied_effective_price_versions_match_finance_resource_and_sale_snapshot(): void
+    {
+        $effectiveFrom = now()->subHours(12);
+        foreach ([[11000, 22000], [12000, 23000]] as [$cost, $price]) {
+            ProductPriceVersion::create([
+                'product_id' => $this->coffee->id, 'cost_price_minor' => $cost,
+                'sell_price_minor' => $price, 'effective_from' => $effectiveFrom,
+            ]);
+        }
+
+        $products = $this->actingAs(User::factory()->role(Role::FINANCE)->create(), 'sanctum')
+            ->getJson('/api/v1/products')->assertOk()->json('data');
+        $shown = collect($products)->firstWhere('code', 'KOPI');
+        $this->assertSame(12000, $shown['cost_price']);
+        $this->assertSame(23000, $shown['sell_price']);
+
+        $this->clockIn();
+        $this->stockCart($this->coffee, 1);
+        $this->sell([['product_id' => $this->coffee->id, 'qty' => 1]])->assertCreated();
+        $line = Sale::query()->firstOrFail()->lines()->sole();
+        $this->assertSame($shown['cost_price'], $line->unit_cost_minor);
+        $this->assertSame($shown['sell_price'], $line->unit_price_minor);
+    }
+
+    public function test_field_roles_never_receive_cost_in_product_resources(): void
+    {
+        foreach ([Role::BARISTA, Role::RIDER, Role::STAFF] as $role) {
+            $response = $this->actingAs(User::factory()->role($role)->create(), 'sanctum')
+                ->getJson('/api/v1/products')->assertOk();
+
+            foreach ($response->json('data') as $product) {
+                $this->assertArrayNotHasKey('cost_price', $product);
+                $this->assertArrayNotHasKey('unit_cost_minor', $product);
+            }
+        }
+    }
+
+    public function test_barista_and_runner_cannot_read_sale_resource_through_the_rider_route(): void
+    {
+        foreach ([Role::BARISTA, Role::RIDER] as $role) {
+            $this->actingAs(User::factory()->role($role)->create(), 'sanctum')
+                ->getJson('/api/v1/sales')->assertForbidden();
+        }
+    }
+
     public function test_several_products_in_one_transaction_are_all_posted(): void
     {
         $this->clockIn();
