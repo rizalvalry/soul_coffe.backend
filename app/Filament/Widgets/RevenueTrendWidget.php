@@ -6,6 +6,7 @@ use App\Enums\PanelModule;
 use App\Services\Access\PermissionMatrix;
 use App\Services\Reporting\DashboardMetricsService;
 use Filament\Widgets\LineChartWidget;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 
 class RevenueTrendWidget extends LineChartWidget
@@ -14,6 +15,8 @@ class RevenueTrendWidget extends LineChartWidget
 
     protected ?string $maxHeight = '260px';
 
+    protected ?string $emptyStateHeading = 'Belum ada pendapatan dalam 7 hari terakhir';
+
     public static function canView(): bool
     {
         return PermissionMatrix::can(Auth::user(), PanelModule::DASHBOARD, 'view');
@@ -21,12 +24,16 @@ class RevenueTrendWidget extends LineChartWidget
 
     public function getHeading(): string
     {
-        return 'Tren Pendapatan (14 Hari Terakhir)';
+        return 'Tren Pendapatan (7 Hari Terakhir)';
     }
 
     protected function getData(): array
     {
-        $trend = app(DashboardMetricsService::class)->revenueTrend(days: 14);
+        $trend = app(DashboardMetricsService::class)->revenueTrend(days: 7);
+
+        if ($trend->every(fn (array $row): bool => $row['revenue_minor'] === 0)) {
+            return [];
+        }
 
         return [
             'datasets' => [
@@ -34,8 +41,8 @@ class RevenueTrendWidget extends LineChartWidget
                     'label' => 'Pendapatan (Rp)',
                     'data' => $trend->pluck('revenue_minor')->all(),
                     'fill' => 'start',
-                    'borderColor' => '#d97706',
-                    'backgroundColor' => 'rgba(217, 119, 6, 0.12)',
+                    'borderColor' => '#008E94',
+                    'backgroundColor' => 'rgba(0, 142, 148, 0.12)',
                     'tension' => 0.35,
                 ],
             ],
@@ -48,8 +55,13 @@ class RevenueTrendWidget extends LineChartWidget
         return 'line';
     }
 
+    protected function getOptions(): array
+    {
+        return ['scales' => ['y' => ['min' => 0, 'ticks' => ['precision' => 0]]]];
+    }
+
     private function shortDate(string $date): string
     {
-        return \Illuminate\Support\Carbon::parse($date)->translatedFormat('d M');
+        return Carbon::parse($date)->translatedFormat('d M');
     }
 }

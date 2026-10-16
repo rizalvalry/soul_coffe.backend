@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Auth;
 
 class RefillVolumeWidget extends BarChartWidget
 {
-    protected static ?int $sort = 3;
+    protected static ?int $sort = 6;
 
     protected ?string $maxHeight = '260px';
 
@@ -34,7 +34,7 @@ class RefillVolumeWidget extends BarChartWidget
                 [
                     'label' => 'Refill Request',
                     'data' => $trend->pluck('count')->all(),
-                    'backgroundColor' => '#0f766e',
+                    'backgroundColor' => '#008E94',
                 ],
             ],
             'labels' => $trend->map(fn (array $row) => Carbon::parse($row['date'])->translatedFormat('d M'))->all(),

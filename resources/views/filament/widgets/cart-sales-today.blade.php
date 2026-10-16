@@ -1,7 +1,7 @@
 {{--
     Penjualan per gerobak hari ini — the dashboard list.
 
-    Styled with the `bsi-` classes from public/css/bsi-bw.css, wrapped in Filament's own widget
+    Styled with the `bsi-` layout classes in soul-teal-layout.css, wrapped in Filament's own widget
     card so it sits with the charts above it instead of floating.
 --}}
 <x-filament-widgets::widget>
@@ -40,27 +40,19 @@
                                 <tr>
                                     <th class="bsi-name">Gerobak</th>
                                     <th>Rider</th>
-                                    <th>Area</th>
-                                    <th class="bsi-num">Transaksi</th>
                                     <th class="bsi-num">Cups</th>
-                                    <th class="bsi-num">Nilai</th>
-                                    <th class="bsi-num">Ditandai</th>
-                                    <th>Terakhir</th>
+                                    <th class="bsi-num">Pendapatan</th>
+                                    <th>Tanda</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @foreach ($rows as $row)
                                     <tr>
-                                        <td class="bsi-name">{{ $row['cart_code'] }}</td>
+                                        <td class="bsi-name">{{ $row['cart_code'] }}<small>{{ $row['area'] ?? '—' }}</small></td>
                                         <td>{{ $row['staff_name'] ?? '—' }}</td>
-                                        <td>{{ $row['area'] ?? '—' }}</td>
-                                        <td class="bsi-num">{{ $row['transactions'] }}</td>
                                         <td class="bsi-num bsi-num--strong">{{ number_format($row['cups'], 0, ',', '.') }}</td>
-                                        <td class="bsi-num">{{ number_format($row['revenue'], 0, ',', '.') }}</td>
-                                        <td class="bsi-num @if ($row['flagged'] > 0) bsi-num--alarm @endif">
-                                            {{ $row['flagged'] > 0 ? $row['flagged'] : '' }}
-                                        </td>
-                                        <td>{{ $row['last_sale_at']?->format('H:i') ?? '—' }}</td>
+                                        <td class="bsi-num">Rp {{ number_format($row['revenue'], 0, ',', '.') }}</td>
+                                        <td><span class="sc-table-badge {{ $row['flagged'] > 0 ? 'sc-table-badge--danger' : 'sc-table-badge--neutral' }}">{{ $row['flagged'] > 0 ? $row['flagged'].' ditandai' : '—' }}</span></td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -68,14 +60,9 @@
                                 <tr class="bsi-foot-total">
                                     <td class="bsi-name">{{ $totals['carts'] }} gerobak</td>
                                     <td></td>
-                                    <td></td>
-                                    <td class="bsi-num">{{ number_format($totals['transactions'], 0, ',', '.') }}</td>
                                     <td class="bsi-num">{{ number_format($totals['cups'], 0, ',', '.') }}</td>
-                                    <td class="bsi-num">{{ number_format($totals['revenue'], 0, ',', '.') }}</td>
-                                    <td class="bsi-num @if ($totals['flagged'] > 0) bsi-num--alarm @endif">
-                                        {{ $totals['flagged'] > 0 ? $totals['flagged'] : '' }}
-                                    </td>
-                                    <td></td>
+                                    <td class="bsi-num">Rp {{ number_format($totals['revenue'], 0, ',', '.') }}</td>
+                                    <td>{{ $totals['flagged'] > 0 ? $totals['flagged'].' ditandai' : '—' }}</td>
                                 </tr>
                             </tfoot>
                         </table>

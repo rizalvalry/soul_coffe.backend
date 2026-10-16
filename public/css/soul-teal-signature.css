@@ -1,0 +1,168 @@
+/* ==========================================================================
+   Soul Teal Signature — CMS theme tokens (Soul Coffeemate)
+   Source: Figma file 6aCKNqCjCYa7zP5oP0FtVO, exported 2026-10-16.
+   Every value derives from the Soul logo teal #00A3AA. Variable names match
+   the Figma code syntax, so a token in Figma and in CSS has one name.
+
+   Dark mode follows Filament's convention: Filament puts `.dark` on <html>.
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&family=Quicksand:wght@700&display=swap');
+
+:root {
+  /* Primitives ----------------------------------------------------------- */
+  --sc-teal-50: #EBF8F8;
+  --sc-teal-100: #D9F1F2;
+  --sc-teal-200: #B3E3E6;
+  --sc-teal-300: #8CD6D9;
+  --sc-teal-400: #4DBFC4;
+  --sc-teal-500: #00A3AA; /* logo colour: identity, icons, charts only (3.08:1 on white) */
+  --sc-teal-600: #008E94;
+  --sc-teal-700: #007277; /* text and button fill (5.72:1 on white) */
+  --sc-teal-800: #005A5E;
+  --sc-teal-900: #004144;
+  --sc-teal-950: #00292B;
+
+  --sc-abyss-300: #8FB3B2;
+  --sc-abyss-500: #2C5F61;
+  --sc-abyss-600: #134A4D;
+  --sc-abyss-700: #0E3A3C;
+  --sc-abyss-800: #0A2E30;
+  --sc-abyss-900: #072325;
+  --sc-abyss-950: #041718;
+  --sc-abyss-975: #020E0F;
+
+  --sc-mist-0: #FFFFFF;
+  --sc-mist-50: #F4F9F9;
+  --sc-mist-100: #E9F2F2;
+  --sc-mist-200: #D8E6E6;
+  --sc-mist-300: #BDD1D1;
+  --sc-mist-400: #8DA7A7;
+  --sc-mist-500: #587272;
+  --sc-mist-600: #445C5C;
+  --sc-mist-700: #2F4545;
+  --sc-mist-800: #1D3030;
+  --sc-mist-900: #0F2122;
+
+  --sc-emerald-100: #E3F1EA;
+  --sc-emerald-400: #5FB58C;
+  --sc-emerald-700: #256B4D;
+  --sc-amber-100: #F8EEDB;
+  --sc-amber-400: #E0A84A;
+  --sc-amber-700: #8A5A0F;
+  --sc-garnet-100: #F6E4E2;
+  --sc-garnet-400: #D98880;
+  --sc-garnet-700: #A63D3D;
+
+  /* Semantic · Light ---------------------------------------------------- */
+  --sc-bg-canvas: var(--sc-mist-50);
+  --sc-bg-surface: var(--sc-mist-0);
+  --sc-bg-surface-raised: var(--sc-mist-100);
+  --sc-bg-sidebar: var(--sc-teal-900);
+  --sc-bg-sidebar-active: var(--sc-teal-800);
+  --sc-bg-brand-soft: var(--sc-teal-50);
+  --sc-bg-accent-soft: var(--sc-teal-100);
+  --sc-bg-success: var(--sc-emerald-100);
+  --sc-bg-warning: var(--sc-amber-100);
+  --sc-bg-danger: var(--sc-garnet-100);
+
+  --sc-text-primary: var(--sc-mist-900);
+  --sc-text-secondary: var(--sc-mist-600);
+  --sc-text-muted: var(--sc-mist-500);
+  --sc-text-brand: var(--sc-teal-700);
+  --sc-text-accent: var(--sc-teal-700);
+  --sc-text-on-primary: var(--sc-mist-0);
+  --sc-text-on-sidebar: var(--sc-mist-0);
+  --sc-text-on-sidebar-muted: var(--sc-teal-200);
+  --sc-text-on-sidebar-accent: var(--sc-teal-300);
+  --sc-text-success: var(--sc-emerald-700);
+  --sc-text-warning: var(--sc-amber-700);
+  --sc-text-danger: var(--sc-garnet-700);
+
+  --sc-border-subtle: var(--sc-mist-200);
+  --sc-border-strong: var(--sc-mist-300);
+  --sc-border-accent: var(--sc-teal-200);
+  --sc-border-sidebar: var(--sc-teal-800);
+
+  --sc-action-primary: var(--sc-teal-700);
+  --sc-action-primary-hover: var(--sc-teal-800);
+  --sc-accent-brand: var(--sc-teal-500);
+  --sc-accent-highlight: var(--sc-teal-400);
+
+  --sc-chart-series-1: var(--sc-teal-600);
+  --sc-chart-series-2: var(--sc-teal-300);
+  --sc-chart-series-3: var(--sc-abyss-600);
+  --sc-chart-grid: var(--sc-mist-200);
+  --sc-chart-target: var(--sc-mist-500);
+
+  /* Layout -------------------------------------------------------------- */
+  --sc-space-1: 4px;
+  --sc-space-2: 8px;
+  --sc-space-3: 12px;
+  --sc-space-4: 16px;
+  --sc-space-5: 20px;
+  --sc-space-6: 24px;
+  --sc-space-8: 32px;
+  --sc-space-10: 40px;
+  --sc-space-12: 48px;
+  --sc-space-16: 64px;
+
+  /* Same radii as soul_coffe.mobile/src/theme/tokens.ts */
+  --sc-radius-sm: 10px;
+  --sc-radius-md: 14px;
+  --sc-radius-lg: 20px;
+  --sc-radius-xl: 28px;
+  --sc-radius-pill: 999px;
+
+  /* Type: Quicksand mirrors the SOUL wordmark, Poppins mirrors COFFEEMATE */
+  --sc-font-display: 'Quicksand', ui-rounded, system-ui, sans-serif;
+  --sc-font-sans: 'Poppins', system-ui, -apple-system, sans-serif;
+  --sc-tracking-overline: 0.24em;
+
+  /* Effects: shadows tinted with deep teal, never neutral grey */
+  --sc-shadow-card: 0 1px 2px rgba(7, 35, 37, 0.04), 0 12px 32px -8px rgba(7, 35, 37, 0.06);
+  --sc-shadow-raised: 0 2px 4px rgba(7, 35, 37, 0.06), 0 24px 48px -12px rgba(7, 35, 37, 0.12);
+  --sc-glow-brand: 0 0 16px rgba(77, 191, 196, 0.35);
+}
+
+/* Semantic · Dark --------------------------------------------------------- */
+.dark,
+[data-theme='dark'] {
+  --sc-bg-canvas: var(--sc-abyss-950);
+  --sc-bg-surface: var(--sc-abyss-900);
+  --sc-bg-surface-raised: var(--sc-abyss-800);
+  --sc-bg-sidebar: var(--sc-abyss-975);
+  --sc-bg-sidebar-active: var(--sc-abyss-800);
+  --sc-bg-brand-soft: var(--sc-abyss-700);
+  --sc-bg-accent-soft: var(--sc-abyss-700);
+  --sc-bg-success: var(--sc-abyss-800);
+  --sc-bg-warning: var(--sc-abyss-800);
+  --sc-bg-danger: var(--sc-abyss-800);
+
+  --sc-text-primary: var(--sc-mist-100);
+  --sc-text-secondary: var(--sc-mist-300);
+  --sc-text-muted: var(--sc-mist-400);
+  --sc-text-brand: var(--sc-teal-300);
+  --sc-text-accent: var(--sc-teal-300);
+  --sc-text-on-primary: var(--sc-abyss-950);
+  --sc-text-on-sidebar: var(--sc-mist-100);
+  --sc-text-on-sidebar-muted: var(--sc-abyss-300);
+  --sc-text-on-sidebar-accent: var(--sc-teal-300);
+  --sc-text-success: var(--sc-emerald-400);
+  --sc-text-warning: var(--sc-amber-400);
+  --sc-text-danger: var(--sc-garnet-400);
+
+  --sc-border-subtle: var(--sc-abyss-700);
+  --sc-border-strong: var(--sc-abyss-600);
+  --sc-border-accent: var(--sc-abyss-600);
+  --sc-border-sidebar: var(--sc-abyss-800);
+
+  --sc-action-primary: var(--sc-teal-500);
+  --sc-action-primary-hover: var(--sc-teal-400);
+
+  --sc-chart-series-1: var(--sc-teal-400);
+  --sc-chart-series-2: var(--sc-teal-200);
+  --sc-chart-series-3: var(--sc-abyss-300);
+  --sc-chart-grid: var(--sc-abyss-700);
+  --sc-chart-target: var(--sc-mist-400);
+}
