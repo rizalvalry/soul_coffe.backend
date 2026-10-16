@@ -4,13 +4,18 @@ namespace App\Services;
 
 use App\Enums\MovementType;
 use App\Enums\Role;
+use App\Models\Account;
+use App\Models\AccountingPeriod;
 use App\Models\AuditLog;
 use App\Models\Cart;
+use App\Models\CentralKitchen;
+use App\Models\JournalEntry;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\Settlement;
 use App\Models\SettlementLine;
 use App\Models\StaffAssignment;
+use App\Models\StaffLocationPing;
 use App\Models\StockLedger;
 use App\Models\User;
 use Illuminate\Support\Carbon;
@@ -51,6 +56,7 @@ class SettlementService
     public function __construct(
         private readonly StockLedgerService $ledger,
         private readonly EventPublisher $events,
+        private readonly JournalService $journals,
     ) {}
 
     /**
@@ -66,12 +72,12 @@ class SettlementService
         $date = ($date ?? Carbon::today())->startOfDay();
 
         $assignments = StaffAssignment::query()
-            ->with(['cart:id,code', 'user:id,name', 'location:id,name'])
+            ->with(['cart:id,code,kitchen_id', 'cart.kitchen:id,lat,lng,geofence_m', 'user:id,name', 'location:id,name', 'kitchen:id,lat,lng,geofence_m'])
             ->whereDate('operating_date', $date->toDateString())
             ->get();
 
         $sales = DB::table('sales')
-            ->selectRaw('cart_id, COUNT(*) as trx, COALESCE(SUM(total_qty),0) as cups, COALESCE(SUM(total_amount_minor),0) as revenue')
+            ->selectRaw("cart_id, COUNT(*) as trx, COALESCE(SUM(total_qty),0) as cups, COALESCE(SUM(total_amount_minor),0) as revenue, COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total_amount_minor ELSE 0 END),0) as cash, COALESCE(SUM(CASE WHEN payment_method = 'qris' THEN total_amount_minor ELSE 0 END),0) as qris, COALESCE(SUM(CASE WHEN payment_method = 'transfer' THEN total_amount_minor ELSE 0 END),0) as transfer")
             ->whereDate('operating_date', $date->toDateString())
             // A voided sale is money never actually taken — Finance must not be told to expect it.
             ->whereNull('voided_at')
@@ -84,9 +90,19 @@ class SettlementService
             ->get()
             ->keyBy('cart_id');
 
+        // The newest server-recorded ping is authoritative; an earlier kitchen ping cannot make
+        // a Rider who has since departed appear to have arrived. One indexed day lookup for all.
+        $lastPingIds = DB::table('staff_location_pings')
+            ->where('operating_date', $date->toDateString())
+            ->whereIn('user_id', $assignments->pluck('user_id')->all())
+            ->groupBy('user_id')
+            ->selectRaw('MAX(id)');
+        $lastPings = StaffLocationPing::query()->whereIn('id', $lastPingIds)
+            ->get()->keyBy('user_id');
+
         // Every cart's remaining cups in ONE query rather than one per cart. This list is the
-        // Finance screen's main view and it refreshes on a timer, so a per-row projection would
-        // be a query per cart per minute for the whole shift.
+        // Finance screen's main view refreshes after queue events, so a per-row projection
+        // would add a query per cart on each update.
         $remaining = StockLedger::query()
             ->where('location_type', StockLedgerService::CART)
             ->whereIn('location_id', $assignments->pluck('cart_id')->filter()->unique()->all())
@@ -97,9 +113,12 @@ class SettlementService
             ->all();
 
         return $assignments
-            ->map(function (StaffAssignment $assignment) use ($sales, $settlements, $remaining): array {
+            ->map(function (StaffAssignment $assignment) use ($sales, $settlements, $remaining, $lastPings): array {
                 $sale = $sales->get($assignment->cart_id);
                 $settlement = $settlements->get($assignment->cart_id);
+                $ping = $lastPings->get($assignment->user_id);
+                $kitchen = $assignment->kitchen ?? $assignment->cart?->kitchen;
+                $arrivedAt = $this->isInsideKitchen($ping, $kitchen) ? $ping->recorded_at->toIso8601String() : null;
 
                 return [
                     'cart_id' => $assignment->cart_id,
@@ -110,12 +129,24 @@ class SettlementService
                     'transactions' => (int) ($sale->trx ?? 0),
                     'cups_sold' => (int) ($sale->cups ?? 0),
                     'expected_total' => (int) ($sale->revenue ?? 0),
+                    'expected_total_minor' => (int) ($sale->revenue ?? 0),
+                    'expected_cash_minor' => (int) ($sale->cash ?? 0),
+                    'expected_qris_minor' => (int) ($sale->qris ?? 0),
+                    'expected_transfer_minor' => (int) ($sale->transfer ?? 0),
+                    'arrived_at' => $arrivedAt,
+                    'cash_minor' => $settlement?->cash_minor,
+                    'qris_minor' => $settlement?->qris_minor,
+                    'transfer_minor' => $settlement?->transfer_minor,
+                    'variance_minor' => $settlement?->variance_minor,
                     'cups_remaining' => $remaining[$assignment->cart_id] ?? 0,
                     'settlement_id' => $settlement?->id,
                     'settlement_status' => $settlement?->status,
+                    'snapshot_expected_total_minor' => $settlement?->expected_total_minor,
+                    'expected_stale' => (bool) ($settlement?->expected_stale ?? false),
+                    'stale_delta_minor' => (int) ($settlement?->stale_delta_minor ?? 0),
                 ];
             })
-            ->sortBy(fn (array $row): array => [$row['settlement_id'] !== null ? 1 : 0, $row['cart_code'] ?? ''])
+            ->sortBy(fn (array $row): array => [$row['settlement_id'] !== null ? 2 : ($row['arrived_at'] !== null ? 0 : 1), $row['cart_code'] ?? ''])
             ->values()
             ->all();
     }
@@ -135,11 +166,12 @@ class SettlementService
             ->whereDate('operating_date', $date->toDateString())
             ->first();
 
-        $expected = (int) Sale::query()
+        $expectations = Sale::query()
             ->where('cart_id', $cart->id)
             ->whereDate('operating_date', $date->toDateString())
             ->whereNull('voided_at')
-            ->sum('total_amount_minor');
+            ->selectRaw("COALESCE(SUM(total_amount_minor),0) as total, COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total_amount_minor ELSE 0 END),0) as cash, COALESCE(SUM(CASE WHEN payment_method = 'qris' THEN total_amount_minor ELSE 0 END),0) as qris, COALESCE(SUM(CASE WHEN payment_method = 'transfer' THEN total_amount_minor ELSE 0 END),0) as transfer")
+            ->first();
 
         $sold = DB::table('sale_lines')
             ->join('sales', 'sales.id', '=', 'sale_lines.sale_id')
@@ -185,7 +217,11 @@ class SettlementService
             'staff_id' => $assignment?->user_id,
             'staff_name' => $assignment?->user?->name,
             'area' => $assignment?->location?->name,
-            'expected_total' => $expected,
+            'expected_total' => (int) $expectations->total,
+            'expected_total_minor' => (int) $expectations->total,
+            'expected_cash_minor' => (int) $expectations->cash,
+            'expected_qris_minor' => (int) $expectations->qris,
+            'expected_transfer_minor' => (int) $expectations->transfer,
             'lines' => $products->map(fn (Product $product): array => [
                 'product_id' => $product->id,
                 'product_name' => $product->name,
@@ -218,15 +254,12 @@ class SettlementService
         $date = ($date ?? Carbon::today())->startOfDay();
 
         return DB::transaction(function () use ($cart, $finance, $money, $varianceReason, $date): Settlement {
+            Cart::query()->whereKey($cart->id)->lockForUpdate()->firstOrFail();
             $existing = Settlement::query()
                 ->where('cart_id', $cart->id)
                 ->whereDate('operating_date', $date->toDateString())
                 ->lockForUpdate()
                 ->first();
-
-            if ($existing) {
-                throw new RuntimeException('Setoran gerobak '.$cart->code.' hari ini sudah tercatat.');
-            }
 
             $draft = $this->draft($cart, $date);
 
@@ -234,10 +267,16 @@ class SettlementService
             $qris = max(0, (int) ($money['qris'] ?? 0));
             $transfer = max(0, (int) ($money['transfer'] ?? 0));
             $declared = $cash + $qris + $transfer;
+            if ($declared > 1_000_000_000_000) {
+                throw new RuntimeException('Total setoran melampaui batas Rp 1.000.000.000.000.');
+            }
             $expected = (int) $draft['expected_total'];
             $variance = $declared - $expected;
 
-            $settlement = Settlement::query()->create([
+            $cogs = (int) DB::table('sale_lines')->join('sales', 'sales.id', '=', 'sale_lines.sale_id')
+                ->where('sales.cart_id', $cart->id)->whereDate('sales.operating_date', $date->toDateString())
+                ->whereNull('sales.voided_at')->selectRaw('COALESCE(SUM(sale_lines.qty * sale_lines.unit_cost_minor),0) as total')->value('total');
+            $values = [
                 'operating_date' => $date->toDateString(),
                 'cart_id' => $cart->id,
                 'staff_id' => $draft['staff_id'] ?? $finance->id,
@@ -247,9 +286,33 @@ class SettlementService
                 'transfer_minor' => $transfer,
                 'declared_total_minor' => $declared,
                 'expected_total_minor' => $expected,
+                'expected_cash_minor' => $draft['expected_cash_minor'],
+                'expected_qris_minor' => $draft['expected_qris_minor'],
+                'expected_transfer_minor' => $draft['expected_transfer_minor'],
+                'expected_cogs_minor' => $cogs,
+                'expected_stale' => false,
+                'stale_delta_minor' => 0,
                 'variance_minor' => $variance,
                 'variance_reason' => $varianceReason,
-            ]);
+            ];
+
+            if ($existing) {
+                if ($existing->reconciled_at !== null || ! in_array($existing->status, ['SUBMITTED', 'VARIANCE_FLAGGED'], true)) {
+                    throw new RuntimeException('Setoran yang sudah disetujui tidak dapat dicatat ulang.');
+                }
+                AuditLog::query()->create([
+                    'actor_id' => $finance->id, 'actor_role' => $finance->role->value,
+                    'action' => 'settlement.rerecorded', 'subject_type' => Settlement::class,
+                    'subject_id' => $existing->id,
+                    'before_json' => $existing->only(array_keys($values)), 'after_json' => $values,
+                    'ip' => request()->ip(), 'device_id' => null,
+                ]);
+                $existing->update($values);
+                $existing->lines()->delete();
+                $settlement = $existing;
+            } else {
+                $settlement = Settlement::query()->create($values);
+            }
 
             foreach ($draft['lines'] as $line) {
                 SettlementLine::query()->create([
@@ -325,6 +388,39 @@ class SettlementService
         });
     }
 
+    public function markExpectedStale(int $cartId, Carbon $date, User $actor, int $saleDeltaMinor, bool $stockCorrectionNeeded = false): void
+    {
+        $settlement = Settlement::query()->where('cart_id', $cartId)
+            ->whereDate('operating_date', $date->toDateString())->lockForUpdate()->first();
+        if (! $settlement) {
+            return;
+        }
+
+        $before = ['expected_stale' => $settlement->expected_stale, 'stale_delta_minor' => $settlement->stale_delta_minor];
+        // The signed change is exact within the sale/void transaction and remains correct under
+        // MySQL REPEATABLE READ, where a SUM could miss a concurrent committed sale.
+        $settlement->update(['expected_stale' => true, 'stale_delta_minor' => $settlement->stale_delta_minor + $saleDeltaMinor]);
+        AuditLog::query()->create([
+            'actor_id' => $actor->id, 'actor_role' => $actor->role->value,
+            'action' => 'settlement.expected_stale', 'subject_type' => Settlement::class,
+            'subject_id' => $settlement->id, 'before_json' => $before,
+            'after_json' => ['expected_stale' => true, 'stale_delta_minor' => $settlement->stale_delta_minor],
+            'ip' => request()->ip(), 'device_id' => null,
+        ]);
+        $recipientIds = User::query()->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT])
+            ->where('is_active', true)->pluck('id')->all();
+        $this->events->publish(
+            type: 'SettlementExpectedStale', title: 'Ekspektasi setoran berubah',
+            body: sprintf('Ekspektasi gerobak %s berubah setelah setoran dicatat.%s',
+                $settlement->cart?->code,
+                $stockCorrectionNeeded ? ' Periksa stok melalui Stock Opname karena penjualan terlambat.' : ''),
+            channels: array_merge(['role.FINANCE', 'role.MANAGEMENT'], array_map(fn (int $id): string => "user.{$id}", $recipientIds)),
+            notifyUserIds: $recipientIds, status: $settlement->status,
+            context: ['cart_id' => $cartId, 'operating_date' => $date->toDateString(), 'source_id' => $settlement->id],
+            includeActorPush: true,
+        );
+    }
+
     /**
      * Approves the deposit and settles the cups still on the cart.
      *
@@ -337,6 +433,7 @@ class SettlementService
         }
 
         return DB::transaction(function () use ($settlement, $finance, $disposition, $note): Settlement {
+            Cart::query()->whereKey($settlement->cart_id)->lockForUpdate()->firstOrFail();
             $locked = Settlement::query()->whereKey($settlement->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->reconciled_at !== null || ! in_array($locked->status, ['SUBMITTED', 'VARIANCE_FLAGGED'], true)) {
@@ -345,6 +442,14 @@ class SettlementService
 
             $cart = Cart::query()->findOrFail($locked->cart_id);
             $kitchenId = $cart->kitchen_id;
+
+            // JournalService always locks the chart before the accounting period.
+            Account::query()->orderBy('id')->lockForUpdate()->firstOrFail();
+            $period = AccountingPeriod::query()->where('year', $locked->operating_date->year)
+                ->where('month', $locked->operating_date->month)->lockForUpdate()->first();
+            if ($period?->status === 'CLOSED') {
+                throw new RuntimeException('Periode akuntansi tanggal setoran sudah ditutup. Setoran belum disetujui.');
+            }
 
             $rows = [];
 
@@ -358,6 +463,8 @@ class SettlementService
                 }
             }
 
+            $liveLines = $rows === [] ? collect() : collect($this->draft($cart, $locked->operating_date)['lines'])->keyBy('product_id');
+
             if ($rows !== []) {
                 if (! $kitchenId) {
                     throw new RuntimeException('Gerobak ini belum terhubung ke dapur pusat, cups sisa tidak bisa dikembalikan.');
@@ -366,7 +473,8 @@ class SettlementService
                 // Measured against LIVE stock under a lock, never against the numbers captured
                 // when the deposit was recorded — see the class docblock for the barista
                 // close-out that may have got here first.
-                $available = $this->ledger->lockAndProject(StockLedgerService::CART, $cart->id, array_keys($rows));
+                $this->ledger->lockAndProject(StockLedgerService::CART, $cart->id, array_keys($rows));
+                $available = $this->currentCartStock($cart->id, array_keys($rows));
 
                 foreach ($rows as $productId => $qty) {
                     $moving = $qty['returned'] + $qty['rejected'];
@@ -419,14 +527,22 @@ class SettlementService
                         );
                     }
 
-                    SettlementLine::query()
-                        ->where('settlement_id', $locked->id)
-                        ->where('product_id', $productId)
-                        ->update([
-                            'qty_wasted' => $qty['rejected'],
-                            'qty_remaining' => $qty['returned'],
-                        ]);
+                    $line = SettlementLine::query()->firstOrNew(['settlement_id' => $locked->id, 'product_id' => $productId]);
+                    if (! $line->exists) {
+                        $liveLine = $liveLines->get($productId);
+                        $line->qty_issued = (int) ($liveLine['qty_issued'] ?? 0);
+                        $line->qty_sold = (int) ($liveLine['qty_sold'] ?? 0);
+                        $line->variance_qty = $line->qty_issued - $line->qty_sold - (int) ($liveLine['qty_remaining'] ?? 0);
+                    }
+                    $line->qty_wasted = $qty['rejected'];
+                    $line->qty_remaining = $qty['returned'];
+                    $line->save();
                 }
+            }
+
+            $liveStock = $this->currentCartStock($cart->id);
+            if (collect($liveStock)->contains(fn (int $qty): bool => $qty > 0)) {
+                throw new RuntimeException('Masih ada cups di gerobak. Tentukan jumlah kembali atau reject sebelum menyetujui setoran.');
             }
 
             $locked->status = 'RECONCILED';
@@ -438,6 +554,8 @@ class SettlementService
             }
 
             $locked->save();
+
+            $this->postJournals($locked, $finance);
 
             $this->events->publish(
                 type: 'SettlementApproved',
@@ -454,5 +572,86 @@ class SettlementService
 
             return $locked->fresh(['lines']);
         });
+    }
+
+    private function isInsideKitchen(?StaffLocationPing $ping, ?CentralKitchen $kitchen): bool
+    {
+        if (! $ping || ! $kitchen || $kitchen->lat === null || $kitchen->lng === null || ! $kitchen->geofence_m) {
+            return false;
+        }
+
+        $lat1 = (float) $kitchen->lat;
+        $lat2 = (float) $ping->lat;
+        $north = ($lat2 - $lat1) * 111_320;
+        $east = ((float) $ping->lng - (float) $kitchen->lng) * 111_320 * cos(deg2rad(($lat1 + $lat2) / 2));
+
+        return sqrt($north ** 2 + $east ** 2) <= $kitchen->geofence_m;
+    }
+
+    /** Current locking read, unaffected by an earlier MySQL REPEATABLE READ snapshot. */
+    private function currentCartStock(int $cartId, ?array $productIds = null): array
+    {
+        $query = StockLedger::query()->where('location_type', StockLedgerService::CART)
+            ->where('location_id', $cartId);
+        if ($productIds !== null) {
+            $query->whereIn('product_id', $productIds);
+        }
+
+        return $query->lockForUpdate()->get(['product_id', 'qty_delta'])
+            ->groupBy('product_id')->map(fn ($rows): int => (int) $rows->sum('qty_delta'))->all();
+    }
+
+    private function postJournals(Settlement $settlement, User $finance): void
+    {
+        $opening = JournalEntry::query()->where('source_type', 'opening_balance')->where('purpose', 'OPENING')
+            ->whereDoesntHave('reversal')->first();
+        if ($opening && $settlement->operating_date->lt($opening->entry_date)) {
+            return;
+        }
+        $codes = ['1-1200', '1-1400', '4-1100', '6-1100', '5-1100', '1-1600'];
+        $accounts = Account::query()->whereIn('code', $codes)->pluck('id', 'code');
+        $line = static fn (string $code, int $debit, int $credit): array => [
+            'account_id' => $accounts[$code],
+            'debit_minor' => $debit,
+            'credit_minor' => $credit,
+            'cart_id' => $settlement->cart_id,
+        ];
+        $lines = [];
+        if ($settlement->cash_minor > 0) {
+            $lines[] = $line('1-1200', $settlement->cash_minor, 0);
+        }
+        $noncash = $settlement->qris_minor + $settlement->transfer_minor;
+        if ($noncash > 0) {
+            $lines[] = $line('1-1400', $noncash, 0);
+        }
+        if ($settlement->expected_total_minor > 0) {
+            $lines[] = $line('4-1100', 0, $settlement->expected_total_minor);
+        }
+        if ($settlement->variance_minor < 0) {
+            $lines[] = $line('6-1100', -$settlement->variance_minor, 0);
+        } elseif ($settlement->variance_minor > 0) {
+            $lines[] = $line('6-1100', 0, $settlement->variance_minor);
+        }
+        $header = [
+            'entry_date' => $settlement->operating_date->toDateString(),
+            'source_type' => 'settlement',
+            'source_id' => $settlement->id,
+            'description' => 'Setoran gerobak '.$settlement->cart?->code,
+            'posted_by' => $finance->id,
+        ];
+        if ($lines !== []) {
+            $this->journals->post([...$header, 'purpose' => 'SETTLEMENT'], $lines);
+        }
+
+        if ($settlement->expected_cogs_minor === null) {
+            throw new RuntimeException('Setoran lama belum memiliki snapshot HPP. Catat ulang setoran sebelum menyetujui.');
+        }
+        $cogs = (int) $settlement->expected_cogs_minor;
+        if ($cogs > 0) {
+            $this->journals->post([...$header, 'purpose' => 'SETTLEMENT_COGS', 'description' => 'HPP '.$header['description']], [
+                $line('5-1100', $cogs, 0),
+                $line('1-1600', 0, $cogs),
+            ]);
+        }
     }
 }

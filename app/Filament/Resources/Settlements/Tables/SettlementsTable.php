@@ -2,8 +2,18 @@
 
 namespace App\Filament\Resources\Settlements\Tables;
 
+use App\Enums\PanelModule;
 use App\Models\Cart;
+use App\Models\Product;
 use App\Models\Settlement;
+use App\Services\Access\PermissionMatrix;
+use App\Services\SettlementService;
+use App\Services\StockLedgerService;
+use Filament\Actions\Action;
+use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
 use Filament\Tables\Columns\Summarizers\Sum;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Enums\FiltersLayout;
@@ -11,6 +21,8 @@ use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Auth;
+use RuntimeException;
 
 class SettlementsTable
 {
@@ -21,6 +33,7 @@ class SettlementsTable
                 'cart:id,code',
                 'staff:id,name',
                 'reconciledBy:id,name',
+                'lines.product',
             ]))
             ->defaultSort('operating_date', 'desc')
             ->columns([
@@ -45,6 +58,21 @@ class SettlementsTable
                     ->formatStateUsing(fn (int $state): string => static::rupiah($state))
                     ->summarize(Sum::make()->label('Total tunai')->formatStateUsing(fn (?int $state): string => static::rupiah((int) $state)))
                     ->toggleable(),
+
+                TextColumn::make('expected_cash_minor')
+                    ->label('Ekspektasi Tunai')
+                    ->placeholder('Tidak diketahui')
+                    ->formatStateUsing(fn (?int $state): string => $state === null ? 'Tidak diketahui' : static::rupiah($state)),
+
+                TextColumn::make('expected_qris_minor')
+                    ->label('Ekspektasi QRIS')
+                    ->placeholder('Tidak diketahui')
+                    ->formatStateUsing(fn (?int $state): string => $state === null ? 'Tidak diketahui' : static::rupiah($state)),
+
+                TextColumn::make('expected_transfer_minor')
+                    ->label('Ekspektasi Transfer')
+                    ->placeholder('Tidak diketahui')
+                    ->formatStateUsing(fn (?int $state): string => $state === null ? 'Tidak diketahui' : static::rupiah($state)),
 
                 TextColumn::make('qris_minor')
                     ->label('QRIS')
@@ -107,7 +135,8 @@ class SettlementsTable
                         'RECONCILED' => 'success',
                         'VARIANCE_FLAGGED' => 'danger',
                         default => 'warning',
-                    }),
+                    })
+                    ->description(fn (Settlement $record): ?string => $record->expected_stale ? 'Ekspektasi berubah: '.static::rupiah($record->stale_delta_minor) : null),
 
                 TextColumn::make('reconciledBy.name')
                     ->label('Disetujui oleh')
@@ -137,8 +166,35 @@ class SettlementsTable
                     ->options(fn (): array => Cart::query()->orderBy('code')->pluck('code', 'id')->all())
                     ->searchable(),
             ], layout: FiltersLayout::AboveContent)
-            // No create, edit or delete. See SettlementResource for why that is structural.
-            ->recordActions([])
+            ->recordActions([
+                Action::make('approve')
+                    ->label('Setujui')
+                    ->icon('heroicon-o-check-circle')
+                    ->visible(fn (Settlement $record): bool => in_array($record->status, ['SUBMITTED', 'VARIANCE_FLAGGED'], true)
+                        && PermissionMatrix::can(Auth::user(), PanelModule::SETTLEMENTS, 'edit'))
+                    ->requiresConfirmation()
+                    ->schema([
+                        Repeater::make('lines')->label('Cups tersisa di gerobak')
+                            ->schema([
+                                Select::make('product_id')->label('Produk')->options(fn (): array => Product::query()->orderBy('name')->pluck('name', 'id')->all())->required(),
+                                TextInput::make('qty_returned')->label('Kembali')->integer()->minValue(0)->required(),
+                                TextInput::make('qty_rejected')->label('Reject')->integer()->minValue(0)->required(),
+                            ])
+                            ->default(fn (Settlement $record): array => collect(app(StockLedgerService::class)
+                                ->stockMap(StockLedgerService::CART, $record->cart_id))
+                                ->filter(fn (int $qty): bool => $qty > 0)
+                                ->map(fn (int $qty, int $productId): array => ['product_id' => $productId, 'qty_returned' => $qty, 'qty_rejected' => 0])->values()->all()),
+                    ])
+                    ->action(function (Settlement $record, array $data, SettlementService $service): void {
+                        abort_unless(PermissionMatrix::can(Auth::user(), PanelModule::SETTLEMENTS, 'edit'), 403);
+                        try {
+                            $service->approve($record, Auth::user(), $data['lines'] ?? []);
+                            Notification::make()->success()->title('Setoran disetujui')->send();
+                        } catch (RuntimeException $exception) {
+                            Notification::make()->danger()->title('Setoran gagal disetujui')->body($exception->getMessage())->send();
+                        }
+                    }),
+            ])
             ->toolbarActions([]);
     }
 

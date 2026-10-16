@@ -109,10 +109,6 @@ enum PanelModule: string
             self::DASHBOARD,
             self::REPORTS,
             self::AUDIT_LOGS,
-            // Deposits are taken on the phone at the desk, with the money in hand. The panel is
-            // where they are read and reported on — editing one here would be rewriting a
-            // reconciliation after the fact, with nobody standing there to disagree.
-            self::SETTLEMENTS,
             self::STAFF_ACTIVITY,
             // A brew is a fact about what happened in the kitchen, backed by ledger rows that are
             // themselves append-only — there is nothing here to create or edit, only to read.

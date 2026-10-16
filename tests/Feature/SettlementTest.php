@@ -5,10 +5,13 @@ namespace Tests\Feature;
 use App\Enums\MovementType;
 use App\Enums\Role;
 use App\Events\SoulEvent;
+use App\Models\Account;
+use App\Models\AccountingPeriod;
 use App\Models\AppNotification;
 use App\Models\AuditLog;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
+use App\Models\JournalEntry;
 use App\Models\Location;
 use App\Models\OutboxEvent;
 use App\Models\Product;
@@ -16,13 +19,16 @@ use App\Models\ProductPriceVersion;
 use App\Models\Sale;
 use App\Models\Settlement;
 use App\Models\StaffAssignment;
+use App\Models\StaffLocationPing;
 use App\Models\User;
 use App\Services\AttendanceService;
 use App\Services\CentralStockService;
 use App\Services\DirectSaleService;
+use App\Services\JournalService;
 use App\Services\Push\PushNotifier;
 use App\Services\SaleService;
 use App\Services\StockLedgerService;
+use Database\Seeders\AccountSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
@@ -57,6 +63,8 @@ class SettlementTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->seed(AccountSeeder::class);
 
         $this->kitchen = CentralKitchen::create([
             'name' => 'Dapur Uji', 'address' => 'Jl. Uji 1',
@@ -130,6 +138,13 @@ class SettlementTest extends TestCase
             ->stockFor(StockLedgerService::CART, $this->cart->id, $this->coffee->id);
     }
 
+    private function returnAll(): array
+    {
+        $qty = $this->cartStock();
+
+        return $qty > 0 ? [['product_id' => $this->coffee->id, 'qty_returned' => $qty, 'qty_rejected' => 0]] : [];
+    }
+
     private function kitchenStock(): int
     {
         return app(StockLedgerService::class)
@@ -165,7 +180,7 @@ class SettlementTest extends TestCase
         Event::assertDispatched(SoulEvent::class, fn (SoulEvent $event): bool => $event->payload['event_id'] === $recorded->event_id);
 
         $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
-            ->postJson("/api/v1/settlements/{$settlementId}/approve", [])
+            ->postJson("/api/v1/settlements/{$settlementId}/approve", ['lines' => $this->returnAll()])
             ->assertOk();
 
         $approved = OutboxEvent::query()->where('name', 'SettlementApproved')->sole();
@@ -325,7 +340,7 @@ class SettlementTest extends TestCase
 
         $this->asFinance()
             ->withHeader('Idempotency-Key', (string) Str::uuid())
-            ->postJson("/api/v1/settlements/{$settlementId}/approve", [])
+            ->postJson("/api/v1/settlements/{$settlementId}/approve", ['lines' => $this->returnAll()])
             ->assertSuccessful()
             ->assertJsonPath('data.status', 'RECONCILED')
             ->assertJsonPath('data.variance', -10000)
@@ -364,7 +379,7 @@ class SettlementTest extends TestCase
 
         $this->asFinance()
             ->withHeader('Idempotency-Key', (string) Str::uuid())
-            ->postJson("/api/v1/settlements/{$settlementId}/approve", [])
+            ->postJson("/api/v1/settlements/{$settlementId}/approve", ['lines' => $this->returnAll()])
             ->assertSuccessful()
             ->assertJsonPath('data.status', 'RECONCILED')
             ->assertJsonPath('data.variance', -10000);
@@ -482,7 +497,7 @@ class SettlementTest extends TestCase
             ->postJson('/api/v1/settlements', $payload)->assertCreated();
 
         $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
-            ->postJson('/api/v1/settlements', $payload)->assertStatus(422);
+            ->postJson('/api/v1/settlements', $payload)->assertCreated();
 
         $this->assertSame(1, Settlement::query()->count());
     }
@@ -549,7 +564,7 @@ class SettlementTest extends TestCase
                 'cart_id' => $this->cart->id, 'cash' => 40000, 'qris' => 0, 'transfer' => 0,
             ])->json('data.id');
 
-        $lines = [['product_id' => $this->coffee->id, 'qty_returned' => 4, 'qty_rejected' => 0]];
+        $lines = [['product_id' => $this->coffee->id, 'qty_returned' => 8, 'qty_rejected' => 0]];
 
         $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson("/api/v1/settlements/{$settlement}/approve", ['lines' => $lines])->assertSuccessful();
@@ -557,8 +572,8 @@ class SettlementTest extends TestCase
         $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson("/api/v1/settlements/{$settlement}/approve", ['lines' => $lines])->assertStatus(422);
 
-        // Only the first approval moved anything: 8 left after selling 2, minus 4 returned.
-        $this->assertSame(4, $this->cartStock());
+        // Only the first approval moved the eight cups left after selling two.
+        $this->assertSame(0, $this->cartStock());
     }
 
     public function test_approval_rejects_any_status_other_than_submitted_or_variance_flagged(): void
@@ -683,5 +698,244 @@ class SettlementTest extends TestCase
             ->assertSuccessful()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.cart_code', '0018');
+    }
+
+    public function test_method_expectations_are_returned_and_snapshotted_without_voided_sales(): void
+    {
+        $this->issue(10);
+        $this->sell(2);
+        $this->sell(1);
+        $this->sell(1);
+        $this->sell(1);
+        $sales = Sale::query()->orderBy('id')->get();
+        $sales[1]->update(['payment_method' => 'qris']);
+        $sales[2]->update(['payment_method' => 'transfer']);
+        $sales[3]->update(['voided_at' => now()]);
+
+        $draft = $this->asFinance()->getJson("/api/v1/settlements/draft/{$this->cart->id}")->assertOk();
+        $draft->assertJsonPath('data.expected_cash_minor', 40000)
+            ->assertJsonPath('data.expected_qris_minor', 20000)
+            ->assertJsonPath('data.expected_transfer_minor', 20000)
+            ->assertJsonPath('data.expected_total_minor', 80000)
+            ->assertJsonPath('data.expected_total', 80000);
+        $this->asFinance()->getJson('/api/v1/settlements/queue')->assertOk()
+            ->assertJsonPath('data.0.expected_cash_minor', 40000)
+            ->assertJsonPath('data.0.expected_qris_minor', 20000);
+
+        $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', [
+                'cart_id' => $this->cart->id, 'cash' => 40000, 'qris' => 20000, 'transfer' => 20000,
+            ])->assertCreated()
+            ->assertJsonPath('data.expected_cash_minor', 40000)
+            ->assertJsonPath('data.expected_qris_minor', 20000);
+        $this->assertDatabaseHas('settlements', [
+            'cart_id' => $this->cart->id, 'expected_cash_minor' => 40000,
+            'expected_qris_minor' => 20000, 'expected_transfer_minor' => 20000,
+        ]);
+    }
+
+    public function test_arrival_uses_only_the_latest_ping_and_sorts_arrived_first(): void
+    {
+        $this->kitchen->update(['lat' => -6.18, 'lng' => 106.88, 'geofence_m' => 100]);
+        $other = User::factory()->role(Role::STAFF)->create();
+        $otherCart = Cart::create(['code' => '0001', 'status' => 'active', 'kitchen_id' => $this->kitchen->id]);
+        $location = Location::query()->firstOrFail();
+        StaffAssignment::create([
+            'user_id' => $other->id, 'cart_id' => $otherCart->id,
+            'location_id' => $location->id,
+            'operating_date' => today()->toDateString(), 'assigned_by' => $this->barista->id,
+            'kitchen_id' => $this->kitchen->id,
+        ]);
+        $ping = StaffLocationPing::create([
+            'user_id' => $this->staff->id, 'operating_date' => today()->toDateString(),
+            'recorded_at' => now(), 'lat' => -6.18, 'lng' => 106.88, 'source' => 'ping',
+        ]);
+        $queue = $this->asFinance()->getJson('/api/v1/settlements/queue')->assertOk();
+        $queue->assertJsonPath('data.0.cart_id', $this->cart->id)
+            ->assertJsonPath('data.0.arrived_at', $ping->recorded_at->toIso8601String())
+            ->assertJsonPath('data.1.cart_id', $otherCart->id)
+            ->assertJsonPath('data.1.arrived_at', null);
+
+        StaffLocationPing::create([
+            'user_id' => $this->staff->id, 'operating_date' => today()->toDateString(),
+            'recorded_at' => now()->addSecond(), 'lat' => -6.20, 'lng' => 106.88, 'source' => 'ping',
+        ]);
+        $this->asFinance()->getJson('/api/v1/settlements/queue')->assertOk()
+            ->assertJsonPath('data.0.arrived_at', null);
+    }
+
+    public function test_approval_posts_balanced_revenue_and_cogs_once_for_under_deposit(): void
+    {
+        $this->issue(10);
+        $this->sell(2);
+        $id = $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', [
+                'cart_id' => $this->cart->id, 'cash' => 25000, 'qris' => 10000, 'transfer' => 0,
+            ])->assertCreated()->assertJsonPath('data.status', 'VARIANCE_FLAGGED')->json('data.id');
+        $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson("/api/v1/settlements/{$id}/approve", ['lines' => $this->returnAll()])->assertOk();
+
+        $revenue = JournalEntry::query()->where('source_type', 'settlement')->where('source_id', $id)
+            ->where('purpose', 'SETTLEMENT')->with('lines.account')->sole();
+        $cogs = JournalEntry::query()->where('source_type', 'settlement')->where('source_id', $id)
+            ->where('purpose', 'SETTLEMENT_COGS')->with('lines.account')->sole();
+        $this->assertSame(40000, $revenue->lines->sum('debit_minor'));
+        $this->assertSame(40000, $revenue->lines->sum('credit_minor'));
+        $this->assertSame(16000, $cogs->lines->sum('debit_minor'));
+        $this->assertSame(16000, $cogs->lines->sum('credit_minor'));
+        $this->assertEqualsCanonicalizing(['1-1200', '1-1400', '4-1100', '6-1100'], $revenue->lines->pluck('account.code')->all());
+        $this->assertEqualsCanonicalizing(['5-1100', '1-1600'], $cogs->lines->pluck('account.code')->all());
+        $this->assertTrue($revenue->lines->every(fn ($line): bool => $line->cart_id === $this->cart->id));
+        $this->assertSame(2, JournalEntry::query()->where('source_type', 'settlement')->where('source_id', $id)->count());
+        $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson("/api/v1/settlements/{$id}/approve", [])->assertStatus(422);
+        $this->assertSame(2, JournalEntry::query()->where('source_type', 'settlement')->where('source_id', $id)->count());
+    }
+
+    public function test_late_sale_and_preapproval_void_mark_snapshot_stale_and_rerecord_resets_it(): void
+    {
+        $this->issue(10);
+        $this->sell(1);
+        $id = $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', ['cart_id' => $this->cart->id, 'cash' => 20000, 'qris' => 0, 'transfer' => 0])
+            ->assertCreated()->json('data.id');
+
+        $this->sell(1);
+        $this->assertDatabaseHas('settlements', ['id' => $id, 'expected_total_minor' => 20000, 'expected_stale' => 1, 'stale_delta_minor' => 20000]);
+        $this->assertSame(1, AuditLog::query()->where('action', 'settlement.expected_stale')->count());
+        $this->assertSame(1, OutboxEvent::query()->where('name', 'SettlementExpectedStale')->count());
+        $this->assertContains($this->finance->id, AppNotification::query()->where('type', 'SettlementExpectedStale')->pluck('user_id')->all());
+
+        $secondSale = Sale::query()->orderByDesc('id')->firstOrFail();
+        app(SaleService::class)->void($secondSale, $this->finance, 'Salah catat');
+        $this->assertDatabaseHas('settlements', ['id' => $id, 'expected_stale' => 1, 'stale_delta_minor' => 0]);
+
+        $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', ['cart_id' => $this->cart->id, 'cash' => 19000, 'qris' => 0, 'transfer' => 0])
+            ->assertCreated()->assertJsonPath('data.id', $id)->assertJsonPath('data.expected_stale', false);
+        $this->assertSame(1, Settlement::query()->count());
+        $audit = AuditLog::query()->where('action', 'settlement.rerecorded')->sole();
+        $this->assertSame(20000, $audit->before_json['cash_minor']);
+        $this->assertDatabaseHas('settlements', ['id' => $id, 'expected_stale' => 0, 'stale_delta_minor' => 0]);
+    }
+
+    public function test_late_sale_after_approval_is_accepted_and_does_not_change_journals(): void
+    {
+        $this->issue(2);
+        $this->sell(1);
+        $id = $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', ['cart_id' => $this->cart->id, 'cash' => 20000, 'qris' => 0, 'transfer' => 0])
+            ->assertCreated()->json('data.id');
+        $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson("/api/v1/settlements/{$id}/approve", ['lines' => $this->returnAll()])->assertOk();
+        $this->sell(1);
+        $this->assertDatabaseHas('settlements', ['id' => $id, 'status' => 'RECONCILED', 'expected_stale' => 1, 'stale_delta_minor' => 20000]);
+        $this->assertSame(0, $this->cartStock());
+        $this->assertSame(1, AuditLog::query()->where('action', 'sale.late_after_settlement')->count());
+        $this->assertSame(20000, (int) JournalEntry::query()->where('source_type', 'settlement')->where('source_id', $id)
+            ->where('purpose', 'SETTLEMENT')->firstOrFail()->lines()->sum('debit_minor'));
+        $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', ['cart_id' => $this->cart->id, 'cash' => 40000, 'qris' => 0, 'transfer' => 0])->assertStatus(422);
+    }
+
+    public function test_closed_period_approval_rolls_back_status_and_stock(): void
+    {
+        $this->issue(2);
+        $id = $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', ['cart_id' => $this->cart->id, 'cash' => 0, 'qris' => 0, 'transfer' => 0])
+            ->assertCreated()->json('data.id');
+        AccountingPeriod::query()->create(['year' => today()->year, 'month' => today()->month, 'status' => 'CLOSED']);
+        $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson("/api/v1/settlements/{$id}/approve", ['lines' => $this->returnAll()])
+            ->assertStatus(422)->assertJsonPath('message', fn (string $message): bool => str_contains($message, 'ditutup'));
+        $this->assertSame('SUBMITTED', Settlement::query()->findOrFail($id)->status);
+        $this->assertSame(2, $this->cartStock());
+        $this->assertSame(0, JournalEntry::query()->where('source_type', 'settlement')->count());
+    }
+
+    public function test_pre_cutover_approval_has_no_accounting_journal(): void
+    {
+        $accounts = Account::query()->whereIn('code', ['1-1200', '4-1100'])->pluck('id', 'code');
+        app(JournalService::class)->postOpening(Carbon::tomorrow()->toDateString(), [
+            ['account_id' => $accounts['1-1200'], 'debit_minor' => 1000, 'credit_minor' => 0],
+            ['account_id' => $accounts['4-1100'], 'debit_minor' => 0, 'credit_minor' => 1000],
+        ]);
+        $this->issue(2);
+        $this->sell(1);
+        $id = $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', ['cart_id' => $this->cart->id, 'cash' => 20000, 'qris' => 0, 'transfer' => 0])
+            ->assertCreated()->json('data.id');
+        $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson("/api/v1/settlements/{$id}/approve", ['lines' => $this->returnAll()])->assertOk();
+        $this->assertSame(0, JournalEntry::query()->where('source_type', 'settlement')->count());
+    }
+
+    public function test_legacy_pending_settlement_requires_rerecord_before_cogs_journal(): void
+    {
+        $this->issue(2);
+        $this->sell(1);
+        $id = $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', ['cart_id' => $this->cart->id, 'cash' => 20000, 'qris' => 0, 'transfer' => 0])
+            ->assertCreated()->json('data.id');
+        Settlement::query()->whereKey($id)->update(['expected_cogs_minor' => null]);
+        $this->sell(1);
+        $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson("/api/v1/settlements/{$id}/approve", ['lines' => $this->returnAll()])
+            ->assertStatus(422)->assertJsonPath('message', fn (string $message): bool => str_contains($message, 'Catat ulang'));
+        $this->assertSame('SUBMITTED', Settlement::query()->findOrFail($id)->status);
+        $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', ['cart_id' => $this->cart->id, 'cash' => 40000, 'qris' => 0, 'transfer' => 0])
+            ->assertCreated()->assertJsonPath('data.id', $id);
+        $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson("/api/v1/settlements/{$id}/approve", ['lines' => $this->returnAll()])->assertOk();
+        $this->assertSame(16000, Settlement::query()->findOrFail($id)->expected_cogs_minor);
+        $this->assertSame(16000, (int) JournalEntry::query()->where('source_type', 'settlement')
+            ->where('source_id', $id)->where('purpose', 'SETTLEMENT_COGS')->sole()->lines()->sum('debit_minor'));
+        $this->assertSame(1, AuditLog::query()->where('action', 'settlement.rerecorded')->count());
+    }
+
+    public function test_stale_delta_accumulates_multiple_late_sales_and_never_overflows(): void
+    {
+        $this->issue(4);
+        $id = $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', ['cart_id' => $this->cart->id, 'cash' => 0, 'qris' => 0, 'transfer' => 0])
+            ->assertCreated()->json('data.id');
+        $this->sell(1);
+        $this->sell(1);
+        $this->assertDatabaseHas('settlements', ['id' => $id, 'expected_stale' => 1, 'stale_delta_minor' => 40000]);
+        $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', [
+                'cart_id' => $this->cart->id, 'cash' => 1000000000000,
+                'qris' => 1000000000000, 'transfer' => 0,
+            ])->assertStatus(422);
+        $this->assertSame(0, Settlement::query()->findOrFail($id)->declared_total_minor);
+    }
+
+    public function test_late_mixed_stock_sale_posts_available_cups_and_audits_uncovered_cups(): void
+    {
+        $this->issue(1);
+        $this->sell(1);
+        $id = $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', ['cart_id' => $this->cart->id, 'cash' => 20000, 'qris' => 0, 'transfer' => 0])
+            ->assertCreated()->json('data.id');
+        $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson("/api/v1/settlements/{$id}/approve", [])->assertOk();
+
+        $other = Product::create(['code' => 'LATE', 'name' => 'Produk Baru', 'unit' => 'cup',
+            'is_sellable' => true, 'sort_order' => 2, 'is_active' => true]);
+        ProductPriceVersion::create(['product_id' => $other->id, 'cost_price_minor' => 8000,
+            'sell_price_minor' => 20000, 'effective_from' => now()->subDay()]);
+        $this->issue(2);
+        app(SaleService::class)->record(
+            staff: $this->staff,
+            lines: [['product_id' => $this->coffee->id, 'qty' => 1], ['product_id' => $other->id, 'qty' => 1]],
+            uuid: (string) Str::uuid(),
+        );
+        $this->assertSame(1, $this->cartStock());
+        $this->assertSame(0, app(StockLedgerService::class)->stockFor(StockLedgerService::CART, $this->cart->id, $other->id));
+        $audit = AuditLog::query()->where('action', 'sale.late_after_settlement')->sole();
+        $this->assertSame(1, $audit->after_json['uncovered_qty_by_product'][$other->id]);
+        $this->assertDatabaseHas('settlements', ['id' => $id, 'stale_delta_minor' => 40000]);
+        $this->assertStringContainsString('Stock Opname', OutboxEvent::query()->where('name', 'SettlementExpectedStale')->sole()->payload_json['body']);
     }
 }

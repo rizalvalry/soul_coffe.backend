@@ -8,8 +8,7 @@ use App\Services\Access\PermissionMatrix;
 use Illuminate\Database\Seeder;
 
 /**
- * The two grants that ship out of the box, both to FINANCE: the absensi report, and the absen
- * exemptions that go with it.
+ * Finance's default CMS grants for attendance and settlement reconciliation.
  *
  * Note what it does NOT get: `users`. The employment profile the sheet reads (NIK, size, jatah
  * klibur) lives on the user record now, and the Users menu is also where roles, passwords and
@@ -37,8 +36,7 @@ class RolePermissionSeeder extends Seeder
         // somebody who has not yet realised it exists.
         PermissionMatrix::set(Role::FINANCE, PanelModule::ABSEN_EXEMPTIONS, $full);
 
-        // The deposits Finance itself records on the phone. Read-only by nature (see
-        // PanelModule::isReadOnly), so this grant is the report, not a second way to edit one.
-        PermissionMatrix::set(Role::FINANCE, PanelModule::SETTLEMENTS, ['view']);
+        // Finance receives deposits and approves the cup disposition in the CMS.
+        PermissionMatrix::set(Role::FINANCE, PanelModule::SETTLEMENTS, ['view', 'create', 'edit']);
     }
 }
