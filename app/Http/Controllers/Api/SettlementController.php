@@ -77,8 +77,7 @@ class SettlementController extends Controller implements HasMiddleware
             'cash' => ['required', 'integer', 'min:0'],
             'qris' => ['required', 'integer', 'min:0'],
             'transfer' => ['required', 'integer', 'min:0'],
-            // Required by the service when the totals disagree; optional here because whether
-            // they disagree is the service's arithmetic, not the client's.
+            // A variance is flagged and reported even when Finance has no reason yet.
             'variance_reason' => ['nullable', 'string', 'max:500'],
         ]);
 
