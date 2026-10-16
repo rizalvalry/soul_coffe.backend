@@ -1,5 +1,6 @@
 <x-filament-panels::page>
     <div class="bsi">
+        @can ('manage-accounting-periods')
         <div class="bsi-sheet">
             <div class="bsi-sheet__head"><h2 class="bsi-title">Tutup periode bulanan</h2></div>
             <div class="bsi-toolbar">
@@ -18,6 +19,7 @@
                 <button type="button" class="bsi-btn bsi-btn--ink" wire:click="closeSelected" wire:loading.attr="disabled">Tutup Periode</button>
             </div>
         </div>
+        @endcan
         <div class="bsi-sheet">
             <div class="bsi-sheet__head"><h2 class="bsi-title">Riwayat periode</h2></div>
             <div class="bsi-scroll">
@@ -30,11 +32,13 @@
                                 <td>{{ $period->status === 'CLOSED' ? 'Ditutup' : 'Terbuka' }}</td>
                                 <td>{{ $period->closedBy?->name ?? '-' }}</td>
                                 <td>
+                                    @can ('manage-accounting-periods')
                                     @if ($period->status === 'CLOSED')
                                         <button type="button" class="bsi-btn" wire:click="setStatus({{ $period->year }}, {{ $period->month }}, 'OPEN')" wire:loading.attr="disabled">Buka kembali</button>
                                     @else
                                         <button type="button" class="bsi-btn" wire:click="setStatus({{ $period->year }}, {{ $period->month }}, 'CLOSED')" wire:loading.attr="disabled">Tutup</button>
                                     @endif
+                                    @endcan
                                 </td>
                             </tr>
                         @endforeach

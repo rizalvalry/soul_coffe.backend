@@ -3,8 +3,6 @@
 namespace Tests\Feature\Filament;
 
 use App\Enums\Role;
-use App\Filament\Resources\Accounts\AccountResource;
-use App\Filament\Resources\Journals\JournalResource;
 use App\Filament\Resources\NewsPosts\NewsPostResource;
 use App\Models\NewsPost;
 use App\Models\User;
@@ -127,14 +125,6 @@ class ContentCreatorPanelTest extends TestCase
         $this->actingAs($this->makeUser(Role::ADMINISTRATOR));
 
         foreach (Filament::getPanel('admin')->getResources() as $resource) {
-            if (in_array($resource, [
-                AccountResource::class,
-                JournalResource::class,
-            ], true)) {
-                $this->assertFalse($resource::canViewAny());
-
-                continue;
-            }
             $this->assertTrue($resource::canViewAny(), "{$resource} is hidden from ADMINISTRATOR.");
         }
     }

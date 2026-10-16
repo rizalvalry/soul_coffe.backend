@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use App\Enums\Role;
 use App\Models\AccountingPeriod;
 use App\Services\AccountingPeriodService;
+use App\Services\Menu\MenuLabels;
 use BackedEnum;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
@@ -17,7 +18,9 @@ class AccountingPeriods extends Page
 {
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedCalendarDays;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Laporan';
+    protected static string|UnitEnum|null $navigationGroup = 'Akuntansi';
+
+    protected static ?int $navigationSort = 4;
 
     protected static ?string $navigationLabel = 'Periode Akuntansi';
 
@@ -29,6 +32,11 @@ class AccountingPeriods extends Page
 
     public int $month;
 
+    public static function getNavigationGroup(): string|UnitEnum|null
+    {
+        return MenuLabels::group('Akuntansi');
+    }
+
     public function mount(): void
     {
         $this->year = (int) now()->year;
@@ -37,7 +45,7 @@ class AccountingPeriods extends Page
 
     public static function canAccess(): bool
     {
-        return Auth::user()?->role === Role::MANAGEMENT;
+        return in_array(Auth::user()?->role, [Role::ADMINISTRATOR, Role::MANAGEMENT], true);
     }
 
     public function periods(): mixed

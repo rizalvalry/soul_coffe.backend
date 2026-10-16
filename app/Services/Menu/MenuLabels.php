@@ -53,6 +53,7 @@ class MenuLabels
         'Operasional',
         'Absensi',
         'Laporan',
+        'Akuntansi',
         'Riwayat',
         'Konten',
         'Pengaturan',

@@ -8,6 +8,7 @@ use App\Filament\Resources\Journals\Pages\ViewJournal;
 use App\Models\Account;
 use App\Models\JournalEntry;
 use App\Services\JournalService;
+use App\Services\Menu\MenuLabels;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Actions\ViewAction;
@@ -36,15 +37,22 @@ class JournalResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedBookOpen;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Laporan';
+    protected static string|UnitEnum|null $navigationGroup = 'Akuntansi';
+
+    protected static ?int $navigationSort = 2;
 
     protected static ?string $navigationLabel = 'Jurnal Umum';
 
     protected static ?string $modelLabel = 'Jurnal';
 
+    public static function getNavigationGroup(): string|UnitEnum|null
+    {
+        return MenuLabels::group('Akuntansi');
+    }
+
     public static function canViewAny(): bool
     {
-        return in_array(Auth::user()?->role, [Role::FINANCE, Role::MANAGEMENT], true);
+        return in_array(Auth::user()?->role, [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT], true);
     }
 
     public static function canView(Model $record): bool
