@@ -17,14 +17,7 @@ use UnitEnum;
 /**
  * "Setoran Harian" — the money each cart handed in, and what happened to the cups left over.
  *
- * The deposit itself is taken on the phone, at the desk, with the rider standing there.
- * This is where it is read: per day, per cart, with the gap between what the transactions say and
- * what was actually handed over, and the reason somebody typed for it.
- *
- * READ-ONLY, structurally. Editing a reconciliation in the panel would be rewriting it after the
- * fact, with nobody present to disagree — and the cups have already moved through the append-only
- * ledger by then. A mistake is corrected the way every other stock mistake is: with an adjustment
- * that names its author.
+ * The panel records and approves through SettlementService; it never edits a posted row directly.
  */
 class SettlementResource extends Resource
 {

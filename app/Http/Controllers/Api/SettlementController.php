@@ -17,7 +17,7 @@ use RuntimeException;
 /**
  * Setoran — Finance receiving the day's money and settling the cups that came back.
  *
- * FINANCE AND ADMINISTRATOR ONLY. This is the money desk: the person receiving a deposit is the
+ * Finance, Management and Administrator only. This is the money desk: the person receiving a deposit is the
  * one recording it, and a rider recording their own would be the whole control gone.
  *
  * Four endpoints, matching the four things that happen at the desk:
@@ -38,7 +38,7 @@ class SettlementController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('role:FINANCE,ADMINISTRATOR'),
+            new Middleware('role:FINANCE,MANAGEMENT,ADMINISTRATOR'),
         ];
     }
 
@@ -74,9 +74,9 @@ class SettlementController extends Controller implements HasMiddleware
         $data = $request->validate([
             'cart_id' => ['required', 'integer', 'exists:carts,id'],
             // Whole rupiah (R9). No floats anywhere near money.
-            'cash' => ['required', 'integer', 'min:0'],
-            'qris' => ['required', 'integer', 'min:0'],
-            'transfer' => ['required', 'integer', 'min:0'],
+            'cash' => ['required', 'integer', 'min:0', 'max:1000000000000'],
+            'qris' => ['required', 'integer', 'min:0', 'max:1000000000000'],
+            'transfer' => ['required', 'integer', 'min:0', 'max:1000000000000'],
             // A variance is flagged and reported even when Finance has no reason yet.
             'variance_reason' => ['nullable', 'string', 'max:500'],
         ]);

@@ -4,11 +4,14 @@ namespace App\Services;
 
 use App\Enums\MovementType;
 use App\Enums\Role;
+use App\Models\AuditLog;
+use App\Models\Cart;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SaleLine;
 use App\Models\Settlement;
 use App\Models\StaffAssignment;
+use App\Models\StockLedger;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -47,6 +50,7 @@ class SaleService
         private readonly AttendanceService $attendance,
         private readonly EventPublisher $events,
         private readonly StaffLocationService $locations,
+        private readonly SettlementService $settlements,
     ) {}
 
     /**
@@ -93,7 +97,9 @@ class SaleService
         }
 
         return DB::transaction(function () use ($staff, $assignment, $merged, $uuid, $gps, $paymentMethod, $note, $deviceId, $idempotencyKey, $date): Sale {
-            $cart = $assignment->cart;
+            // First database read in this transaction is a current locking read. A plain UUID
+            // lookup before this lock would pin an old REPEATABLE READ stock snapshot.
+            $cart = Cart::query()->whereKey($assignment->cart_id)->lockForUpdate()->firstOrFail();
 
             // A replay of the same tap returns the sale that already exists rather than selling
             // the cups twice (R14). Checked inside the transaction so two concurrent replays
@@ -107,7 +113,23 @@ class SaleService
 
             // Rule 3. Locked in ascending product order by the ledger service, which is what
             // keeps two carts selling overlapping products from deadlocking each other.
-            $available = $this->ledger->lockAndProject(StockLedgerService::CART, $cart->id, $productIds);
+            $this->ledger->lockAndProject(StockLedgerService::CART, $cart->id, $productIds);
+            // A locking read sees DirectSale and other stock writers that do not take the cart
+            // lock, even if this transaction established an earlier consistent-read snapshot.
+            $available = StockLedger::query()->where('location_type', StockLedgerService::CART)
+                ->where('location_id', $cart->id)->whereIn('product_id', $productIds)
+                ->lockForUpdate()->get(['product_id', 'qty_delta'])->groupBy('product_id')
+                ->map(fn ($rows): int => (int) $rows->sum('qty_delta'))->all();
+            $reconciled = Settlement::query()->where('cart_id', $cart->id)
+                ->whereDate('operating_date', $date->toDateString())->lockForUpdate()->first(['status'])?->status === 'RECONCILED';
+            $uncoveredStock = [];
+            foreach ($merged as $productId => $qty) {
+                $missing = max(0, $qty - (int) ($available[$productId] ?? 0));
+                if ($reconciled && $missing > 0) {
+                    $uncoveredStock[$productId] = $missing;
+                }
+            }
+            $stockCorrectionNeeded = $uncoveredStock !== [];
 
             $products = Product::query()
                 ->whereIn('id', $productIds)
@@ -128,7 +150,7 @@ class SaleService
 
                 $onHand = (int) ($available[$productId] ?? 0);
 
-                if ($qty > $onHand) {
+                if ($qty > $onHand && ! $reconciled) {
                     throw new RuntimeException(sprintf(
                         'Stok gerobak untuk %s hanya %d %s.',
                         $product->name,
@@ -185,17 +207,33 @@ class SaleService
             foreach ($lineRows as $row) {
                 SaleLine::query()->create($row + ['sale_id' => $sale->id]);
 
-                $this->ledger->post(
-                    locationType: StockLedgerService::CART,
-                    locationId: $cart->id,
-                    productId: $row['product_id'],
-                    movementType: MovementType::SALE_OUT,
-                    qty: $row['qty'],
-                    actorId: $staff->id,
-                    kitchenId: (int) $cart->kitchen_id,
-                    refType: 'sale',
-                    refId: $sale->id,
-                );
+                $stockPosted = $row['qty'] - ($uncoveredStock[$row['product_id']] ?? 0);
+                if ($stockPosted > 0) {
+                    $this->ledger->post(
+                        locationType: StockLedgerService::CART,
+                        locationId: $cart->id,
+                        productId: $row['product_id'],
+                        movementType: MovementType::SALE_OUT,
+                        qty: $stockPosted,
+                        actorId: $staff->id,
+                        kitchenId: (int) $cart->kitchen_id,
+                        refType: 'sale',
+                        refId: $sale->id,
+                    );
+                }
+            }
+
+            if ($stockCorrectionNeeded) {
+                // Approval already disposed the theoretical stock. A late SALE_OUT would make
+                // the append-only ledger negative or move the same cups twice.
+                AuditLog::query()->create([
+                    'actor_id' => $staff->id, 'actor_role' => $staff->role->value,
+                    'action' => 'sale.late_after_settlement', 'subject_type' => Sale::class,
+                    'subject_id' => $sale->id, 'before_json' => null,
+                    'after_json' => ['cart_id' => $cart->id, 'operating_date' => $date->toDateString(),
+                        'stock_movement' => 'partially_or_already_disposed', 'uncovered_qty_by_product' => $uncoveredStock],
+                    'ip' => request()->ip(), 'device_id' => $deviceId,
+                ]);
             }
 
             // A coordinate captured at the moment of a sale is the strongest position this
@@ -230,6 +268,8 @@ class SaleService
                     'source_id' => $sale->id,
                 ],
             );
+
+            $this->settlements->markExpectedStale($cart->id, $date, $staff, $totalAmount, $stockCorrectionNeeded);
 
             return $sale->load('lines');
         });
@@ -278,6 +318,8 @@ class SaleService
 
             $this->assertMayVoid($locked, $actor);
 
+            Cart::query()->whereKey($locked->cart_id)->lockForUpdate()->firstOrFail();
+
             $alreadySettled = Settlement::query()
                 ->where('cart_id', $locked->cart_id)
                 ->whereDate('operating_date', $locked->operating_date)
@@ -312,6 +354,7 @@ class SaleService
             $locked->save();
 
             $this->notifyVoided($locked, $actor);
+            $this->settlements->markExpectedStale($locked->cart_id, $locked->operating_date, $actor, -$locked->total_amount_minor);
 
             return $locked->fresh(['lines']);
         });
