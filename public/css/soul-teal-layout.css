@@ -1,90 +1,4 @@
-/* ==========================================================================
-   BSI Black & White — panel theme for the Absensi and Matriks Akses screens
-   (BSI AI Frontier / "BAF" monochrome minimalism)
-
-   WHY THIS FILE EXISTS, IN PLAIN CSS
-   ----------------------------------
-   The first version of these two screens was written with Tailwind utility
-   classes (bg-gray-50, sticky, left-10, divide-y…). None of them applied:
-   this project has no Tailwind build for the panel, and Filament ships a
-   PRE-COMPILED stylesheet that contains only the classes Filament itself
-   uses. Verified by grepping public/css/filament/filament/app.css — zero of
-   the ten utilities those views relied on exist in it. So the tables
-   rendered as bare HTML: no borders, no padding, no sticky columns.
-
-   Hence hand-written CSS with its own class namespace (`bsi-`), loaded
-   through a panel render hook. No npm, no Vite, no build step on deploy —
-   this file is the artefact, and it cannot silently fail to compile.
-
-   THE SYSTEM (see the bsi-blackandwhite-design rulebook)
-   -----------------------------------------------------
-   One warm stone ramp, off-black ink (never #000), canvas never #FFF.
-   Structure is DRAWN — 0.5px hairlines, not shadows. Emphasis is INVERTED
-   INK, not a hue. Instrument Sans carries everything; Geist Mono is system
-   chrome (uppercase labels, numbers); Instrument Serif italic appears once
-   per view as the single flourish. Danger red is the only hue in the whole
-   system, so it is spent on exactly one thing here: the over-quota figure.
-   ========================================================================== */
-
-/* Instrument Sans is NOT imported here: the panel already loads it via
-   `->font('Instrument Sans')` in AdminPanelProvider, and importing it a second time
-   from a different CDN would download the same family twice. Only the two supporting
-   voices are fetched here — Geist Mono for system chrome, Instrument Serif for the
-   single italic flourish. */
-@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap');
-
-:root {
-  --bsi-canvas: #FBFBF9;
-  --bsi-surface: #F3F2EF;
-  --bsi-surface-2: #E9E8E3;
-
-  --bsi-ink: #131211;
-  --bsi-ink-2: #5B5750;
-  --bsi-ink-3: #8B867E;
-  --bsi-ink-inverse: #FBFBF9;
-
-  --bsi-hairline: #E4E2DC;
-  --bsi-strong: #C6C2BA;
-
-  --bsi-danger: #A03A32;
-
-  --bsi-shadow-card: 0 1px 2px rgba(19, 18, 17, 0.05), 0 6px 16px rgba(19, 18, 17, 0.04);
-
-  --bsi-font-sans: 'Instrument Sans', system-ui, -apple-system, sans-serif;
-  --bsi-font-mono: 'Geist Mono', ui-monospace, 'SF Mono', monospace;
-  --bsi-font-serif: 'Instrument Serif', Georgia, serif;
-
-  --bsi-ease: cubic-bezier(0.2, 0, 0, 1);
-
-  /* Sticky identity columns. Declared as variables precisely because the
-     first version hardcoded `left-10` against a column that was not 40px
-     wide — the offset has to be derived from the width, never guessed. */
-  --bsi-col-no: 44px;
-  --bsi-col-nik: 104px;
-}
-
-/* Dark theme: depth by surface stepping, no drop shadows (the system refuses
-   them here). Filament puts `.dark` on <html>. */
-.dark {
-  --bsi-canvas: #121110;
-  --bsi-surface: #1B1A18;
-  --bsi-surface-2: #242320;
-
-  --bsi-ink: #F1F0ED;
-  --bsi-ink-2: #A6A199;
-  --bsi-ink-3: #6F6A63;
-  --bsi-ink-inverse: #121110;
-
-  --bsi-hairline: #292824;
-  --bsi-strong: #3B3934;
-
-  --bsi-danger: #D96B62;
-
-  --bsi-shadow-card: none;
-}
-
-/* ── Page scaffold ─────────────────────────────────────────────────────── */
-
+/* Legacy custom-page layout; semantic colors and type come from soul-teal-filament.css. */
 .bsi {
   font-family: var(--bsi-font-sans);
   color: var(--bsi-ink);
@@ -101,7 +15,7 @@
   box-sizing: border-box;
 }
 
-/* Whitespace is a feature: the toolbar sits apart from the sheet it drives. */
+
 .bsi-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -113,9 +27,9 @@
   flex: 1 1 auto;
 }
 
-/* ── Type roles ────────────────────────────────────────────────────────── */
 
-/* Geist Mono UPPERCASE = system chrome. Never used for content. */
+
+
 .bsi-label {
   display: block;
   font-family: var(--bsi-font-mono);
@@ -144,7 +58,7 @@
   margin: 0;
 }
 
-/* The single expressive flourish, one per view: the period the sheet covers. */
+
 .bsi-serif {
   font-family: var(--bsi-font-serif);
   font-style: italic;
@@ -157,7 +71,7 @@
   color: var(--bsi-ink-2);
 }
 
-/* ── Controls ──────────────────────────────────────────────────────────── */
+
 
 .bsi-field {
   min-width: 168px;
@@ -171,14 +85,14 @@
   color: var(--bsi-ink);
   background: var(--bsi-surface);
   border: 0.5px solid var(--bsi-hairline);
-  border-radius: 12px;
+  border-radius: var(--sc-radius-sm);
   padding: 9px 12px;
   transition: border-color var(--bsi-border, 180ms) var(--bsi-ease);
   appearance: none;
 }
 
 .bsi-select {
-  /* Chevron drawn in ink, not an emoji or a coloured icon font. */
+
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235B5750' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 10px center;
@@ -189,8 +103,7 @@
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23A6A199' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }
 
-/* Inputs thicken their border instead of taking a focus ring — one signal,
-   not two. */
+
 .bsi-input:focus,
 .bsi-select:focus {
   outline: none;
@@ -213,7 +126,7 @@
   transition: transform 200ms var(--bsi-ease), border-color 180ms var(--bsi-ease);
 }
 
-/* The lift IS the feedback — never a glow or a colour flood. */
+
 .bsi-btn:hover {
   transform: translateY(-2px);
   border-color: var(--bsi-strong);
@@ -224,7 +137,7 @@
   outline-offset: 2px;
 }
 
-/* The system's "accent": inverted ink. */
+
 .bsi-btn--ink {
   background: var(--bsi-ink);
   color: var(--bsi-ink-inverse);
@@ -238,21 +151,20 @@
   flex: none;
 }
 
-/* ── Cards & notes ─────────────────────────────────────────────────────── */
+
 
 .bsi-card {
   background: var(--bsi-surface);
   border: 0.5px solid var(--bsi-hairline);
-  border-radius: 16px;
+  border-radius: var(--sc-radius-lg);
   box-shadow: var(--bsi-shadow-card);
 }
 
-/* Replaces the amber warning banner: a hairline card with a mono label. No
-   colour is needed to say "read only" — the label says it. */
+
 .bsi-note {
   background: var(--bsi-surface);
   border: 0.5px solid var(--bsi-hairline);
-  border-radius: 16px;
+  border-radius: var(--sc-radius-lg);
   padding: 16px 20px;
   display: flex;
   flex-direction: column;
@@ -269,7 +181,7 @@
   color: var(--bsi-ink);
 }
 
-/* ── Legend ────────────────────────────────────────────────────────────── */
+
 
 .bsi-legend {
   display: flex;
@@ -286,19 +198,7 @@
   color: var(--bsi-ink-2);
 }
 
-/* ── Attendance code marks ─────────────────────────────────────────────────
-   The reference sheet separated the four codes by hue (red/orange/blue). This
-   system has no hues to spend, so the codes are encoded as an ORDINAL RAMP of
-   ink — "how far from a full day's work" reads as "how dark the cell is":
 
-     M  hadir            → bare canvas, ink letter      (the baseline)
-     T  berangkat siang  → surface-2 fill               (a step away)
-     S  sakit            → strong-grey fill             (further)
-     L  libur            → inverted ink, full stop      (the strongest mark)
-
-   That ordering is also why L keeps the visual dominance the red blocks had
-   on the original sheet, without borrowing a colour to do it.
-   ------------------------------------------------------------------------ */
 
 .bsi-mark {
   display: inline-flex;
@@ -306,7 +206,7 @@
   justify-content: center;
   width: 24px;
   height: 24px;
-  border-radius: 8px;
+  border-radius: var(--sc-radius-sm);
   font-family: var(--bsi-font-mono);
   font-size: 11px;
   font-weight: 500;
@@ -337,9 +237,7 @@
   color: var(--bsi-ink-3);
 }
 
-/* Provenance, not a fifth code: a small ink dot marks a cell the employee filled themselves by
-   clocking in, as opposed to one the office typed. Monochrome, so it reads as an annotation on
-   the mark rather than a different mark. */
+
 .bsi-mark--dotted::after,
 .bsi-cell--sourced::after {
   content: '';
@@ -356,12 +254,12 @@
   position: relative;
 }
 
-/* ── The sheet ─────────────────────────────────────────────────────────── */
+
 
 .bsi-sheet {
   background: var(--bsi-surface);
   border: 0.5px solid var(--bsi-hairline);
-  border-radius: 16px;
+  border-radius: var(--sc-radius-lg);
   box-shadow: var(--bsi-shadow-card);
   overflow: hidden;
 }
@@ -382,7 +280,7 @@
   gap: 4px;
 }
 
-/* Custom scroll container, so a custom scrollbar is mandatory here. */
+
 .bsi-scroll {
   overflow-x: auto;
   overscroll-behavior-x: contain;
@@ -436,7 +334,7 @@
   z-index: 2;
 }
 
-/* Day-number headers stay numerals, not labels — narrow and quiet. */
+
 .bsi-grid th.bsi-day,
 .bsi-grid td.bsi-day {
   padding: 4px 0;
@@ -453,7 +351,7 @@
   border-bottom: none;
 }
 
-/* Identity columns pinned with offsets derived from their declared widths. */
+
 .bsi-grid .bsi-pin-1,
 .bsi-grid .bsi-pin-2 {
   position: sticky;
@@ -489,7 +387,7 @@
   min-width: 176px;
 }
 
-/* Numbers are mono everywhere — they line up in a column and read as data. */
+
 .bsi-grid .bsi-num {
   font-family: var(--bsi-font-mono);
   font-size: 11px;
@@ -504,23 +402,22 @@
   font-weight: 500;
 }
 
-/* The one hue in the system, spent on the one figure that is an exception:
-   days off taken beyond the quota. Zero or negative stays ink. */
+
 .bsi-grid .bsi-num--alarm {
   color: var(--bsi-danger);
   font-weight: 500;
 }
 
-/* A visible seam where the days end and the totals begin. */
+
 .bsi-grid .bsi-sum-first {
   border-left: 0.5px solid var(--bsi-strong);
 }
 
-/* ── Editable cell ─────────────────────────────────────────────────────── */
+
 
 .bsi-cell {
   padding: 0 !important;
-  position: relative; /* anchors the provenance dot of .bsi-cell--sourced */
+  position: relative;
 }
 
 .bsi-cell__select {
@@ -545,7 +442,7 @@
   outline-offset: -2px;
 }
 
-/* Cell fills mirror .bsi-mark exactly, so the legend and the grid agree. */
+
 .bsi-cell--t {
   background: var(--bsi-surface-2) !important;
 }
@@ -572,7 +469,7 @@
   font-weight: 500;
 }
 
-/* ── Stat tiles & table footers (Stok Terpusat) ────────────────────────── */
+
 
 .bsi-stat-row {
   display: grid;
@@ -586,12 +483,12 @@
   gap: 4px;
   background: var(--bsi-surface);
   border: 0.5px solid var(--bsi-hairline);
-  border-radius: 16px;
+  border-radius: var(--sc-radius-lg);
   box-shadow: var(--bsi-shadow-card);
   padding: 20px 24px;
 }
 
-/* Big number, mono, tight — a figure to read at a glance, not a sentence. */
+
 .bsi-stat__value {
   font-family: var(--bsi-font-mono);
   font-size: 35px;
@@ -622,14 +519,14 @@
   font-weight: 500;
 }
 
-/* The grand total takes the system's emphasis: inverted ink, never a colour. */
+
 .bsi-grid tfoot tr.bsi-foot-total td {
   background: var(--bsi-ink);
   color: var(--bsi-ink-inverse);
   font-weight: 500;
 }
 
-/* ── Empty state: a designed sentence, not "No data" ───────────────────── */
+
 
 .bsi-empty {
   padding: 56px 24px;
@@ -649,7 +546,7 @@
   margin: 0;
 }
 
-/* ── Map picker (Lokasi form) ──────────────────────────────────────────── */
+
 
 .bsi-map {
   font-family: var(--bsi-font-sans);
@@ -672,14 +569,14 @@
   flex: none;
 }
 
-/* Hairline frame, 16px radius: the map is content in a card, like a screenshot would be. */
+
 .bsi-map__canvas {
   height: 340px;
   border: 0.5px solid var(--bsi-hairline);
-  border-radius: 16px;
+  border-radius: var(--sc-radius-lg);
   overflow: hidden;
   background: var(--bsi-surface-2);
-  z-index: 0; /* keeps Leaflet's panes under Filament's dropdowns and modals */
+  z-index: 0;
 }
 
 .bsi-map__hint,
@@ -700,7 +597,7 @@
   display: none !important;
 }
 
-/* ── Matrix table ──────────────────────────────────────────────────────── */
+
 
 .bsi-matrix {
   width: 100%;
@@ -761,14 +658,13 @@
   color: var(--bsi-ink-3);
 }
 
-/* Checkbox: hairline square that fills with ink when checked — the same
-   inverted-ink emphasis the buttons use. */
+
 .bsi-check {
   appearance: none;
   width: 20px;
   height: 20px;
   border: 0.5px solid var(--bsi-strong);
-  border-radius: 8px;
+  border-radius: var(--sc-radius-sm);
   background: var(--bsi-canvas);
   cursor: pointer;
   vertical-align: middle;
@@ -792,11 +688,9 @@
   outline-offset: 2px;
 }
 
-/* ── Aktivitas Staff ───────────────────────────────────────────────────── */
 
-/* Segmented control for the grid range. The active segment is INVERTED INK,
-   which is this system's only form of emphasis — there is no accent hue to
-   reach for. */
+
+
 .bsi-seg {
   display: inline-flex;
   border: 0.5px solid var(--bsi-hairline);
@@ -839,8 +733,7 @@
   outline-offset: -2px;
 }
 
-/* The one place danger red is spent on this screen: a flagged transaction
-   waiting for someone to look at it. */
+
 .bsi-stat--alarm .bsi-stat__value {
   color: var(--bsi-danger);
 }
@@ -851,8 +744,7 @@
   letter-spacing: 0;
 }
 
-/* Filled = reporting now, hollow = last known position. Same distinction the
-   map markers make, so the table and the map read the same way. */
+
 .bsi-dot {
   display: inline-block;
   width: 8px;
@@ -908,9 +800,7 @@
   height: 460px;
 }
 
-/* Heat grid: intensity is ink at low alpha, never a colour ramp. The alpha is
-   computed in the view and capped there, so the figure on the darkest cell is
-   still readable. */
+
 .bsi-heat td.bsi-num[style] {
   background: rgba(var(--bsi-heat-ink), var(--bsi-heat, 0));
 }
@@ -923,8 +813,7 @@
   --bsi-heat-ink: 241, 240, 237;
 }
 
-/* Leaflet popup contents. Leaflet draws its own frame, so this styles only the
-   text inside it. */
+
 .bsi-pop {
   font-family: var(--bsi-font-sans);
   font-size: 13px;
@@ -958,7 +847,7 @@
   color: var(--bsi-ink-3);
 }
 
-/* The immutable key beside a renameable label: mono, quiet, clearly not editable. */
+
 .bsi-key {
   font-family: var(--bsi-font-mono);
   font-size: 11px;
@@ -971,13 +860,13 @@
   white-space: nowrap;
 }
 
-/* ── Mobile ────────────────────────────────────────────────────────────── */
+
 
 @media (max-width: 640px) {
   .bsi-card,
   .bsi-sheet,
   .bsi-note {
-    border-radius: 12px;
+    border-radius: var(--sc-radius-sm);
   }
 
   .bsi-sheet__head {

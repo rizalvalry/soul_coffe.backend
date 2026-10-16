@@ -21,9 +21,9 @@ use Illuminate\Support\Facades\Auth;
  */
 class CartSalesTodayWidget extends Widget
 {
-    protected static ?int $sort = 6;
+    protected static ?int $sort = 4;
 
-    protected int|string|array $columnSpan = 'full';
+    protected int|string|array $columnSpan = 1;
 
     protected string $view = 'filament.widgets.cart-sales-today';
 

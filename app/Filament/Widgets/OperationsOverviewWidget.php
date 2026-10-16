@@ -3,11 +3,13 @@
 namespace App\Filament\Widgets;
 
 use App\Enums\PanelModule;
+use App\Enums\RefillStatus;
 use App\Services\Access\PermissionMatrix;
 use App\Services\Reporting\DashboardMetricsService;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\HtmlString;
 use Illuminate\Support\Number;
 
 /**
@@ -33,11 +35,13 @@ class OperationsOverviewWidget extends StatsOverviewWidget
     {
         $metrics = app(DashboardMetricsService::class);
         $s = $metrics->todaySnapshot();
-        $direct = $metrics->directSalesToday();
 
         $revenueDelta = $s['revenue_today_minor'] - $s['revenue_yesterday_minor'];
-        $revenueDeltaLabel = $s['revenue_yesterday_minor'] > 0
-            ? sprintf('%+.0f%% dari kemarin', ($revenueDelta / $s['revenue_yesterday_minor']) * 100)
+        $revenueDeltaBadge = $s['revenue_yesterday_minor'] > 0
+            ? sprintf('%+.0f%%', ($revenueDelta / $s['revenue_yesterday_minor']) * 100)
+            : '—';
+        $revenueDeltaCaption = $s['revenue_yesterday_minor'] > 0
+            ? 'dari kemarin'
             : ($s['revenue_today_minor'] > 0 ? 'Tidak ada data kemarin' : 'Belum ada transaksi');
 
         $attendanceRate = $s['staff_total_active'] > 0
@@ -45,34 +49,33 @@ class OperationsOverviewWidget extends StatsOverviewWidget
             : 0;
 
         return [
-            Stat::make('Pendapatan Hari Ini', 'Rp '.Number::format($s['revenue_today_minor'], locale: 'id'))
-                ->description($revenueDeltaLabel)
-                ->descriptionIcon($revenueDelta >= 0 ? 'heroicon-m-arrow-trending-up' : 'heroicon-m-arrow-trending-down')
+            Stat::make('Pendapatan', 'Rp '.Number::format($s['revenue_today_minor'], locale: 'id'))
+                ->icon('heroicon-o-banknotes')
+                ->description($this->footer($revenueDeltaBadge, $revenueDeltaCaption, $revenueDelta >= 0 ? 'success' : 'danger'))
                 ->color($revenueDelta >= 0 ? 'success' : 'danger'),
 
-            Stat::make('Refill Request Hari Ini', (string) $s['refills_today'])
-                ->description($this->statusBreakdownLabel($s['refills_today_by_status']))
-                ->descriptionIcon('heroicon-m-arrow-path')
+            Stat::make('Refill Request', (string) $s['refills_today'])
+                ->icon('heroicon-o-arrow-path')
+                ->description($this->footer($s['refills_today'].' request', $this->statusBreakdownLabel($s['refills_today_by_status']), 'brand'))
                 ->color('primary'),
 
-            Stat::make('Rider Absen Hari Ini', sprintf('%d / %d', $s['staff_clocked_in_today'], $s['staff_total_active']))
-                ->description($attendanceRate.'% rider aktif sudah absen')
-                ->descriptionIcon('heroicon-m-user-group')
+            Stat::make('Rider Absen', sprintf('%d / %d', $s['staff_clocked_in_today'], $s['staff_total_active']))
+                ->icon('heroicon-o-user-group')
+                ->description($this->footer($attendanceRate.'%', 'rider aktif sudah absen', $attendanceRate >= 80 ? 'success' : ($attendanceRate >= 50 ? 'warning' : 'danger')))
                 ->color($attendanceRate >= 80 ? 'success' : ($attendanceRate >= 50 ? 'warning' : 'danger')),
 
-            Stat::make('Selisih Kas Hari Ini', 'Rp '.Number::format($s['variance_today_minor'], locale: 'id'))
-                ->description($s['variance_today_minor'] === 0 ? 'Belum ada selisih tercatat' : 'Perlu ditinjau Finance')
-                ->descriptionIcon($s['variance_today_minor'] === 0 ? 'heroicon-m-check-circle' : 'heroicon-m-exclamation-triangle')
+            Stat::make('Selisih Kas', 'Rp '.Number::format($s['variance_today_minor'], locale: 'id'))
+                ->icon($s['variance_today_minor'] === 0 ? 'heroicon-o-check-circle' : 'heroicon-o-exclamation-triangle')
+                ->description($this->footer($s['variance_today_minor'] === 0 ? 'Aman' : 'Tinjau', $s['variance_today_minor'] === 0 ? 'Belum ada selisih tercatat' : 'Perlu ditinjau Finance', $s['variance_today_minor'] === 0 ? 'success' : 'danger'))
                 ->color($s['variance_today_minor'] === 0 ? 'success' : 'danger'),
 
-            // A distinct stream from "Pendapatan Hari Ini" above — that card reads
-            // Settlement::declared_total_minor (the gerobak cash reconciliation), this one reads
-            // `direct_sales` (a walk-in buyer at the kitchen/office). They are never merged.
-            Stat::make('Penjualan Langsung Kantor (hari ini)', 'Rp '.Number::format($direct['total_amount_minor'], locale: 'id'))
-                ->description(sprintf('%d transaksi · %d cups', $direct['transaction_count'], $direct['total_qty']))
-                ->descriptionIcon('heroicon-m-building-storefront')
-                ->color('primary'),
         ];
+    }
+
+    private function footer(string $badge, string $caption, string $tone): HtmlString
+    {
+        return new HtmlString('<span class="sc-stat-badge sc-stat-badge--'.e($tone).'">'.e($badge).'</span>'
+            .'<span class="sc-stat-caption">'.e($caption).'</span>');
     }
 
     /** @param array<string,int> $byStatus */
@@ -94,8 +97,8 @@ class OperationsOverviewWidget extends StatsOverviewWidget
     private function statusLabels(): array
     {
         return array_combine(
-            array_map(fn ($case) => $case->value, \App\Enums\RefillStatus::cases()),
-            array_map(fn ($case) => $case->label(), \App\Enums\RefillStatus::cases()),
+            array_map(fn ($case) => $case->value, RefillStatus::cases()),
+            array_map(fn ($case) => $case->label(), RefillStatus::cases()),
         );
     }
 }

@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Auth;
 
 class AttendanceRateWidget extends LineChartWidget
 {
-    protected static ?int $sort = 5;
+    protected static ?int $sort = 7;
 
     protected ?string $maxHeight = '260px';
 
@@ -34,8 +34,8 @@ class AttendanceRateWidget extends LineChartWidget
                 [
                     'label' => 'Kehadiran (%)',
                     'data' => $trend->pluck('rate')->all(),
-                    'borderColor' => '#7c3aed',
-                    'backgroundColor' => 'rgba(124, 58, 237, 0.12)',
+                    'borderColor' => '#4DBFC4',
+                    'backgroundColor' => 'rgba(77, 191, 196, 0.12)',
                     'fill' => 'start',
                     'tension' => 0.35,
                 ],
