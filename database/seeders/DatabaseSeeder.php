@@ -25,6 +25,7 @@ class DatabaseSeeder extends Seeder
             StaffAssignmentSeeder::class,
             DailyTargetSeeder::class,
             StockLedgerSeeder::class,
+            AccountSeeder::class,
         ]);
     }
 }

@@ -1,0 +1,240 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Account;
+use App\Models\AccountingPeriod;
+use App\Models\JournalEntry;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
+
+/** The only application writer for posted accounting entries and lines. */
+class JournalService
+{
+    public function postOpening(string $date, array $lines): JournalEntry
+    {
+        Validator::make(['entry_date' => $date], ['entry_date' => ['required', 'date_format:Y-m-d']])->validate();
+
+        return DB::transaction(function () use ($date, $lines): JournalEntry {
+            // One shared chart row serializes opening submissions across dates and operators.
+            Account::query()->orderBy('id')->lockForUpdate()->firstOrFail();
+            $active = JournalEntry::query()->where('source_type', 'opening_balance')->where('purpose', 'OPENING')
+                ->whereDoesntHave('reversal')->with('lines')->first();
+            if ($active) {
+                $current = $active->lines->map(fn ($line): array => [
+                    'account_id' => (int) $line->account_id,
+                    'debit_minor' => (int) $line->debit_minor,
+                    'credit_minor' => (int) $line->credit_minor,
+                    'cart_id' => $line->cart_id === null ? null : (int) $line->cart_id,
+                    'memo' => $line->memo,
+                ])->all();
+                $requested = array_map(fn (array $line): array => [
+                    'account_id' => (int) ($line['account_id'] ?? 0),
+                    'debit_minor' => (int) ($line['debit_minor'] ?? 0),
+                    'credit_minor' => (int) ($line['credit_minor'] ?? 0),
+                    'cart_id' => isset($line['cart_id']) ? (int) $line['cart_id'] : null,
+                    'memo' => $line['memo'] ?? null,
+                ], $lines);
+                if ($active->entry_date->toDateString() === $date && $current === $requested) {
+                    return $active;
+                }
+                throw ValidationException::withMessages(['opening' => 'Saldo awal sudah diposting. Balik jurnal sebelumnya sebelum mengganti saldo awal.']);
+            }
+
+            if (JournalEntry::query()->whereDate('entry_date', '<', $date)
+                ->whereNotIn('source_type', ['opening_balance', 'journal_reversal'])->exists()) {
+                throw ValidationException::withMessages(['entry_date' => 'Tanggal cutover harus mendahului semua jurnal yang sudah diposting.']);
+            }
+
+            $nextSourceId = (int) JournalEntry::query()->where('source_type', 'opening_balance')
+                ->max('source_id') + 1;
+
+            return $this->postInternal([
+                'entry_date' => $date,
+                'description' => 'Saldo awal per '.$date,
+                'source_type' => 'opening_balance',
+                'source_id' => $nextSourceId,
+                'purpose' => 'OPENING',
+            ], $lines);
+        }, 3);
+    }
+
+    public function post(array $header, array $lines): JournalEntry
+    {
+        foreach (['source_type', 'purpose'] as $field) {
+            $value = $header[$field] ?? null;
+            // MySQL's unicode_ci collation ignores case, accents, and trailing spaces. Keep
+            // identifiers ASCII and unpadded so PHP's reserved-key guard matches DB equality.
+            if (! is_string($value) || preg_match('/\A[\x21-\x7E]+\z/D', $value) !== 1) {
+                throw ValidationException::withMessages([$field => 'Identitas sumber jurnal harus berupa teks ASCII tanpa spasi.']);
+            }
+        }
+
+        if (isset($header['reverses_entry_id'])
+            || in_array(strtolower((string) ($header['source_type'] ?? '')), ['opening_balance', 'journal_reversal'], true)
+            || in_array(strtoupper((string) ($header['purpose'] ?? '')), ['OPENING', 'REVERSAL'], true)) {
+            throw ValidationException::withMessages(['purpose' => 'Jurnal saldo awal dan pembalik harus melalui alur khusus.']);
+        }
+
+        return $this->postInternal($header, $lines);
+    }
+
+    private function postInternal(array $header, array $lines): JournalEntry
+    {
+        $header = Validator::make($header, [
+            'entry_date' => ['required', 'date_format:Y-m-d'],
+            'description' => ['required', 'string', 'max:255'],
+            'source_type' => ['required', 'string', 'max:80'],
+            'source_id' => ['required', 'integer', 'min:1'],
+            'purpose' => ['required', 'string', 'max:40'],
+            'posted_by' => ['nullable', 'integer', 'exists:users,id'],
+            'reverses_entry_id' => ['nullable', 'integer', 'exists:journal_entries,id'],
+        ])->validate();
+
+        try {
+            return DB::transaction(function () use ($header, $lines): JournalEntry {
+                // Every writer shares this stable chart lock before checking cutover or sequence.
+                Account::query()->orderBy('id')->lockForUpdate()->firstOrFail();
+                $date = Carbon::createFromFormat('Y-m-d', $header['entry_date']);
+                $period = $this->lockPeriod($date);
+
+                // Current reads after the period lock avoid a stale REPEATABLE READ snapshot.
+                $existing = JournalEntry::query()->where('source_type', $header['source_type'])
+                    ->where('source_id', $header['source_id'])->where('purpose', $header['purpose'])
+                    ->lockForUpdate()->first();
+                if ($existing) {
+                    return $existing;
+                }
+
+                if ($period->status !== 'OPEN') {
+                    throw ValidationException::withMessages(['entry_date' => 'Periode akuntansi sudah ditutup.']);
+                }
+
+                if ($header['purpose'] !== 'OPENING') {
+                    $opening = JournalEntry::query()->where('source_type', 'opening_balance')
+                        ->where('purpose', 'OPENING')->whereDoesntHave('reversal')->first();
+                    if ($opening && $date->toDateString() < $opening->entry_date->toDateString()) {
+                        throw ValidationException::withMessages(['entry_date' => 'Jurnal tidak boleh mendahului tanggal cutover.']);
+                    }
+                    if (! $opening && $header['purpose'] !== 'REVERSAL'
+                        && JournalEntry::query()->where('source_type', 'opening_balance')->exists()) {
+                        throw ValidationException::withMessages(['entry_date' => 'Ganti saldo awal yang dibalik sebelum memposting jurnal baru.']);
+                    }
+                }
+
+                Validator::make(['lines' => $lines], [
+                    'lines' => ['required', 'array', 'min:2', 'max:1000'],
+                    'lines.*.account_id' => ['required', 'integer', 'exists:accounts,id'],
+                    'lines.*.debit_minor' => ['required', 'integer', 'min:0', 'max:1000000000000'],
+                    'lines.*.credit_minor' => ['required', 'integer', 'min:0', 'max:1000000000000'],
+                    'lines.*.cart_id' => ['nullable', 'integer', 'exists:carts,id'],
+                    'lines.*.memo' => ['nullable', 'string', 'max:255'],
+                ])->validate();
+
+                $debit = 0;
+                $credit = 0;
+                foreach ($lines as $index => $line) {
+                    if (($line['debit_minor'] > 0) === ($line['credit_minor'] > 0)) {
+                        throw ValidationException::withMessages(["lines.$index" => 'Tepat satu sisi debit atau kredit harus lebih dari nol.']);
+                    }
+                    $debit += $line['debit_minor'];
+                    $credit += $line['credit_minor'];
+                }
+                if ($debit !== $credit) {
+                    throw ValidationException::withMessages(['lines' => 'Jumlah debit dan kredit harus sama.']);
+                }
+
+                $accounts = Account::query()->whereIn('id', array_column($lines, 'account_id'))
+                    ->lockForUpdate()->get()->keyBy('id');
+                foreach ($lines as $index => $line) {
+                    if (! $accounts->get($line['account_id'])?->is_active) {
+                        throw ValidationException::withMessages(["lines.$index.account_id" => 'Akun tidak aktif.']);
+                    }
+                }
+
+                $last = JournalEntry::query()->where('period_id', $period->id)
+                    ->orderByDesc('number')->lockForUpdate()->value('number');
+                $sequence = $last ? (int) substr($last, -4) + 1 : 1;
+                if ($sequence > 9999) {
+                    throw ValidationException::withMessages(['entry_date' => 'Nomor jurnal bulanan telah mencapai batas.']);
+                }
+
+                $entry = JournalEntry::query()->create([
+                    ...$header,
+                    'number' => sprintf('JU-%04d%02d-%04d', $period->year, $period->month, $sequence),
+                    'period_id' => $period->id,
+                    'status' => 'POSTED',
+                    'posted_by' => $header['posted_by'] ?? Auth::id(),
+                ]);
+
+                foreach ($lines as $line) {
+                    $entry->lines()->create($line);
+                }
+
+                return $entry;
+            }, 3);
+        } catch (UniqueConstraintViolationException $exception) {
+            // A concurrent source replay may have won in another period. Its row is authoritative.
+            $existing = JournalEntry::query()->where('source_type', $header['source_type'])
+                ->where('source_id', $header['source_id'])->where('purpose', $header['purpose'])->first();
+            if ($existing) {
+                return $existing;
+            }
+            throw $exception;
+        }
+    }
+
+    public function reverse(JournalEntry $entry, string $reason): JournalEntry
+    {
+        if (trim($reason) === '' || mb_strlen($reason) > 225) {
+            throw ValidationException::withMessages(['reason' => 'Alasan pembalik wajib diisi, maksimal 225 karakter.']);
+        }
+
+        return DB::transaction(function () use ($entry, $reason): JournalEntry {
+            $original = JournalEntry::query()->lockForUpdate()->findOrFail($entry->id);
+            if ($original->reverses_entry_id !== null || $original->reversal()->exists()) {
+                throw ValidationException::withMessages(['journal' => 'Jurnal ini sudah dibalik atau merupakan jurnal pembalik.']);
+            }
+
+            $lines = $original->lines()->get()->map(fn ($line): array => [
+                'account_id' => $line->account_id,
+                'debit_minor' => $line->credit_minor,
+                'credit_minor' => $line->debit_minor,
+                'cart_id' => $line->cart_id,
+                'memo' => $reason,
+            ])->all();
+
+            // A reversal is a new posting in the current open period, never an edit of history.
+            $reversal = $this->postInternal([
+                'entry_date' => $original->purpose === 'OPENING'
+                    ? $original->entry_date->toDateString() : today()->toDateString(),
+                'description' => 'Pembalik '.$original->number.': '.$reason,
+                'source_type' => 'journal_reversal',
+                'source_id' => $original->id,
+                'purpose' => 'REVERSAL',
+                'posted_by' => Auth::id() ?? $original->posted_by,
+                'reverses_entry_id' => $original->id,
+            ], $lines);
+
+            return $reversal;
+        }, 3);
+    }
+
+    public function lockPeriod(Carbon $date): AccountingPeriod
+    {
+        DB::table('accounting_periods')->insertOrIgnore([
+            'year' => $date->year,
+            'month' => $date->month,
+            'status' => 'OPEN',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return AccountingPeriod::query()->where('year', $date->year)->where('month', $date->month)
+            ->lockForUpdate()->firstOrFail();
+    }
+}
