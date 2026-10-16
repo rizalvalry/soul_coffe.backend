@@ -360,7 +360,7 @@ class RefillRequestStateMachine
             }
 
             if ($barista->kitchen_id !== $locked->kitchen_id) {
-                abort(403, 'Barista tidak berada di dapur yang sesuai.');
+                abort(403, 'Produksi tidak berada di dapur yang sesuai.');
             }
 
             $locked->status = RefillStatus::PREPARING;
@@ -372,7 +372,7 @@ class RefillRequestStateMachine
 
             $this->events->publish(
                 'RefillPreparingStarted',
-                'Barista mulai menyiapkan',
+                'Produksi mulai menyiapkan',
                 "{$locked->code} · Gerobak {$locked->cart->code}",
                 ['refill.'.$locked->id, 'cart.'.$locked->cart_id],
                 [$locked->staff_id],

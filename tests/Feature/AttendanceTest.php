@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\Role;
 use App\Models\Attendance;
+use App\Models\OutboxEvent;
 use App\Models\User;
 use App\Services\AttendanceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -41,6 +42,14 @@ class AttendanceTest extends TestCase
         $this->assertSame((int) $this->barista->id, (int) $attendance->user_id);
         $this->assertSame(Role::BARISTA, $attendance->role);
         $this->assertNotNull($attendance->clocked_in_at);
+    }
+
+    public function test_clock_in_notification_uses_the_produksi_label(): void
+    {
+        $this->service->clockIn($this->barista);
+
+        $event = OutboxEvent::query()->where('name', 'AttendanceClockedIn')->firstOrFail();
+        $this->assertStringContainsString(' (Produksi) absen pukul ', $event->payload_json['body']);
     }
 
     /** A double-tap on a slow connection is the normal case, not misuse. */
@@ -114,7 +123,7 @@ class AttendanceTest extends TestCase
     public function test_only_a_barista_may_open_the_gate(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Hanya barista');
+        $this->expectExceptionMessage('Hanya Produksi');
 
         $this->service->openStaffWindow($this->staff);
     }

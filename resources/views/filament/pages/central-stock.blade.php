@@ -43,7 +43,7 @@
             <p>
                 Angka di sini <strong>dihitung dari buku besar stok</strong>, bukan dari penghitung
                 yang bisa diketik — jadi tidak mungkin berbeda dari pergerakan yang membentuknya.
-                Stok bergerak lewat aktivitas: barista menyeduh (Add Stock), menyerahkan ke gerobak,
+                Stok bergerak lewat aktivitas: Produksi menyeduh (Add Stock), menyerahkan ke gerobak,
                 refill, dan tutup gerobak.
             </p>
             <p>
@@ -258,7 +258,7 @@
                         belum disetel tidak pernah ditandai — ambang yang kosong bukan berarti nol.
                     </p>
                     <p>
-                        Bahan baku berkurang otomatis saat barista menyeduh, sesuai resep produk yang
+                        Bahan baku berkurang otomatis saat Produksi menyeduh, sesuai resep produk yang
                         diseduh, dan bertambah saat purchase order diterima.
                     </p>
                 </div>

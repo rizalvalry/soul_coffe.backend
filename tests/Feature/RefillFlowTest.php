@@ -7,6 +7,7 @@ use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\Location;
 use App\Models\Media;
+use App\Models\OutboxEvent;
 use App\Models\Product;
 use App\Models\ProductPriceVersion;
 use App\Models\RefillRequest;
@@ -230,6 +231,20 @@ class RefillFlowTest extends TestCase
         $response->assertStatus(409);
 
         $this->assertSame('SUBMITTED', $refill->fresh()->status->value);
+    }
+
+    public function test_refill_preparing_notification_uses_the_produksi_label(): void
+    {
+        $refill = $this->submitRefill();
+        $this->approveRefill($refill, 5)->assertOk();
+
+        $this->actingAs($this->barista)
+            ->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson("/api/v1/refills/{$refill->id}/start-preparing")
+            ->assertOk();
+
+        $event = OutboxEvent::query()->where('name', 'RefillPreparingStarted')->firstOrFail();
+        $this->assertSame('Produksi mulai menyiapkan', $event->payload_json['title']);
     }
 
     // ── R4 monotonic chain ───────────────────────────────────────────────

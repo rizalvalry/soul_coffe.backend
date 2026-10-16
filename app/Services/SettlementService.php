@@ -376,7 +376,7 @@ class SettlementService
                         $name = Product::query()->whereKey($productId)->value('name') ?? ('#'.$productId);
 
                         throw new RuntimeException(sprintf(
-                            'Sisa + reject untuk %s (%d) melebihi stok gerobak yang tinggal %d. Mungkin gerobak ini sudah ditutup barista.',
+                            'Sisa + reject untuk %s (%d) melebihi stok gerobak yang tinggal %d. Mungkin gerobak ini sudah ditutup Produksi.',
                             $name,
                             $moving,
                             $onHand,

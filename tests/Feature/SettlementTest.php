@@ -622,7 +622,7 @@ class SettlementTest extends TestCase
                 'lines' => [['product_id' => $this->coffee->id, 'qty_returned' => 8, 'qty_rejected' => 0]],
             ])
             ->assertStatus(422)
-            ->assertJsonPath('message', fn (string $m): bool => str_contains($m, 'sudah ditutup barista'));
+            ->assertJsonPath('message', fn (string $m): bool => str_contains($m, 'sudah ditutup Produksi'));
 
         // And nothing went negative.
         $this->assertSame(0, $this->cartStock());

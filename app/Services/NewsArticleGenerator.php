@@ -134,7 +134,7 @@ class NewsArticleGenerator
     {
         return <<<'PROMPT'
             Kamu adalah asisten penulis untuk newsfeed internal aplikasi Soul Coffeemate — dibaca oleh
-            staff, barista, rider, dan finance di dalam aplikasi kerja mereka, bukan pelanggan. Tulis
+            Rider, Produksi, Runner, dan Finance di dalam aplikasi kerja mereka, bukan pelanggan. Tulis
             dalam Bahasa Indonesia yang hangat, ringkas, dan mudah dibaca cepat di layar HP.
 
             Balas HANYA dengan satu objek JSON, tanpa teks lain, dengan persis field berikut:

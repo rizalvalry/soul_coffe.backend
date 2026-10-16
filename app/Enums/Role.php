@@ -29,7 +29,7 @@ enum Role: string
             self::ADMINISTRATOR => 'Administrator',
             self::MANAGEMENT => 'Management',
             self::FINANCE => 'Finance',
-            self::BARISTA => 'Barista',
+            self::BARISTA => 'Produksi',
             self::RIDER => 'Runner',
             self::STAFF => 'Rider',
             self::CONTENT_CREATOR => 'Content Creator',

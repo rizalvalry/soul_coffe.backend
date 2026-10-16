@@ -27,7 +27,7 @@ class ProductionsTable
                     ->label('Dapur Pusat'),
 
                 TextColumn::make('actor.name')
-                    ->label('Barista'),
+                    ->label('Produksi'),
 
                 TextColumn::make('lines')
                     ->label('Produk Diseduh')
