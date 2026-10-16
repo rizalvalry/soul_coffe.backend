@@ -42,6 +42,7 @@ class EventPublisher
         array $notifyUserIds = [],
         ?int $refillRequestId = null,
         ?string $status = null,
+        bool $includeActorPush = false,
     ): string {
         $eventId = (string) Str::uuid();
 
@@ -83,11 +84,11 @@ class EventPublisher
 
         // Deliver only once the surrounding transaction commits. Delivering inside it would
         // broadcast a row that a rollback then erased.
-        DB::afterCommit(function () use ($outboxId, $recipients, $actorId, $title, $body, $payload): void {
+        DB::afterCommit(function () use ($outboxId, $recipients, $actorId, $title, $body, $payload, $includeActorPush): void {
             $this->broadcast((int) $outboxId);
 
-            // Second transport (E15). Inline rather than queued — see PushNotifier for why — and
-            // never to the actor: the person who just tapped the button is looking at the result.
+            // Second transport (E15). Inline rather than queued — see PushNotifier for why.
+            // The actor is skipped unless the event explicitly includes them as a recipient.
             $this->push->notifyUsers(
                 $recipients,
                 $title,
@@ -99,7 +100,7 @@ class EventPublisher
                     'status' => $payload['status'],
                     'at' => $payload['at'],
                 ],
-                $actorId !== null ? (int) $actorId : null,
+                $includeActorPush ? null : ($actorId !== null ? (int) $actorId : null),
             );
         });
 

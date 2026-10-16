@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\MovementType;
 use App\Enums\Role;
+use App\Models\AuditLog;
 use App\Models\Cart;
 use App\Models\Product;
 use App\Models\Sale;
@@ -47,7 +48,10 @@ use RuntimeException;
  */
 class SettlementService
 {
-    public function __construct(private readonly StockLedgerService $ledger) {}
+    public function __construct(
+        private readonly StockLedgerService $ledger,
+        private readonly EventPublisher $events,
+    ) {}
 
     /**
      * The queue: every cart that traded today, and where its deposit has got to.
@@ -233,23 +237,11 @@ class SettlementService
             $expected = (int) $draft['expected_total'];
             $variance = $declared - $expected;
 
-            // A gap between what the transactions say and what was handed over is the whole point
-            // of a reconciliation, so it is recorded rather than refused — but it has to be
-            // explained, because an unexplained gap is the one thing nobody can act on later.
-            if ($variance !== 0 && ($varianceReason === null || trim($varianceReason) === '')) {
-                throw new RuntimeException(sprintf(
-                    'Setoran %s dari transaksi tercatat (Rp %s vs Rp %s). Isi alasan selisihnya.',
-                    $variance > 0 ? 'lebih' : 'kurang',
-                    number_format($declared, 0, ',', '.'),
-                    number_format($expected, 0, ',', '.'),
-                ));
-            }
-
             $settlement = Settlement::query()->create([
                 'operating_date' => $date->toDateString(),
                 'cart_id' => $cart->id,
                 'staff_id' => $draft['staff_id'] ?? $finance->id,
-                'status' => 'SUBMITTED',
+                'status' => $variance !== 0 ? 'VARIANCE_FLAGGED' : 'SUBMITTED',
                 'cash_minor' => $cash,
                 'qris_minor' => $qris,
                 'transfer_minor' => $transfer,
@@ -271,6 +263,51 @@ class SettlementService
                 ]);
             }
 
+            if ($variance !== 0) {
+                AuditLog::query()->create([
+                    'actor_id' => $finance->id,
+                    'actor_role' => $finance->role->value,
+                    'action' => 'settlement.variance_flagged',
+                    'subject_type' => Settlement::class,
+                    'subject_id' => $settlement->id,
+                    'before_json' => null,
+                    'after_json' => [
+                        'cart_id' => $cart->id,
+                        'cart_code' => $cart->code,
+                        'operating_date' => $date->toDateString(),
+                        'expected_total_minor' => $expected,
+                        'declared_total_minor' => $declared,
+                        'variance_minor' => $variance,
+                        'variance_reason' => $varianceReason,
+                    ],
+                    'ip' => request()->ip(),
+                    'device_id' => null,
+                ]);
+
+                $recipientIds = User::query()
+                    ->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT])
+                    ->where('is_active', true)
+                    ->orderBy('id')
+                    ->pluck('id')->all();
+
+                $this->events->publish(
+                    type: 'SettlementVarianceFlagged',
+                    title: 'Selisih setoran perlu ditinjau',
+                    body: sprintf(
+                        'Gerobak %s · %s · Ekspektasi Rp %s · Disetor Rp %s · Selisih Rp %s',
+                        $cart->code,
+                        $date->toDateString(),
+                        number_format($expected, 0, ',', '.'),
+                        number_format($declared, 0, ',', '.'),
+                        number_format($variance, 0, ',', '.'),
+                    ),
+                    channels: array_map(fn (int $id): string => "user.{$id}", $recipientIds),
+                    notifyUserIds: $recipientIds,
+                    status: 'VARIANCE_FLAGGED',
+                    includeActorPush: true,
+                );
+            }
+
             return $settlement->load('lines');
         });
     }
@@ -289,7 +326,7 @@ class SettlementService
         return DB::transaction(function () use ($settlement, $finance, $disposition, $note): Settlement {
             $locked = Settlement::query()->whereKey($settlement->id)->lockForUpdate()->firstOrFail();
 
-            if ($locked->status === 'RECONCILED') {
+            if ($locked->reconciled_at !== null || ! in_array($locked->status, ['SUBMITTED', 'VARIANCE_FLAGGED'], true)) {
                 throw new RuntimeException('Setoran ini sudah disetujui.');
             }
 
