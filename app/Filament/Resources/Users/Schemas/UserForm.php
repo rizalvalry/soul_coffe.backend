@@ -91,7 +91,7 @@ class UserForm
                 Select::make('kitchen_id')
                     ->label('Dapur Pusat')
                     ->relationship('kitchen', 'name')
-                    ->helperText('Hanya berlaku untuk Barista — role lain dikosongkan.')
+                    ->helperText('Hanya berlaku untuk Produksi — peran lain dikosongkan.')
                     // Mirrors the schema comment on users.kitchen_id: "Only relevant for BARISTA
                     // users; null for every other role."
                     ->visible(fn (Get $get): bool => $get('role') === Role::BARISTA->value)

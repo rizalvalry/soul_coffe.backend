@@ -455,7 +455,7 @@ class CentralStockService
     private function assertBarista(User $user): void
     {
         if ($user->role !== Role::BARISTA) {
-            throw new RuntimeException('Hanya barista yang dapat mengelola stok showcase.');
+            throw new RuntimeException('Hanya Produksi yang dapat mengelola stok showcase.');
         }
     }
 

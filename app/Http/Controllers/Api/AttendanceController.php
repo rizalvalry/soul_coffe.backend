@@ -128,7 +128,7 @@ class AttendanceController extends Controller implements HasMiddleware
                 // hard-coding the reason.
                 'blocked_reason' => match (true) {
                     $hasClockedIn => 'Sudah absen hari ini.',
-                    $isStaff && ! $windowOpen => 'Menunggu barista membuka absen.',
+                    $isStaff && ! $windowOpen => 'Menunggu Produksi membuka absen.',
                     ! $isBarista && ! $isStaff => 'Role ini tidak memiliki absen.',
                     default => null,
                 },

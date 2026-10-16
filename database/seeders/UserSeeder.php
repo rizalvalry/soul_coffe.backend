@@ -17,7 +17,7 @@ class UserSeeder extends Seeder
         $users = [
             ['phone_e164' => '081100000001', 'password' => 'admin123', 'role' => Role::ADMINISTRATOR, 'name' => 'Administrator Uji', 'kitchen_id' => null],
             ['phone_e164' => '081100000002', 'password' => 'finance123', 'role' => Role::FINANCE, 'name' => 'Finance Uji', 'kitchen_id' => null],
-            ['phone_e164' => '081100000003', 'password' => 'barista123', 'role' => Role::BARISTA, 'name' => 'Barista Uji', 'kitchen_id' => $kitchen->id],
+            ['phone_e164' => '081100000003', 'password' => 'barista123', 'role' => Role::BARISTA, 'name' => 'Produksi Uji', 'kitchen_id' => $kitchen->id],
             ['phone_e164' => '081100000004', 'password' => 'rider123', 'role' => Role::RIDER, 'name' => 'Runner Uji', 'kitchen_id' => null],
             ['phone_e164' => '081100000005', 'password' => 'staff123', 'role' => Role::STAFF, 'name' => 'Rider Uji Dua', 'kitchen_id' => null],
             // Panel-only — never appears in the mobile client's operational flow (Role::isOperational()).

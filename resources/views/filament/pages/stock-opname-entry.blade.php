@@ -138,7 +138,7 @@
                         rows="2"
                         maxlength="500"
                         wire:model="reason"
-                        placeholder="Mis. hitungan rutin akhir pekan, dugaan kekurangan di gerobak 0018, serah terima antar barista"
+                        placeholder="Mis. hitungan rutin akhir pekan, dugaan kekurangan di gerobak 0018, serah terima antar petugas Produksi"
                     ></textarea>
                 </div>
 

@@ -215,7 +215,7 @@ class ShowcaseStockController extends Controller implements HasMiddleware
     private function kitchenIdFor(User $user): int
     {
         if (! $user->kitchen_id) {
-            abort(422, 'Akun barista ini belum terhubung ke dapur pusat.');
+            abort(422, 'Akun Produksi ini belum terhubung ke dapur pusat.');
         }
 
         return (int) $user->kitchen_id;
