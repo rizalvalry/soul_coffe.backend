@@ -7,8 +7,12 @@ use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Filament\Pages\AttendanceSheet;
 use App\Filament\Resources\Accounts\AccountResource;
+use App\Filament\Resources\CashAccounts\CashAccountResource;
+use App\Filament\Resources\CashCategories\CashCategoryResource;
+use App\Filament\Resources\CashTransactions\CashTransactionResource;
 use App\Filament\Resources\EmployeeProfiles\EmployeeProfileResource;
 use App\Filament\Resources\Journals\JournalResource;
+use App\Filament\Resources\OfficeItems\OfficeItemResource;
 use App\Filament\Resources\Users\UserResource;
 use App\Models\Attendance;
 use App\Models\AttendanceMark;
@@ -89,7 +93,11 @@ class AttendanceSheetPanelTest extends TestCase
             $this->assertSame(
                 in_array($resource, [EmployeeProfileResource::class,
                     AccountResource::class,
-                    JournalResource::class], true),
+                    JournalResource::class,
+                    CashAccountResource::class,
+                    CashCategoryResource::class,
+                    CashTransactionResource::class,
+                    OfficeItemResource::class], true),
                 $resource::canViewAny(),
                 "{$resource} has the wrong visibility for FINANCE with only an attendance grant.",
             );

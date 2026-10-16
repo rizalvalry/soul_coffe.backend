@@ -7,6 +7,7 @@ use App\Enums\Role;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\DirectSale;
+use App\Models\JournalEntry;
 use App\Models\Location;
 use App\Models\Product;
 use App\Models\ProductPriceVersion;
@@ -115,6 +116,61 @@ class DirectSaleTest extends TestCase
     private function service(): DirectSaleService
     {
         return app(DirectSaleService::class);
+    }
+
+    public function test_direct_sale_posts_revenue_and_snapshot_cogs_then_reverses_both_on_void(): void
+    {
+        $this->stockCart($this->assignedCart, 10);
+        $sale = $this->service()->record($this->finance, $this->assignedCart->id,
+            [['product_id' => $this->coffee->id, 'qty' => 2]], 'transfer');
+
+        $revenue = JournalEntry::query()->where('source_type', 'direct_sale')
+            ->where('source_id', $sale->id)->where('purpose', 'DIRECT_SALE')->firstOrFail();
+        $cogs = JournalEntry::query()->where('source_type', 'direct_sale')
+            ->where('source_id', $sale->id)->where('purpose', 'DIRECT_SALE_COGS')->firstOrFail();
+        $this->assertSame(['1-1300' => [40000, 0], '4-1200' => [0, 40000]],
+            $revenue->lines()->with('account')->get()->mapWithKeys(fn ($line): array => [$line->account->code => [$line->debit_minor, $line->credit_minor]])->all());
+        $this->assertSame(['5-1100' => [20000, 0], '1-1600' => [0, 20000]],
+            $cogs->lines()->with('account')->get()->mapWithKeys(fn ($line): array => [$line->account->code => [$line->debit_minor, $line->credit_minor]])->all());
+
+        $this->service()->void($sale, $this->finance, 'Salah input');
+        $this->assertNotNull($revenue->fresh()->reversal);
+        $this->assertNotNull($cogs->fresh()->reversal);
+        $this->assertSame(2, JournalEntry::query()->where('purpose', 'REVERSAL')->count());
+    }
+
+    public function test_unpriced_direct_sale_does_not_move_stock_or_create_journals(): void
+    {
+        $this->stockCart($this->assignedCart, 3);
+        ProductPriceVersion::query()->where('product_id', $this->coffee->id)->delete();
+
+        try {
+            $this->service()->record($this->finance, $this->assignedCart->id,
+                [['product_id' => $this->coffee->id, 'qty' => 1]]);
+            $this->fail('Unpriced direct sale was accepted.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('Harga jual', $exception->getMessage());
+        }
+
+        $this->assertSame(3, $this->cartStock($this->assignedCart));
+        $this->assertSame(0, DirectSale::query()->count());
+        $this->assertSame(0, JournalEntry::query()->count());
+    }
+
+    public function test_zero_price_direct_sale_does_not_omit_cogs(): void
+    {
+        $this->stockCart($this->assignedCart, 3);
+        ProductPriceVersion::query()->where('product_id', $this->coffee->id)->update(['sell_price_minor' => 0]);
+
+        $this->expectException(RuntimeException::class);
+        try {
+            $this->service()->record($this->finance, $this->assignedCart->id,
+                [['product_id' => $this->coffee->id, 'qty' => 1]]);
+        } finally {
+            $this->assertSame(3, $this->cartStock($this->assignedCart));
+            $this->assertSame(0, DirectSale::query()->count());
+            $this->assertSame(0, JournalEntry::query()->count());
+        }
     }
 
     // ── Who may record ───────────────────────────────────────────────────────

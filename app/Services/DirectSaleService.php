@@ -4,9 +4,11 @@ namespace App\Services;
 
 use App\Enums\MovementType;
 use App\Enums\Role;
+use App\Models\Account;
 use App\Models\Cart;
 use App\Models\DirectSale;
 use App\Models\DirectSaleLine;
+use App\Models\JournalEntry;
 use App\Models\Product;
 use App\Models\Settlement;
 use App\Models\User;
@@ -35,6 +37,7 @@ class DirectSaleService
 {
     public function __construct(
         private readonly StockLedgerService $ledger,
+        private readonly JournalService $journals,
     ) {}
 
     /**
@@ -98,6 +101,9 @@ class DirectSaleService
 
                 $priceVersion = $product->priceVersionAt($occurredAt);
                 $unitPrice = (int) ($priceVersion?->sell_price_minor ?? 0);
+                if ($unitPrice <= 0) {
+                    throw new RuntimeException('Harga jual produk belum tersedia untuk penjualan langsung.');
+                }
                 $subtotal = $unitPrice * $qty;
 
                 $totalQty += $qty;
@@ -138,6 +144,38 @@ class DirectSaleService
                     refType: 'direct_sale',
                     refId: $directSale->id,
                 );
+            }
+
+            if ($totalAmount > 0) {
+                $cashCode = match ($paymentMethod) {
+                    'cash' => '1-1100',
+                    'qris' => '1-1400',
+                    'transfer' => '1-1300',
+                    default => throw new RuntimeException('Metode pembayaran tidak valid.'),
+                };
+                $accountIds = Account::query()->whereIn('code', [$cashCode, '4-1200', '5-1100', '1-1600'])
+                    ->pluck('id', 'code');
+                $this->journals->post([
+                    'entry_date' => $occurredAt->toDateString(),
+                    'description' => 'Penjualan langsung kantor #'.$directSale->id,
+                    'source_type' => 'direct_sale', 'source_id' => $directSale->id,
+                    'purpose' => 'DIRECT_SALE', 'posted_by' => $actor->id,
+                ], [
+                    ['account_id' => $accountIds[$cashCode], 'debit_minor' => $totalAmount, 'credit_minor' => 0],
+                    ['account_id' => $accountIds['4-1200'], 'debit_minor' => 0, 'credit_minor' => $totalAmount],
+                ]);
+                $cost = array_sum(array_map(fn (array $row): int => (int) ($row['unit_cost_minor'] ?? 0) * $row['qty'], $lineRows));
+                if ($cost > 0) {
+                    $this->journals->post([
+                        'entry_date' => $occurredAt->toDateString(),
+                        'description' => 'HPP penjualan langsung kantor #'.$directSale->id,
+                        'source_type' => 'direct_sale', 'source_id' => $directSale->id,
+                        'purpose' => 'DIRECT_SALE_COGS', 'posted_by' => $actor->id,
+                    ], [
+                        ['account_id' => $accountIds['5-1100'], 'debit_minor' => $cost, 'credit_minor' => 0],
+                        ['account_id' => $accountIds['1-1600'], 'debit_minor' => 0, 'credit_minor' => $cost],
+                    ]);
+                }
             }
 
             return $directSale->load('lines');
@@ -197,6 +235,14 @@ class DirectSaleService
                     refType: 'direct_sale_void',
                     refId: $locked->id,
                 );
+            }
+
+            foreach (['DIRECT_SALE', 'DIRECT_SALE_COGS'] as $purpose) {
+                $entry = JournalEntry::query()->where('source_type', 'direct_sale')
+                    ->where('source_id', $locked->id)->where('purpose', $purpose)->first();
+                if ($entry) {
+                    $this->journals->reverse($entry, $reason);
+                }
             }
 
             $locked->voided_at = now();

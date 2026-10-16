@@ -3,7 +3,11 @@
 namespace Tests\Feature\Filament;
 
 use App\Enums\Role;
+use App\Filament\Resources\CashAccounts\CashAccountResource;
+use App\Filament\Resources\CashCategories\CashCategoryResource;
+use App\Filament\Resources\CashTransactions\CashTransactionResource;
 use App\Filament\Resources\NewsPosts\NewsPostResource;
+use App\Filament\Resources\OfficeItems\OfficeItemResource;
 use App\Models\NewsPost;
 use App\Models\User;
 use Filament\Facades\Filament;
@@ -125,6 +129,16 @@ class ContentCreatorPanelTest extends TestCase
         $this->actingAs($this->makeUser(Role::ADMINISTRATOR));
 
         foreach (Filament::getPanel('admin')->getResources() as $resource) {
+            if (in_array($resource, [
+                CashTransactionResource::class,
+                CashCategoryResource::class,
+                CashAccountResource::class,
+                OfficeItemResource::class,
+            ], true)) {
+                $this->assertFalse($resource::canViewAny(), "{$resource} must be Finance/Management only.");
+
+                continue;
+            }
             $this->assertTrue($resource::canViewAny(), "{$resource} is hidden from ADMINISTRATOR.");
         }
     }
