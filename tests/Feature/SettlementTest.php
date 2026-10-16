@@ -143,6 +143,45 @@ class SettlementTest extends TestCase
         return $this;
     }
 
+    public function test_recording_and_approving_a_settlement_broadcasts_queue_changes_after_commit(): void
+    {
+        $this->issue(10);
+        Event::fake([SoulEvent::class]);
+
+        $settlementId = $this->asFinance()
+            ->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', [
+                'cart_id' => $this->cart->id, 'cash' => 0, 'qris' => 0, 'transfer' => 0,
+            ])->assertCreated()->json('data.id');
+
+        $recorded = OutboxEvent::query()->where('name', 'SettlementRecorded')->sole();
+        $this->assertSame('SUBMITTED', $recorded->payload_json['status']);
+        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT'], $recorded->payload_json['channels']);
+        $this->assertSame($this->cart->id, $recorded->payload_json['cart_id']);
+        $this->assertSame(Carbon::today()->toDateString(), $recorded->payload_json['operating_date']);
+        $this->assertSame($settlementId, $recorded->payload_json['source_id']);
+        $this->assertSame([], array_intersect(['cash', 'qris', 'transfer', 'variance'], array_keys($recorded->payload_json)));
+        $this->assertNotNull($recorded->published_at);
+        Event::assertDispatched(SoulEvent::class, fn (SoulEvent $event): bool => $event->payload['event_id'] === $recorded->event_id);
+
+        $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson("/api/v1/settlements/{$settlementId}/approve", [])
+            ->assertOk();
+
+        $approved = OutboxEvent::query()->where('name', 'SettlementApproved')->sole();
+        $this->assertSame('RECONCILED', $approved->payload_json['status']);
+        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT'], $approved->payload_json['channels']);
+        $this->assertSame($this->cart->id, $approved->payload_json['cart_id']);
+        $this->assertSame(Carbon::today()->toDateString(), $approved->payload_json['operating_date']);
+        $this->assertSame($settlementId, $approved->payload_json['source_id']);
+        $this->assertNotNull($approved->published_at);
+        Event::assertDispatched(SoulEvent::class, fn (SoulEvent $event): bool => $event->payload['event_id'] === $approved->event_id);
+
+        $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson("/api/v1/settlements/{$settlementId}/approve", [])->assertStatus(422);
+        $this->assertSame(1, OutboxEvent::query()->where('name', 'SettlementApproved')->count());
+    }
+
     // ── What Finance is told before typing anything ──────────────────────
 
     public function test_the_draft_computes_issued_sold_and_remaining_without_being_asked(): void
@@ -426,6 +465,8 @@ class SettlementTest extends TestCase
 
         $this->assertSame(1, Settlement::query()->count());
         $this->assertSame(1, OutboxEvent::query()->where('name', 'SettlementVarianceFlagged')->count());
+        $this->assertSame(1, OutboxEvent::query()->where('name', 'SettlementRecorded')->count());
+        $this->assertSame('VARIANCE_FLAGGED', OutboxEvent::query()->where('name', 'SettlementRecorded')->sole()->payload_json['status']);
         $this->assertSame(1, AuditLog::query()->where('action', 'settlement.variance_flagged')->count());
         $this->assertSame(1, AppNotification::query()->where('type', 'SettlementVarianceFlagged')->count());
     }

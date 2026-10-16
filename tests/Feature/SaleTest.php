@@ -4,10 +4,12 @@ namespace Tests\Feature;
 
 use App\Enums\MovementType;
 use App\Enums\Role;
+use App\Events\SoulEvent;
 use App\Models\AppNotification;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\Location;
+use App\Models\OutboxEvent;
 use App\Models\Product;
 use App\Models\ProductPriceVersion;
 use App\Models\Sale;
@@ -17,6 +19,8 @@ use App\Services\AttendanceService;
 use App\Services\StockLedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
@@ -155,6 +159,84 @@ class SaleTest extends TestCase
             ], $extra));
     }
 
+    public function test_recorded_sale_broadcasts_one_finance_queue_event_without_money(): void
+    {
+        $this->clockIn();
+        $this->stockCart($this->coffee, 10);
+        Event::fake([SoulEvent::class]);
+
+        $saleId = $this->sell([['product_id' => $this->coffee->id, 'qty' => 2]])
+            ->assertCreated()->json('data.id');
+
+        $event = OutboxEvent::query()->where('name', 'SaleRecorded')->sole();
+        $payload = $event->payload_json;
+        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT'], $payload['channels']);
+        $this->assertSame($this->cart->id, $payload['cart_id']);
+        $this->assertSame(Carbon::today()->toDateString(), $payload['operating_date']);
+        $this->assertSame($saleId, $payload['source_id']);
+        $this->assertSame([], array_intersect(['total_amount_minor', 'cash', 'qris', 'transfer', 'variance'], array_keys($payload)));
+        $this->assertNotNull($event->published_at);
+        Event::assertDispatched(SoulEvent::class, fn (SoulEvent $sent): bool => $sent->payload['event_id'] === $event->event_id);
+    }
+
+    public function test_rolled_back_sale_has_no_outbox_row_or_broadcast(): void
+    {
+        $this->clockIn();
+        $this->stockCart($this->coffee, 10);
+        Event::fake([SoulEvent::class]);
+
+        try {
+            DB::transaction(function (): void {
+                $this->sell([['product_id' => $this->coffee->id, 'qty' => 1]])->assertCreated();
+                throw new \RuntimeException('rollback test');
+            });
+        } catch (\RuntimeException $e) {
+            $this->assertSame('rollback test', $e->getMessage());
+        }
+
+        $this->assertSame(0, Sale::query()->count());
+        $this->assertSame(0, OutboxEvent::query()->where('name', 'SaleRecorded')->count());
+        Event::assertNotDispatched(SoulEvent::class, fn (SoulEvent $sent): bool => $sent->payload['type'] === 'SaleRecorded');
+    }
+
+    public function test_only_finance_can_subscribe_to_the_finance_role_channel(): void
+    {
+        // The test suite's null broadcaster skips channel authorization entirely.
+        // Pusher signs auth locally, so this exercises the real callback without network I/O.
+        config([
+            'broadcasting.default' => 'pusher',
+            'broadcasting.connections.pusher.key' => 'test-key',
+            'broadcasting.connections.pusher.secret' => 'test-secret',
+            'broadcasting.connections.pusher.app_id' => 'test-app',
+        ]);
+        require base_path('routes/channels.php');
+        $body = ['socket_id' => '123.456', 'channel_name' => 'private-role.FINANCE'];
+
+        $this->actingAs(User::factory()->role(Role::FINANCE)->create(), 'sanctum')
+            ->postJson('/api/v1/broadcasting/auth', $body)->assertOk();
+
+        foreach ([Role::STAFF, Role::RIDER, Role::BARISTA, Role::ADMINISTRATOR, Role::MANAGEMENT, Role::CONTENT_CREATOR] as $role) {
+            $this->actingAs(User::factory()->role($role)->create(), 'sanctum')
+                ->postJson('/api/v1/broadcasting/auth', $body)->assertForbidden();
+        }
+
+        $this->actingAs(User::factory()->role(Role::MANAGEMENT)->create(), 'sanctum')
+            ->postJson('/api/v1/broadcasting/auth', [
+                'socket_id' => '123.456', 'channel_name' => 'private-role.MANAGEMENT',
+            ])->assertOk();
+        $this->actingAs($this->staff, 'sanctum')
+            ->postJson('/api/v1/broadcasting/auth', [
+                'socket_id' => '123.456', 'channel_name' => 'private-role.MANAGEMENT',
+            ])->assertForbidden();
+
+        foreach ([Role::FINANCE, Role::MANAGEMENT] as $role) {
+            $this->actingAs(User::factory()->role($role)->create(['is_active' => false]), 'sanctum')
+                ->postJson('/api/v1/broadcasting/auth', [
+                    'socket_id' => '123.456', 'channel_name' => 'private-role.'.$role->value,
+                ])->assertForbidden();
+        }
+    }
+
     // ── The happy path ───────────────────────────────────────────────────────
 
     public function test_a_sale_records_the_cups_and_reduces_the_cart_stock(): void
@@ -225,6 +307,7 @@ class SaleTest extends TestCase
 
         $this->assertSame(1, Sale::query()->count());
         $this->assertSame(8, $this->cartStock($this->coffee));
+        $this->assertSame(1, OutboxEvent::query()->where('name', 'SaleRecorded')->count());
     }
 
     // ── The gates ────────────────────────────────────────────────────────────

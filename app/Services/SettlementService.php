@@ -308,6 +308,19 @@ class SettlementService
                 );
             }
 
+            $this->events->publish(
+                type: 'SettlementRecorded',
+                title: 'Setoran tercatat',
+                body: sprintf('Setoran gerobak %s tercatat.', $cart->code),
+                channels: ['role.FINANCE', 'role.MANAGEMENT'],
+                status: $settlement->status,
+                context: [
+                    'cart_id' => $settlement->cart_id,
+                    'operating_date' => $settlement->operating_date->toDateString(),
+                    'source_id' => $settlement->id,
+                ],
+            );
+
             return $settlement->load('lines');
         });
     }
@@ -425,6 +438,19 @@ class SettlementService
             }
 
             $locked->save();
+
+            $this->events->publish(
+                type: 'SettlementApproved',
+                title: 'Setoran disetujui',
+                body: sprintf('Setoran gerobak %s disetujui.', $cart->code),
+                channels: ['role.FINANCE', 'role.MANAGEMENT'],
+                status: $locked->status,
+                context: [
+                    'cart_id' => $locked->cart_id,
+                    'operating_date' => $locked->operating_date->toDateString(),
+                    'source_id' => $locked->id,
+                ],
+            );
 
             return $locked->fresh(['lines']);
         });
