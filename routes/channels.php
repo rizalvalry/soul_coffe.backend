@@ -34,7 +34,7 @@ Broadcast::channel('user.{userId}', function ($user, string $userId): bool {
 });
 
 Broadcast::channel('role.{role}', function ($user, string $role) use ($roleOf): bool {
-    return $roleOf($user) === strtoupper($role);
+    return (bool) $user->is_active && $roleOf($user) === strtoupper($role);
 });
 
 Broadcast::channel('kitchen.{kitchenId}', function ($user, string $kitchenId) use ($roleOf): bool {

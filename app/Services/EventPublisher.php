@@ -32,6 +32,7 @@ class EventPublisher
      *
      * @param  array<int,string>  $channels  channel names without the `private-` prefix
      * @param  array<int,int>  $notifyUserIds  users who get a persisted in-app notification
+     * @param  array{cart_id?: int, operating_date?: string, source_id?: int}  $context
      * @return string the event_id, which is the client's dedupe key across WebSocket and push (E15)
      */
     public function publish(
@@ -43,6 +44,7 @@ class EventPublisher
         ?int $refillRequestId = null,
         ?string $status = null,
         bool $includeActorPush = false,
+        array $context = [],
     ): string {
         $eventId = (string) Str::uuid();
 
@@ -54,7 +56,7 @@ class EventPublisher
             'title' => $title,
             'body' => $body,
             'at' => now()->toIso8601String(),
-        ];
+        ] + $context;
 
         OutboxEvent::create([
             'event_id' => $eventId,
@@ -89,19 +91,21 @@ class EventPublisher
 
             // Second transport (E15). Inline rather than queued — see PushNotifier for why.
             // The actor is skipped unless the event explicitly includes them as a recipient.
-            $this->push->notifyUsers(
-                $recipients,
-                $title,
-                $body,
-                [
-                    'event_id' => $payload['event_id'],
-                    'type' => $payload['type'],
-                    'refill_request_id' => $payload['refill_request_id'],
-                    'status' => $payload['status'],
-                    'at' => $payload['at'],
-                ],
-                $includeActorPush ? null : ($actorId !== null ? (int) $actorId : null),
-            );
+            if ($recipients !== []) {
+                $this->push->notifyUsers(
+                    $recipients,
+                    $title,
+                    $body,
+                    [
+                        'event_id' => $payload['event_id'],
+                        'type' => $payload['type'],
+                        'refill_request_id' => $payload['refill_request_id'],
+                        'status' => $payload['status'],
+                        'at' => $payload['at'],
+                    ],
+                    $includeActorPush ? null : ($actorId !== null ? (int) $actorId : null),
+                );
+            }
         });
 
         return $eventId;

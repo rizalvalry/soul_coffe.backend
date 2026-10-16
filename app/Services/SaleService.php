@@ -216,6 +216,18 @@ class SaleService
                 $this->notifySuspect($sale, $staff, $cart->code, $totalQty, $threshold);
             }
 
+            $this->events->publish(
+                type: 'SaleRecorded',
+                title: 'Penjualan tercatat',
+                body: sprintf('Penjualan di gerobak %s tercatat.', $cart->code),
+                channels: ['role.FINANCE', 'role.MANAGEMENT'],
+                context: [
+                    'cart_id' => $sale->cart_id,
+                    'operating_date' => $sale->operating_date->toDateString(),
+                    'source_id' => $sale->id,
+                ],
+            );
+
             return $sale->load('lines');
         });
     }
@@ -349,8 +361,13 @@ class SaleService
                 $sale->cart?->code,
                 $sale->void_reason,
             ),
-            ['role.ADMINISTRATOR', 'role.FINANCE'],
+            ['role.ADMINISTRATOR', 'role.FINANCE', 'role.MANAGEMENT'],
             $recipients,
+            context: [
+                'cart_id' => $sale->cart_id,
+                'operating_date' => $sale->operating_date->toDateString(),
+                'source_id' => $sale->id,
+            ],
         );
     }
 

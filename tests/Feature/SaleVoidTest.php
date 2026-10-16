@@ -4,11 +4,13 @@ namespace Tests\Feature;
 
 use App\Enums\MovementType;
 use App\Enums\Role;
+use App\Events\SoulEvent;
 use App\Filament\Resources\Sales\SaleResource;
 use App\Models\AppNotification;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\Location;
+use App\Models\OutboxEvent;
 use App\Models\Product;
 use App\Models\ProductPriceVersion;
 use App\Models\Sale;
@@ -22,6 +24,7 @@ use App\Services\SettlementService;
 use App\Services\StockLedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
@@ -212,6 +215,7 @@ class SaleVoidTest extends TestCase
         $this->stockCart(10);
         $sale = $this->sell(3);
 
+        Event::fake([SoulEvent::class]);
         $this->void($sale)->assertSuccessful();
 
         $notified = AppNotification::query()->where('type', 'SaleVoided')->pluck('user_id')->all();
@@ -219,6 +223,15 @@ class SaleVoidTest extends TestCase
         $this->assertContains($admin->id, $notified);
         $this->assertContains($this->finance->id, $notified);
         $this->assertNotContains($management->id, $notified);
+
+        $outbox = OutboxEvent::query()->where('name', 'SaleVoided')->sole();
+        $payload = $outbox->payload_json;
+        $this->assertSame(['role.ADMINISTRATOR', 'role.FINANCE', 'role.MANAGEMENT'], $payload['channels']);
+        $this->assertSame($this->cart->id, $payload['cart_id']);
+        $this->assertSame(Carbon::today()->toDateString(), $payload['operating_date']);
+        $this->assertSame($sale->id, $payload['source_id']);
+        $this->assertNotNull($outbox->published_at);
+        Event::assertDispatched(SoulEvent::class, fn (SoulEvent $sent): bool => $sent->payload['event_id'] === $outbox->event_id);
     }
 
     // ── The window ───────────────────────────────────────────────────────────
