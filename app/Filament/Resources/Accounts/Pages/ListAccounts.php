@@ -12,6 +12,6 @@ class ListAccounts extends ListRecords
 
     protected function getHeaderActions(): array
     {
-        return [CreateAction::make()->label('Tambah Akun')];
+        return [CreateAction::make()->label('Tambah Akun')->visible(fn (): bool => AccountResource::canCreate())];
     }
 }

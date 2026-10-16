@@ -6,6 +6,7 @@ use App\Enums\Role;
 use App\Filament\Resources\Accounts\Pages\CreateAccount;
 use App\Filament\Resources\Accounts\Pages\ListAccounts;
 use App\Models\Account;
+use App\Services\Menu\MenuLabels;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
@@ -26,15 +27,22 @@ class AccountResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedBuildingLibrary;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Master Data';
+    protected static string|UnitEnum|null $navigationGroup = 'Akuntansi';
+
+    protected static ?int $navigationSort = 1;
 
     protected static ?string $navigationLabel = 'Bagan Akun';
 
     protected static ?string $modelLabel = 'Akun';
 
+    public static function getNavigationGroup(): string|UnitEnum|null
+    {
+        return MenuLabels::group('Akuntansi');
+    }
+
     public static function canViewAny(): bool
     {
-        return in_array(Auth::user()?->role, [Role::FINANCE, Role::MANAGEMENT], true);
+        return in_array(Auth::user()?->role, [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT], true);
     }
 
     public static function canView(Model $record): bool

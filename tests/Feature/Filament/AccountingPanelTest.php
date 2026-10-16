@@ -19,6 +19,7 @@ use App\Models\JournalEntry;
 use App\Models\User;
 use App\Services\Access\PermissionMatrix;
 use App\Services\JournalService;
+use App\Services\Menu\MenuLabels;
 use Database\Seeders\AccountSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Validation\ValidationException;
@@ -37,12 +38,87 @@ class AccountingPanelTest extends TestCase
         PermissionMatrix::set(Role::FINANCE, PanelModule::ATTENDANCE, ['view']);
     }
 
+    public function test_accounting_navigation_is_grouped_and_ordered(): void
+    {
+        $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create());
+
+        $items = [
+            AccountResource::class => 'Bagan Akun',
+            JournalResource::class => 'Jurnal Umum',
+            GeneralLedger::class => 'Buku Besar',
+            AccountingPeriods::class => 'Periode Akuntansi',
+            OpeningBalances::class => 'Saldo Awal',
+        ];
+
+        $this->assertContains('Akuntansi', MenuLabels::groups());
+        foreach (array_keys($items) as $class) {
+            $this->assertSame('Akuntansi', $class::getNavigationGroup());
+        }
+        $this->assertSame([1, 2, 3, 4, 5], array_map(
+            fn (string $class): ?int => $class::getNavigationSort(),
+            array_keys($items),
+        ));
+        $this->get('/admin')->assertSuccessful()->assertSeeInOrder(array_values($items));
+    }
+
+    public function test_administrator_can_read_every_accounting_screen_but_cannot_write(): void
+    {
+        $admin = User::factory()->role(Role::ADMINISTRATOR)->create();
+        $custom = Account::query()->create([
+            'code' => '6-1900', 'name' => 'Beban Uji', 'type' => 'EXPENSE',
+            'normal_balance' => 'DEBIT', 'is_active' => true,
+        ]);
+        $cash = Account::query()->where('code', '1-1100')->firstOrFail();
+        $equity = Account::query()->where('code', '3-1200')->firstOrFail();
+        $entry = app(JournalService::class)->post([
+            'entry_date' => '2026-10-16', 'description' => 'Uji', 'source_type' => 'test',
+            'source_id' => 1, 'purpose' => 'RECORD',
+        ], [
+            ['account_id' => $cash->id, 'debit_minor' => 1000, 'credit_minor' => 0],
+            ['account_id' => $equity->id, 'debit_minor' => 0, 'credit_minor' => 1000],
+        ]);
+        AccountingPeriod::query()->create(['year' => 2026, 'month' => 11, 'status' => 'CLOSED']);
+        $this->actingAs($admin);
+        foreach ([AccountResource::getUrl(), JournalResource::getUrl(),
+            JournalResource::getUrl('view', ['record' => $entry]), GeneralLedger::getUrl(),
+            AccountingPeriods::getUrl(), OpeningBalances::getUrl()] as $url) {
+            $this->get($url)->assertSuccessful();
+        }
+        $this->get(AccountResource::getUrl('create'))->assertForbidden();
+        $this->assertFalse(AccountResource::canCreate());
+        Livewire::test(ListAccounts::class)->assertDontSee('Tambah Akun')
+            ->assertTableActionHidden('deactivate', $custom);
+        Livewire::test(ListJournals::class)->assertTableActionHidden('reverse', $entry);
+        // Filament ignores a forged call to an action it did not mount; it returns 200 without writing.
+        Livewire::test(ListAccounts::class)
+            ->call('mountTableAction', 'deactivate', (string) $custom->id)
+            ->call('callMountedTableAction')->assertSuccessful();
+        Livewire::test(ListJournals::class)
+            ->call('mountTableAction', 'reverse', (string) $entry->id)
+            ->setTableActionData(['reason' => 'Koreksi'])
+            ->call('callMountedTableAction')->assertSuccessful();
+        Livewire::test(AccountingPeriods::class)
+            ->assertDontSee('Tutup Periode')->assertDontSee('Buka kembali')
+            ->call('setStatus', 2026, 10, 'CLOSED')->assertForbidden();
+        Livewire::test(OpeningBalances::class)
+            ->assertDontSee('Posting Saldo Awal')->assertDontSee('Tambah Baris')
+            ->call('submit')->assertForbidden();
+        $this->assertTrue($custom->fresh()->is_active);
+        $this->assertNull($entry->fresh()->reversal);
+        $this->assertSame('OPEN', AccountingPeriod::query()->where('year', 2026)->where('month', 10)->firstOrFail()->status);
+        $this->assertSame('CLOSED', AccountingPeriod::query()->where('year', 2026)->where('month', 11)->firstOrFail()->status);
+        $this->assertSame(1, JournalEntry::query()->count());
+    }
+
     public function test_finance_can_read_chart_journal_and_ledger_but_cannot_manage_them(): void
     {
         $this->actingAs(User::factory()->role(Role::FINANCE)->create());
         $this->get(AccountResource::getUrl())->assertSuccessful();
         $this->get(JournalResource::getUrl())->assertSuccessful();
         $this->get(GeneralLedger::getUrl())->assertSuccessful();
+        $this->get('/admin')->assertSuccessful()
+            ->assertSeeInOrder(['Bagan Akun', 'Jurnal Umum', 'Buku Besar'])
+            ->assertDontSee('Periode Akuntansi')->assertDontSee('Saldo Awal');
         $this->get(AccountResource::getUrl('create'))->assertForbidden();
         $this->get(AccountingPeriods::getUrl())->assertForbidden();
         $this->get(OpeningBalances::getUrl())->assertForbidden();
@@ -51,9 +127,18 @@ class AccountingPanelTest extends TestCase
 
     public function test_wrong_role_gets_403_on_accounting_pages(): void
     {
-        $this->actingAs(User::factory()->role(Role::BARISTA)->create());
-        foreach ([AccountResource::getUrl(), JournalResource::getUrl(), GeneralLedger::getUrl(), AccountingPeriods::getUrl(), OpeningBalances::getUrl()] as $url) {
-            $this->get($url)->assertForbidden();
+        foreach ([Role::BARISTA, Role::RIDER, Role::STAFF, Role::CONTENT_CREATOR] as $role) {
+            PermissionMatrix::set($role, PanelModule::ATTENDANCE, ['view']);
+            $this->actingAs(User::factory()->role($role)->create());
+            $this->get('/admin')->assertSuccessful()->assertDontSee('Akuntansi');
+            $this->assertFalse(AccountResource::canViewAny());
+            $this->assertFalse(JournalResource::canViewAny());
+            $this->assertFalse(GeneralLedger::canAccess());
+            $this->assertFalse(AccountingPeriods::canAccess());
+            $this->assertFalse(OpeningBalances::canAccess());
+            foreach ([AccountResource::getUrl(), JournalResource::getUrl(), GeneralLedger::getUrl(), AccountingPeriods::getUrl(), OpeningBalances::getUrl()] as $url) {
+                $this->get($url)->assertForbidden();
+            }
         }
     }
 
@@ -63,6 +148,9 @@ class AccountingPanelTest extends TestCase
         $this->get(AccountResource::getUrl('create'))->assertSuccessful();
         $this->get(AccountingPeriods::getUrl())->assertSuccessful();
         $this->get(OpeningBalances::getUrl())->assertSuccessful();
+        $this->get('/admin')->assertSuccessful()->assertSeeInOrder([
+            'Bagan Akun', 'Jurnal Umum', 'Buku Besar', 'Periode Akuntansi', 'Saldo Awal',
+        ]);
 
         Livewire::test(CreateAccount::class)
             ->fillForm(['code' => '6-1900', 'name' => 'Beban Uji', 'type' => 'EXPENSE'])

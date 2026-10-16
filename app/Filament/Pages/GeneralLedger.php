@@ -6,6 +6,7 @@ use App\Enums\Role;
 use App\Models\Account;
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
+use App\Services\Menu\MenuLabels;
 use BackedEnum;
 use Filament\Pages\Page;
 use Filament\Support\Icons\Heroicon;
@@ -20,7 +21,9 @@ class GeneralLedger extends Page
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedListBullet;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Laporan';
+    protected static string|UnitEnum|null $navigationGroup = 'Akuntansi';
+
+    protected static ?int $navigationSort = 3;
 
     protected static ?string $navigationLabel = 'Buku Besar';
 
@@ -30,9 +33,14 @@ class GeneralLedger extends Page
 
     public ?int $accountId = null;
 
+    public static function getNavigationGroup(): string|UnitEnum|null
+    {
+        return MenuLabels::group('Akuntansi');
+    }
+
     public static function canAccess(): bool
     {
-        return in_array(Auth::user()?->role, [Role::FINANCE, Role::MANAGEMENT], true);
+        return in_array(Auth::user()?->role, [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT], true);
     }
 
     public function updatedAccountId(): void

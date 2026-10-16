@@ -7,6 +7,7 @@ use App\Filament\Resources\Journals\JournalResource;
 use App\Models\Account;
 use App\Models\JournalEntry;
 use App\Services\JournalService;
+use App\Services\Menu\MenuLabels;
 use BackedEnum;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
@@ -19,7 +20,9 @@ class OpeningBalances extends Page
 {
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedScale;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Laporan';
+    protected static string|UnitEnum|null $navigationGroup = 'Akuntansi';
+
+    protected static ?int $navigationSort = 5;
 
     protected static ?string $navigationLabel = 'Saldo Awal';
 
@@ -31,6 +34,11 @@ class OpeningBalances extends Page
 
     public array $lines = [];
 
+    public static function getNavigationGroup(): string|UnitEnum|null
+    {
+        return MenuLabels::group('Akuntansi');
+    }
+
     public function mount(): void
     {
         $this->entryDate = today()->toDateString();
@@ -39,7 +47,7 @@ class OpeningBalances extends Page
 
     public static function canAccess(): bool
     {
-        return Auth::user()?->role === Role::MANAGEMENT;
+        return in_array(Auth::user()?->role, [Role::ADMINISTRATOR, Role::MANAGEMENT], true);
     }
 
     public function activeOpening(): ?JournalEntry
