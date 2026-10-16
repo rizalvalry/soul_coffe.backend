@@ -24,6 +24,7 @@ class AccountSeeder extends Seeder
             ['3-1200', 'Saldo Awal Ekuitas', 'EQUITY'],
             ['4-1100', 'Pendapatan Penjualan Gerobak', 'REVENUE'],
             ['4-1200', 'Pendapatan Penjualan Langsung', 'REVENUE'],
+            ['4-1300', 'Pendapatan Lain-lain', 'REVENUE'],
             ['5-1100', 'HPP', 'COGS'],
             ['6-1100', 'Selisih Kas Setoran (Lebih/Kurang)', 'EXPENSE'],
             ['6-1200', 'Beban Gaji', 'EXPENSE'],
