@@ -70,7 +70,12 @@ html, body, .fi-body { font-family: var(--sc-font-sans); color: var(--sc-text-pr
 .sc-office-stat::after { content: ''; position: absolute; z-index: -1; width: 155px; height: 155px; right: -15px; bottom: -20px; background: url('../images/brand/logo-mark-white.png') center / contain no-repeat; opacity: .07; }
 .sc-office-stat .fi-wi-stats-overview-stat-label { color: var(--sc-text-on-sidebar-muted); }
 .sc-office-stat .fi-wi-stats-overview-stat-value { color: var(--sc-text-on-sidebar); font-size: 30px; line-height: 38px; }
-.sc-office-stat .fi-wi-stats-overview-stat-description { color: var(--sc-text-on-sidebar-muted); }
+.sc-office-stat .fi-wi-stats-overview-stat-description { display: block; color: var(--sc-text-on-sidebar-muted); }
+.sc-office-summary { display: block; }
+.sc-office-detail { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--sc-border-sidebar); }
+.sc-office-detail > span { display: grid; gap: 5px; }
+.sc-office-detail small { color: var(--sc-text-on-sidebar-muted); font: 400 11px/16px var(--sc-font-sans); }
+.sc-office-detail strong { color: var(--sc-text-on-sidebar); font: 700 14px/20px var(--sc-font-display); }
 .fi-wi-chart .fi-section-header-heading { font: 700 17px/24px var(--sc-font-display); }
 .fi-wi-chart-text-color { color: var(--sc-text-secondary); }
 .fi-wi-chart-grid-color { color: var(--sc-chart-grid); }

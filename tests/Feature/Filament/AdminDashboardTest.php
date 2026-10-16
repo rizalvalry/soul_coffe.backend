@@ -10,10 +10,14 @@ use App\Filament\Widgets\OfficeDirectSalesWidget;
 use App\Filament\Widgets\OperationsOverviewWidget;
 use App\Filament\Widgets\RefillStatusDistributionWidget;
 use App\Filament\Widgets\RevenueTrendWidget;
+use App\Models\Cart;
+use App\Models\CentralKitchen;
+use App\Models\DirectSale;
 use App\Models\User;
 use App\Services\Access\PermissionMatrix;
 use Filament\Pages\Dashboard;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -71,7 +75,9 @@ class AdminDashboardTest extends TestCase
         Livewire::test(OfficeDirectSalesWidget::class)
             ->assertSee('Penjualan Langsung Kantor')
             ->assertSee('Rp 0')
-            ->assertSee('0 transaksi');
+            ->assertSee('0 transaksi')
+            ->assertSee('Rata-rata transaksi')
+            ->assertSee('Produk terlaris');
 
         Livewire::test(RevenueTrendWidget::class)
             ->assertSee('Belum ada pendapatan dalam 7 hari terakhir');
@@ -95,6 +101,34 @@ class AdminDashboardTest extends TestCase
         }
 
         PermissionMatrix::forget();
+    }
+
+    public function test_office_sales_card_shows_integer_average_for_real_sales(): void
+    {
+        $admin = User::factory()->role(Role::ADMINISTRATOR)->create();
+        $kitchen = CentralKitchen::create([
+            'name' => 'Dapur Uji', 'address' => 'Jl. Uji 1',
+            'open_at' => '05:00', 'close_at' => '20:00', 'is_active' => true,
+        ]);
+        $cart = Cart::create(['code' => '0018', 'status' => 'active', 'kitchen_id' => $kitchen->id]);
+
+        foreach ([40001, 20000] as $amount) {
+            DirectSale::create([
+                'uuid' => (string) Str::uuid(),
+                'cart_id' => $cart->id,
+                'recorded_by' => $admin->id,
+                'occurred_at' => now(),
+                'total_qty' => 1,
+                'total_amount_minor' => $amount,
+                'payment_method' => 'cash',
+            ]);
+        }
+
+        $this->actingAs($admin);
+        Livewire::test(OfficeDirectSalesWidget::class)
+            ->assertSee('Rp 60.001')
+            ->assertSee('2 transaksi')
+            ->assertSee('Rp 30.000');
     }
 
     public function test_dashboard_greeting_uses_the_signed_in_name_and_existing_reports_gate(): void
