@@ -142,7 +142,21 @@ class RecipeService
                 return;
             }
 
-            $total += $line->qty_per_unit * $unitCost;
+            $qtyPerUnit = (int) $line->qty_per_unit;
+            if ($unitCost > 0 && $qtyPerUnit > intdiv(PHP_INT_MAX, $unitCost)) {
+                $recipe->update(['computed_cost_minor' => null]);
+
+                return;
+            }
+
+            $lineCost = $qtyPerUnit * $unitCost;
+            if ($total > PHP_INT_MAX - $lineCost) {
+                $recipe->update(['computed_cost_minor' => null]);
+
+                return;
+            }
+
+            $total += $lineCost;
         }
 
         $recipe->update(['computed_cost_minor' => $total]);
@@ -165,10 +179,15 @@ class RecipeService
             ->orderByDesc('id')
             ->first();
 
-        if (! $row || (int) $row->qty_delta <= 0) {
+        if (! $row || (int) $row->qty_delta <= 0 || (int) $row->cost_minor < 0) {
             return null;
         }
 
-        return (int) round($row->cost_minor / $row->qty_delta);
+        $cost = (int) $row->cost_minor;
+        $qty = (int) $row->qty_delta;
+        $remainder = $cost % $qty;
+
+        // Half-up for nonnegative rupiah: remainder / qty >= 1/2, without a float or overflow.
+        return intdiv($cost, $qty) + (int) ($remainder >= $qty - $remainder);
     }
 }

@@ -76,6 +76,7 @@ class DirectSaleService
             $totalQty = 0;
             $totalAmount = 0;
             $lineRows = [];
+            $occurredAt = now();
 
             foreach ($merged as $productId => $qty) {
                 $product = $products[$productId] ?? null;
@@ -95,7 +96,8 @@ class DirectSaleService
                     ));
                 }
 
-                $unitPrice = (int) ($product->currentPriceVersion()?->sell_price_minor ?? 0);
+                $priceVersion = $product->priceVersionAt($occurredAt);
+                $unitPrice = (int) ($priceVersion?->sell_price_minor ?? 0);
                 $subtotal = $unitPrice * $qty;
 
                 $totalQty += $qty;
@@ -105,6 +107,7 @@ class DirectSaleService
                     'product_id' => $productId,
                     'qty' => $qty,
                     'unit_price_minor' => $unitPrice,
+                    'unit_cost_minor' => $priceVersion?->cost_price_minor,
                     'subtotal_minor' => $subtotal,
                 ];
             }
@@ -114,7 +117,7 @@ class DirectSaleService
                 'cart_id' => $cart->id,
                 'recorded_by' => $actor->id,
                 // Server clock (R16), same reasoning as Sale::occurred_at.
-                'occurred_at' => now(),
+                'occurred_at' => $occurredAt,
                 'total_qty' => $totalQty,
                 'total_amount_minor' => $totalAmount,
                 'payment_method' => $paymentMethod,

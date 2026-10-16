@@ -117,6 +117,7 @@ class SaleService
             $totalQty = 0;
             $totalAmount = 0;
             $lineRows = [];
+            $occurredAt = now();
 
             foreach ($merged as $productId => $qty) {
                 $product = $products[$productId] ?? null;
@@ -136,7 +137,8 @@ class SaleService
                     ));
                 }
 
-                $unitPrice = (int) ($product->currentPriceVersion()?->sell_price_minor ?? 0);
+                $priceVersion = $product->priceVersionAt($occurredAt);
+                $unitPrice = (int) ($priceVersion?->sell_price_minor ?? 0);
                 $subtotal = $unitPrice * $qty;
 
                 $totalQty += $qty;
@@ -146,6 +148,7 @@ class SaleService
                     'product_id' => $productId,
                     'qty' => $qty,
                     'unit_price_minor' => $unitPrice,
+                    'unit_cost_minor' => $priceVersion?->cost_price_minor,
                     'subtotal_minor' => $subtotal,
                 ];
             }
@@ -163,7 +166,7 @@ class SaleService
                 'location_id' => $assignment->location_id,
                 // Server clock (R16): the analytics compares hours between carts, so a phone's
                 // idea of the time cannot be allowed to decide which hour a sale lands in.
-                'occurred_at' => now(),
+                'occurred_at' => $occurredAt,
                 'total_qty' => $totalQty,
                 'total_amount_minor' => $totalAmount,
                 'payment_method' => $paymentMethod,

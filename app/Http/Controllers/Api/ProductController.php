@@ -17,7 +17,9 @@ class ProductController extends Controller
         $products = Product::query()
             ->orderBy('sort_order')
             ->with(['priceVersions' => function ($query): void {
-                $query->where('effective_from', '<=', now())->orderByDesc('effective_from');
+                $query->where('effective_from', '<=', now())
+                    ->orderByDesc('effective_from')
+                    ->orderByDesc('id');
             }])
             ->get();
 

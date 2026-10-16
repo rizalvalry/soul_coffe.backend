@@ -16,6 +16,7 @@ class SaleLine extends Model
         'product_id',
         'qty',
         'unit_price_minor',
+        'unit_cost_minor',
         'subtotal_minor',
     ];
 
@@ -24,6 +25,7 @@ class SaleLine extends Model
         return [
             'qty' => 'integer',
             'unit_price_minor' => 'integer',
+            'unit_cost_minor' => 'integer',
             'subtotal_minor' => 'integer',
         ];
     }

@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 class Product extends Model
 {
@@ -65,8 +66,35 @@ class Product extends Model
      */
     public function currentPriceVersion(): ?ProductPriceVersion
     {
-        return $this->priceVersions()
-            ->where('effective_from', '<=', now())
+        return $this->priceVersionAt(now());
+    }
+
+    /** Select the latest effective version, with insertion order breaking timestamp ties. */
+    public function priceVersionAt(Carbon $at, bool $knownAtTime = false): ?ProductPriceVersion
+    {
+        $versions = $this->priceVersions()->where('effective_from', '<=', $at);
+
+        if ($knownAtTime) {
+            $second = $at->copy()->startOfSecond();
+            $known = (clone $versions)
+                ->where('created_at', '<', $second)
+                ->orderByDesc('effective_from')
+                ->orderByDesc('id')
+                ->first();
+
+            // A same-second version may have been entered before OR after the sale. Only one
+            // that could outrank the last known version makes historical HPP ambiguous.
+            if ((clone $versions)->where('created_at', '>=', $second)
+                ->where('created_at', '<', $second->copy()->addSecond())
+                ->when($known, fn ($query) => $query->where('effective_from', '>=', $known->effective_from))
+                ->exists()) {
+                return null;
+            }
+
+            return $known;
+        }
+
+        return $versions
             ->orderByDesc('effective_from')
             // Tie-break on insertion order. Without it two versions sharing an effective_from
             // leave "the current price" up to whatever order the database happens to return —
