@@ -392,8 +392,23 @@ class SaleTest extends TestCase
 
     // ── The gates ────────────────────────────────────────────────────────────
 
+    public function test_sale_is_closed_until_production_opens_today(): void
+    {
+        $this->stockCart($this->coffee, 10);
+
+        $this->sell([['product_id' => $this->coffee->id, 'qty' => 1]])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'DAY_NOT_OPEN')
+            ->assertJsonPath('message', 'Produksi belum membuka absen hari ini. Fitur transaksi belum bisa dipakai.');
+
+        $this->assertDatabaseCount('sales', 0);
+    }
+
     public function test_selling_before_absen_is_refused(): void
     {
+        $attendance = app(AttendanceService::class);
+        $attendance->clockIn($this->barista);
+        $attendance->openStaffWindow($this->barista);
         $this->stockCart($this->coffee, 10);
 
         $this->sell([['product_id' => $this->coffee->id, 'qty' => 1]])
@@ -402,6 +417,125 @@ class SaleTest extends TestCase
 
         $this->assertSame(0, Sale::query()->count());
         $this->assertSame(10, $this->cartStock($this->coffee));
+    }
+
+    public function test_yesterdays_window_does_not_open_todays_sale(): void
+    {
+        $this->clockIn();
+        $this->stockCart($this->coffee, 10);
+        Carbon::setTestNow(now()->addDay());
+
+        try {
+            $this->sell([['product_id' => $this->coffee->id, 'qty' => 1]], [
+                'operating_date' => Carbon::yesterday()->toDateString(),
+            ])
+                ->assertStatus(422)->assertJsonPath('code', 'DAY_NOT_OPEN');
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_unsent_offline_sale_waits_for_todays_window_then_records_at_todays_price(): void
+    {
+        $this->clockIn();
+        $this->stockCart($this->coffee, 5);
+        Carbon::setTestNow(now()->addDay());
+
+        try {
+            $today = Carbon::today()->toDateString();
+            $payload = ['uuid' => (string) Str::uuid(), 'lines' => [['product_id' => $this->coffee->id, 'qty' => 1]]];
+            $key = $payload['uuid'];
+            $this->actingAs($this->staff, 'sanctum')->withHeader('Idempotency-Key', $key)
+                ->postJson('/api/v1/sales', $payload)
+                ->assertStatus(422)->assertJsonPath('code', 'DAY_NOT_OPEN');
+            ProductPriceVersion::create([
+                'product_id' => $this->coffee->id,
+                'cost_price_minor' => 15000,
+                'sell_price_minor' => 30000,
+                'effective_from' => now(),
+            ]);
+            $attendance = app(AttendanceService::class);
+            $attendance->clockIn($this->barista);
+            $attendance->openStaffWindow($this->barista);
+            $attendance->clockIn($this->staff);
+            StaffAssignment::create([
+                'user_id' => $this->staff->id,
+                'cart_id' => $this->cart->id,
+                'location_id' => $this->location->id,
+                'operating_date' => $today,
+                'assigned_by' => $this->barista->id,
+                'kitchen_id' => $this->kitchen->id,
+            ]);
+
+            $this->actingAs($this->staff, 'sanctum')->withHeader('Idempotency-Key', $key)
+                ->postJson('/api/v1/sales', $payload)
+                ->assertCreated()->assertJsonPath('data.operating_date', $today)
+                ->assertJsonPath('data.total_amount', 30000);
+            $this->assertSame(4, $this->cartStock($this->coffee));
+            $this->assertDatabaseCount('sales', 1);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_recorded_uuid_replays_after_the_window_closes(): void
+    {
+        $this->clockIn();
+        $this->stockCart($this->coffee, 10);
+        $payload = ['uuid' => (string) Str::uuid(), 'lines' => [['product_id' => $this->coffee->id, 'qty' => 1]]];
+        $first = $this->actingAs($this->staff, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/sales', $payload)->assertCreated();
+        Carbon::setTestNow(now()->addDay());
+
+        try {
+            $this->actingAs($this->staff, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
+                ->postJson('/api/v1/sales', $payload)->assertCreated()
+                ->assertJsonPath('data.id', $first->json('data.id'));
+            $this->assertDatabaseCount('sales', 1);
+            $this->assertSame(9, $this->cartStock($this->coffee));
+            $this->assertSame(1, OutboxEvent::query()->where('name', 'SaleRecorded')->count());
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_another_rider_cannot_replay_a_sale_uuid(): void
+    {
+        $this->clockIn();
+        $this->stockCart($this->coffee, 10);
+        $payload = ['uuid' => (string) Str::uuid(), 'lines' => [['product_id' => $this->coffee->id, 'qty' => 1]]];
+        $this->actingAs($this->staff, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/sales', $payload)->assertCreated();
+
+        $other = User::factory()->role(Role::STAFF)->create();
+        $this->actingAs($other, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/sales', $payload)->assertForbidden();
+    }
+
+    public function test_rider_void_is_closed_but_finance_void_still_works(): void
+    {
+        $this->clockIn();
+        $this->stockCart($this->coffee, 10);
+        $saleId = $this->sell([['product_id' => $this->coffee->id, 'qty' => 1]])->assertCreated()->json('data.id');
+        Carbon::setTestNow(now()->addDay());
+
+        try {
+            $this->actingAs($this->staff, 'sanctum')->postJson("/api/v1/sales/{$saleId}/void", ['reason' => 'Salah tekan'])
+                ->assertStatus(422)->assertJsonPath('code', 'DAY_NOT_OPEN');
+            $this->actingAs(User::factory()->role(Role::FINANCE)->create(), 'sanctum')
+                ->postJson("/api/v1/sales/{$saleId}/void", ['reason' => 'Koreksi Finance'])
+                ->assertOk();
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_non_rider_roles_get_403_for_sale_creation(): void
+    {
+        foreach ([Role::RIDER, Role::BARISTA, Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR] as $role) {
+            $this->sell([['product_id' => $this->coffee->id, 'qty' => 1]], as: User::factory()->role($role)->create())
+                ->assertForbidden();
+        }
     }
 
     public function test_selling_without_a_cart_today_is_refused(): void

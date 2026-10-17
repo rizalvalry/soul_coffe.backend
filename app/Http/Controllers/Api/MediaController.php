@@ -8,6 +8,7 @@ use App\Http\Requests\StoreEvidenceMediaRequest;
 use App\Http\Requests\StoreHandoverMediaRequest;
 use App\Http\Resources\MediaResource;
 use App\Services\MediaService;
+use App\Services\RiderDayGate;
 use Illuminate\Support\Carbon;
 
 /**
@@ -19,10 +20,17 @@ use Illuminate\Support\Carbon;
  */
 class MediaController extends Controller
 {
-    public function __construct(private readonly MediaService $media) {}
+    public function __construct(
+        private readonly MediaService $media,
+        private readonly RiderDayGate $dayGate,
+    ) {}
 
     public function storeEvidence(StoreEvidenceMediaRequest $request)
     {
+        if ($request->user()->role === Role::STAFF) {
+            $this->dayGate->assertReady($request->user(), attendanceMessage: 'Absen dulu sebelum meminta refill.');
+        }
+
         $media = $this->media->storeEvidence(
             $request->file('file'),
             Carbon::parse($request->validated('taken_at')),

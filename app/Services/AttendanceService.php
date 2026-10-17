@@ -145,7 +145,7 @@ class AttendanceService
                     'StaffAttendanceWindowOpened',
                     'Absen rider dibuka',
                     sprintf('%s sudah membuka absen. Silakan absen untuk mulai bertugas.', $barista->name),
-                    ['role.STAFF', 'role.ADMINISTRATOR'],
+                    ['role.STAFF'],
                     $this->clockingStaffIds(),
                 );
             }

@@ -8,12 +8,14 @@ use App\Http\Requests\VoidSaleRequest;
 use App\Http\Resources\SaleResource;
 use App\Models\Sale;
 use App\Services\SaleService;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 use RuntimeException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
  * Sales from a cart, rider-side.
@@ -75,6 +77,10 @@ class SaleController extends Controller implements HasMiddleware
                 deviceId: $request->validated('device_id'),
                 idempotencyKey: $request->header('Idempotency-Key'),
             );
+        } catch (HttpResponseException $e) {
+            throw $e;
+        } catch (HttpException $e) {
+            throw $e;
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
@@ -93,6 +99,8 @@ class SaleController extends Controller implements HasMiddleware
     {
         try {
             $voided = $this->sales->void($sale, $request->user(), $request->validated('reason'));
+        } catch (HttpResponseException $e) {
+            throw $e;
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }

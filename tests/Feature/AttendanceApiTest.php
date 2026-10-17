@@ -3,9 +3,14 @@
 namespace Tests\Feature;
 
 use App\Enums\Role;
+use App\Events\SoulEvent;
+use App\Models\AppNotification;
+use App\Models\OutboxEvent;
 use App\Models\User;
 use App\Services\AttendanceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
 /**
@@ -125,6 +130,7 @@ class AttendanceApiTest extends TestCase
         $this->actingAs($this->staff, 'sanctum')
             ->getJson('/api/v1/absen/status')
             ->assertSuccessful()
+            ->assertJsonPath('data.staff_window_open', false)
             ->assertJsonPath('data.can_clock_in', false)
             ->assertJsonPath('data.blocked_reason', 'Menunggu Produksi membuka absen.');
     }
@@ -138,8 +144,45 @@ class AttendanceApiTest extends TestCase
         $this->actingAs($this->staff, 'sanctum')
             ->getJson('/api/v1/absen/status')
             ->assertSuccessful()
+            ->assertJsonPath('data.staff_window_open', true)
             ->assertJsonPath('data.can_clock_in', true)
             ->assertJsonPath('data.blocked_reason', null);
+    }
+
+    public function test_window_open_event_targets_active_riders_only_and_is_not_duplicated(): void
+    {
+        $other = User::factory()->role(Role::STAFF)->create(['is_active' => true]);
+        $inactive = User::factory()->role(Role::STAFF)->create(['is_active' => false]);
+        $runner = User::factory()->role(Role::RIDER)->create(['is_active' => true]);
+        app(AttendanceService::class)->clockIn($this->barista);
+
+        app(AttendanceService::class)->openStaffWindow($this->barista);
+        app(AttendanceService::class)->openStaffWindow($this->barista);
+
+        $outbox = OutboxEvent::query()->where('name', 'StaffAttendanceWindowOpened')->sole();
+        $this->assertSame(['role.STAFF'], $outbox->payload_json['channels']);
+        $recipients = AppNotification::query()->where('event_id', $outbox->event_id)
+            ->pluck('user_id')->sort()->values()->all();
+        $this->assertContains($this->staff->id, $recipients);
+        $this->assertContains($other->id, $recipients);
+        $this->assertNotContains($inactive->id, $recipients);
+        $this->assertNotContains($runner->id, $recipients);
+        $this->assertSame(1, OutboxEvent::query()->where('name', 'StaffAttendanceWindowOpened')->count());
+    }
+
+    public function test_window_open_broadcasts_only_after_outer_commit(): void
+    {
+        $attendance = app(AttendanceService::class);
+        $attendance->clockIn($this->barista);
+        Event::fake([SoulEvent::class]);
+
+        DB::transaction(function () use ($attendance): void {
+            $attendance->openStaffWindow($this->barista);
+            $this->assertSame(1, OutboxEvent::query()->where('name', 'StaffAttendanceWindowOpened')->count());
+            Event::assertNotDispatched(SoulEvent::class);
+        });
+
+        Event::assertDispatched(SoulEvent::class, fn (SoulEvent $event): bool => $event->payload['type'] === 'StaffAttendanceWindowOpened');
     }
 
     public function test_a_role_with_no_shift_is_told_so(): void

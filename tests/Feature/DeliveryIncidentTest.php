@@ -17,6 +17,7 @@ use App\Models\RefillRequest;
 use App\Models\StaffAssignment;
 use App\Models\StockLedger;
 use App\Models\User;
+use App\Services\AttendanceService;
 use App\Services\StockLedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -95,6 +96,11 @@ class DeliveryIncidentTest extends TestCase
             'assigned_by' => $this->admin->id,
             'kitchen_id' => $this->kitchen->id,
         ]);
+
+        $attendance = app(AttendanceService::class);
+        $attendance->clockIn($this->barista);
+        $attendance->openStaffWindow($this->barista);
+        $attendance->clockIn($this->staff);
 
         // The kitchen has to hold the cups it is about to send, or the write-off would be
         // measured against nothing.
