@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreRefillRequestRequest;
 use App\Http\Resources\RefillRequestResource;
 use App\Models\RefillRequest;
+use App\Services\RefillExpiryService;
 use App\Services\RefillRequestStateMachine;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -26,11 +27,20 @@ class RefillRequestController extends Controller
         'lines.product', 'evidencePhoto', 'signature', 'handoverPhoto',
     ];
 
-    public function __construct(private readonly RefillRequestStateMachine $stateMachine) {}
+    public function __construct(
+        private readonly RefillRequestStateMachine $stateMachine,
+        private readonly RefillExpiryService $expiry,
+    ) {}
 
     public function index(Request $request)
     {
         $user = $request->user();
+        match ($user->role) {
+            Role::STAFF => $this->expiry->expire(staffId: $user->id),
+            Role::BARISTA => $this->expiry->expire(kitchenId: $user->kitchen_id),
+            Role::RIDER => $this->expiry->expire(runnerId: $user->id),
+            default => $this->expiry->expire(),
+        };
 
         $query = RefillRequest::query()->with(self::EAGER);
 
@@ -61,6 +71,9 @@ class RefillRequestController extends Controller
     public function show(Request $request, RefillRequest $refill)
     {
         Gate::authorize('view', $refill);
+
+        $this->expiry->expire(refillId: $refill->id);
+        $refill->refresh();
 
         $refill->load(array_merge(self::EAGER, [
             'statusHistory' => fn ($query) => $query->orderBy('created_at'),

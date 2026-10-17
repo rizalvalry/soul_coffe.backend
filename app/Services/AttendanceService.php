@@ -129,7 +129,7 @@ class AttendanceService
             throw new RuntimeException('Absen dulu sebelum membuka absen rider.');
         }
 
-        return DB::transaction(function () use ($barista, $date): StaffAttendanceWindow {
+        $window = DB::transaction(function () use ($barista, $date): StaffAttendanceWindow {
             // firstOrCreate, not create: two baristas at the same kitchen both pressing this is a
             // race with an obvious right answer — the gate is open either way, and whoever got
             // there first stays recorded as the one who opened it.
@@ -152,6 +152,10 @@ class AttendanceService
 
             return $window;
         });
+
+        app(RefillExpiryService::class)->expire();
+
+        return $window;
     }
 
     public function isStaffWindowOpen(?Carbon $operatingDate = null): bool

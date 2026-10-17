@@ -13,8 +13,10 @@ use App\Models\Product;
 use App\Models\ProductPriceVersion;
 use App\Models\RefillRequest;
 use App\Models\StaffAssignment;
+use App\Models\StaffAttendanceWindow;
 use App\Models\User;
 use App\Services\AttendanceService;
+use App\Services\RefillExpiryDecisionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
@@ -172,23 +174,19 @@ class RefillFlowTest extends TestCase
     public function test_closed_day_rejects_refill_submit_cancel_and_evidence_upload(): void
     {
         $refill = $this->submitRefill();
-        Carbon::setTestNow(now()->addDay());
+        StaffAttendanceWindow::query()->delete();
 
-        try {
-            $this->actingAs($this->staff)->withHeader('Idempotency-Key', (string) Str::uuid())
-                ->postJson('/api/v1/refills', $this->refillPayload())
-                ->assertStatus(422)->assertJsonPath('code', 'DAY_NOT_OPEN');
-            $this->actingAs($this->staff)->withHeader('Idempotency-Key', (string) Str::uuid())
-                ->postJson("/api/v1/refills/{$refill->id}/cancel")
-                ->assertStatus(422)->assertJsonPath('code', 'DAY_NOT_OPEN');
-            $this->actingAs($this->staff)->postJson('/api/v1/media/evidence', [
-                'file' => UploadedFile::fake()->image('evidence.jpg'),
-                'taken_at' => now()->toIso8601String(),
-            ])->assertStatus(422)->assertJsonPath('code', 'DAY_NOT_OPEN');
-            $this->assertSame('SUBMITTED', $refill->fresh()->status->value);
-        } finally {
-            Carbon::setTestNow();
-        }
+        $this->actingAs($this->staff)->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/refills', $this->refillPayload())
+            ->assertStatus(422)->assertJsonPath('code', 'DAY_NOT_OPEN');
+        $this->actingAs($this->staff)->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson("/api/v1/refills/{$refill->id}/cancel")
+            ->assertStatus(422)->assertJsonPath('code', 'DAY_NOT_OPEN');
+        $this->actingAs($this->staff)->postJson('/api/v1/media/evidence', [
+            'file' => UploadedFile::fake()->image('evidence.jpg'),
+            'taken_at' => now()->toIso8601String(),
+        ])->assertStatus(422)->assertJsonPath('code', 'DAY_NOT_OPEN');
+        $this->assertSame('SUBMITTED', $refill->fresh()->status->value);
     }
 
     public function test_open_window_without_own_absen_rejects_refill(): void
@@ -268,15 +266,22 @@ class RefillFlowTest extends TestCase
         $this->assertDatabaseCount('refill_requests', 1);
     }
 
-    public function test_finance_and_production_transitions_continue_after_day_rollover(): void
+    public function test_stale_refill_expires_before_rider_cancel_and_finance_can_decide_without_window(): void
     {
         $refill = $this->submitRefill();
         Carbon::setTestNow(now()->addDay());
 
         try {
-            $this->approveRefill($refill, 5)->assertOk();
-            $this->actingAs($this->barista)->withHeader('Idempotency-Key', (string) Str::uuid())
-                ->postJson("/api/v1/refills/{$refill->id}/start-preparing")->assertOk();
+            $this->actingAs($this->staff)->withHeader('Idempotency-Key', (string) Str::uuid())
+                ->postJson("/api/v1/refills/{$refill->id}/cancel")->assertStatus(409);
+            $this->assertSame('EXPIRED', $refill->fresh()->status->value);
+            $this->assertSame(1, OutboxEvent::query()->where('name', 'RefillRequestExpired')->count());
+
+            $decision = app(RefillExpiryDecisionService::class)->decide(
+                $refill, $this->finance, 'failed', 'Cup tidak berpindah dari dapur.',
+            );
+            $this->assertSame('failed', $decision->outcome);
+            $this->assertSame('EXPIRED', $refill->fresh()->status->value);
         } finally {
             Carbon::setTestNow();
         }

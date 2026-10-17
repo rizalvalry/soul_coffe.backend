@@ -8,6 +8,7 @@ use App\Filament\Resources\CashCategories\CashCategoryResource;
 use App\Filament\Resources\CashTransactions\CashTransactionResource;
 use App\Filament\Resources\NewsPosts\NewsPostResource;
 use App\Filament\Resources\OfficeItems\OfficeItemResource;
+use App\Filament\Resources\RefillRequests\RefillRequestResource;
 use App\Models\NewsPost;
 use App\Models\User;
 use Filament\Facades\Filament;
@@ -134,6 +135,7 @@ class ContentCreatorPanelTest extends TestCase
                 CashCategoryResource::class,
                 CashAccountResource::class,
                 OfficeItemResource::class,
+                RefillRequestResource::class,
             ], true)) {
                 $this->assertFalse($resource::canViewAny(), "{$resource} must be Finance/Management only.");
 
