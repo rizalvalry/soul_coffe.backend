@@ -21,6 +21,8 @@ use UnitEnum;
 
 class PayrollConfiguration extends Page
 {
+    private const HISTORY_LIMIT = 100;
+
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedBanknotes;
 
     protected static string|UnitEnum|null $navigationGroup = 'Akuntansi';
@@ -272,7 +274,8 @@ class PayrollConfiguration extends Page
             return [];
         }
 
-        return DB::table($table)->orderByDesc('effective_from')->orderByDesc('id')->get()->toArray();
+        return DB::table($table)->orderByDesc('effective_from')->orderByDesc('id')
+            ->limit(self::HISTORY_LIMIT)->get()->toArray();
     }
 
     public function employeeOptions(): array
@@ -287,7 +290,8 @@ class PayrollConfiguration extends Page
     {
         Gate::authorize('manage-payroll');
 
-        return DB::table('payroll_ter_versions')->orderByDesc('effective_from')->orderBy('category')->get()->toArray();
+        return DB::table('payroll_ter_versions')->orderByDesc('effective_from')->orderBy('category')
+            ->limit(self::HISTORY_LIMIT)->get()->toArray();
     }
 
     public function typeOptions(): array

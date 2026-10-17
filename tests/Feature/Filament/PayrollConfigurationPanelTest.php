@@ -46,6 +46,23 @@ class PayrollConfigurationPanelTest extends TestCase
         $this->assertSame(['payroll_detail' => '[redacted]'], json_decode($audit->after_json, true));
     }
 
+    public function test_configuration_history_is_bounded_to_latest_100_rows(): void
+    {
+        $this->actingAs(User::factory()->role(Role::MANAGEMENT)->create());
+        foreach (range(0, 100) as $day) {
+            DB::table('rider_incentive_rules')->insert([
+                'effective_from' => date('Y-m-d', strtotime('2026-01-01 +'.$day.' days')),
+                'amount_per_cup_minor' => $day, 'target_cups' => 0, 'bonus_minor' => 0,
+                'source_note' => 'Synthetic history fixture',
+            ]);
+        }
+
+        $rows = Livewire::test(PayrollConfiguration::class)->instance()->rows('rider_incentive_rules');
+        $this->assertCount(100, $rows);
+        $this->assertSame(100, (int) $rows[0]->amount_per_cup_minor);
+        $this->assertSame(1, (int) $rows[99]->amount_per_cup_minor);
+    }
+
     public function test_administrator_and_finance_get_403_on_payroll_page_and_livewire_writes(): void
     {
         $this->seed(RolePermissionSeeder::class);

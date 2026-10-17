@@ -1,5 +1,6 @@
 <x-filament-panels::page>
     <p>Tambahkan versi baru untuk setiap perubahan. Nilai BPJS, PTKP, dan TER harus dicocokkan dengan regulasi oleh akuntan sebelum payroll pertama. Semua nominal dalam rupiah bulat; tarif dalam basis poin (2% = 200).</p>
+    <p>Riwayat di halaman ini menampilkan 100 versi terbaru per bagian; versi lama tetap tersimpan.</p>
 
     @php
         $sections = [
