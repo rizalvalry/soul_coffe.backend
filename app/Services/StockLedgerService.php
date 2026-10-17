@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\MovementType;
 use App\Models\StockLedger;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -17,6 +18,7 @@ use RuntimeException;
 class StockLedgerService
 {
     public const KITCHEN = 'kitchen';
+
     public const CART = 'cart';
 
     // Phase 2: raw-material stock, same ledger, same numbering space as KITCHEN (location_id is
@@ -62,6 +64,7 @@ class StockLedgerService
         ?int $rawMaterialId = null,
         ?int $costMinor = null,
         ?string $note = null,
+        ?Carbon $occurredAt = null,
     ): StockLedger {
         $this->assertLocationType($locationType);
         $this->assertExactlyOneCatalogue($productId, $rawMaterialId);
@@ -89,6 +92,9 @@ class StockLedgerService
             'ref_type' => $refType,
             'ref_id' => $refId,
             'note' => $note,
+            // A late Finance recognition belongs to the original operating day for settlement.
+            // The decision table retains the actual posting time and decision maker.
+            'created_at' => $occurredAt ?? now(),
             'actor_id' => $actorId,
             'kitchen_id' => $kitchenId,
         ]);

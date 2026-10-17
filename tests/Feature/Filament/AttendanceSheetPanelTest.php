@@ -13,6 +13,7 @@ use App\Filament\Resources\CashTransactions\CashTransactionResource;
 use App\Filament\Resources\EmployeeProfiles\EmployeeProfileResource;
 use App\Filament\Resources\Journals\JournalResource;
 use App\Filament\Resources\OfficeItems\OfficeItemResource;
+use App\Filament\Resources\RefillRequests\RefillRequestResource;
 use App\Filament\Resources\Users\UserResource;
 use App\Models\Attendance;
 use App\Models\AttendanceMark;
@@ -97,7 +98,9 @@ class AttendanceSheetPanelTest extends TestCase
                     CashAccountResource::class,
                     CashCategoryResource::class,
                     CashTransactionResource::class,
-                    OfficeItemResource::class], true),
+                    OfficeItemResource::class,
+                    // T-035 gives Finance an explicit expiry decision desk.
+                    RefillRequestResource::class], true),
                 $resource::canViewAny(),
                 "{$resource} has the wrong visibility for FINANCE with only an attendance grant.",
             );

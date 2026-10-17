@@ -42,6 +42,9 @@ class RefillRequestResource extends JsonResource
             'operating_date' => $this->operating_date?->toDateString(),
             'status' => $this->status->value,
             'status_label' => $this->status->label(),
+            'status_message' => $this->status === RefillStatus::EXPIRED
+                ? 'Request ini tidak selesai pada tanggal operasionalnya. Rider dapat mengajukan request baru; Finance memutuskan barang fisik secara terpisah.'
+                : null,
             'version' => $this->version,
 
             'cart' => $this->whenLoaded('cart', fn () => [

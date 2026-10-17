@@ -413,7 +413,7 @@ class SettlementService
             type: 'SettlementExpectedStale', title: 'Ekspektasi setoran berubah',
             body: sprintf('Ekspektasi gerobak %s berubah setelah setoran dicatat.%s',
                 $settlement->cart?->code,
-                $stockCorrectionNeeded ? ' Periksa stok melalui Stock Opname karena penjualan terlambat.' : ''),
+                $stockCorrectionNeeded ? ' Periksa stok melalui Stock Opname karena stok gerobak berubah setelah setoran dicatat.' : ''),
             channels: array_merge(['role.FINANCE', 'role.MANAGEMENT'], array_map(fn (int $id): string => "user.{$id}", $recipientIds)),
             notifyUserIds: $recipientIds, status: $settlement->status,
             context: ['cart_id' => $cartId, 'operating_date' => $date->toDateString(), 'source_id' => $settlement->id],
