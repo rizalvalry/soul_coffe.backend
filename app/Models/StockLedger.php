@@ -34,6 +34,7 @@ class StockLedger extends Model
         'note',
         'actor_id',
         'kitchen_id',
+        'created_at',
     ];
 
     protected function casts(): array

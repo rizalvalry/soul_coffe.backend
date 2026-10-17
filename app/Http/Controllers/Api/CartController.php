@@ -6,6 +6,7 @@ use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CartResource;
 use App\Models\Cart;
+use App\Services\RefillExpiryService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
@@ -15,9 +16,12 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
  */
 class CartController extends Controller
 {
+    public function __construct(private readonly RefillExpiryService $expiry) {}
+
     public function index(Request $request): AnonymousResourceCollection
     {
         $user = $request->user();
+        $this->expiry->expire(staffId: $user->role === Role::STAFF ? $user->id : null);
 
         $query = Cart::query()->orderBy('code');
 

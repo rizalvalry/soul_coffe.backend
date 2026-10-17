@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * R2 — "one open refill request per cart" — is enforced by the DB-level unique
@@ -177,5 +178,10 @@ class RefillRequest extends Model
     public function statusHistory(): HasMany
     {
         return $this->hasMany(RefillStatusHistory::class, 'refill_request_id');
+    }
+
+    public function expiryDecision(): HasOne
+    {
+        return $this->hasOne(RefillExpiryDecision::class);
     }
 }

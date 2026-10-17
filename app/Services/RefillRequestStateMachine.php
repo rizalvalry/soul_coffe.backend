@@ -84,6 +84,9 @@ class RefillRequestStateMachine
             abort(403, 'Anda tidak bertugas di gerobak ini hari ini');
         }
 
+        // R2 must not let yesterday's unfinished request occupy this cart forever.
+        app(RefillExpiryService::class)->expire(cartId: $cartId);
+
         $evidence = Media::query()
             ->where('id', $data['evidence_media_id'])
             ->where('kind', 'evidence')
@@ -192,8 +195,11 @@ class RefillRequestStateMachine
      */
     public function approve(RefillRequest $refill, User $finance, array $data, ?string $deviceId = null): RefillRequest
     {
+        $this->expireBeforeWrite($refill);
+
         return DB::transaction(function () use ($refill, $finance, $data, $deviceId): RefillRequest {
             $locked = RefillRequest::query()->whereKey($refill->id)->lockForUpdate()->firstOrFail();
+            $this->assertCurrentOperatingDate($locked);
 
             $expectedVersion = $data['version'] ?? null;
             if ($expectedVersion !== null && (int) $expectedVersion !== $locked->version) {
@@ -277,8 +283,11 @@ class RefillRequestStateMachine
 
     public function reject(RefillRequest $refill, User $finance, string $reason, ?string $deviceId = null): RefillRequest
     {
+        $this->expireBeforeWrite($refill);
+
         return DB::transaction(function () use ($refill, $finance, $reason, $deviceId): RefillRequest {
             $locked = RefillRequest::query()->whereKey($refill->id)->lockForUpdate()->firstOrFail();
+            $this->assertCurrentOperatingDate($locked);
 
             if ($locked->status !== RefillStatus::SUBMITTED) {
                 abort(409, 'Request tidak dalam status menunggu approval.');
@@ -309,8 +318,11 @@ class RefillRequestStateMachine
 
     public function cancel(RefillRequest $refill, User $staff, ?string $deviceId = null): RefillRequest
     {
+        $this->expireBeforeWrite($refill);
+
         return DB::transaction(function () use ($refill, $staff, $deviceId): RefillRequest {
             $locked = RefillRequest::query()->whereKey($refill->id)->lockForUpdate()->firstOrFail();
+            $this->assertCurrentOperatingDate($locked);
 
             if ($locked->staff_id !== $staff->id) {
                 abort(403, 'Anda bukan pemilik request ini.');
@@ -342,6 +354,45 @@ class RefillRequestStateMachine
         });
     }
 
+    /** Expire an unfinished request from a previous operating date, without touching stock. */
+    public function expireIfStale(RefillRequest $refill): bool
+    {
+        return DB::transaction(function () use ($refill): bool {
+            $locked = RefillRequest::query()->whereKey($refill->id)->lockForUpdate()->firstOrFail();
+
+            if (! $locked->status->isOpen() || ! $locked->operating_date->lt(Carbon::today())) {
+                return false;
+            }
+
+            $from = $locked->status;
+            $locked->status = RefillStatus::EXPIRED;
+            $locked->version += 1;
+            $locked->save();
+
+            $this->history($locked, $from, RefillStatus::EXPIRED, null, 'Tanggal operasional terlewati; keputusan barang fisik menunggu Finance.');
+
+            $this->events->publish(
+                'RefillRequestExpired',
+                'Request refill kedaluwarsa',
+                "{$locked->code} · request hari sebelumnya tidak selesai. Rider dapat mengajukan request baru.",
+                array_merge(
+                    ['refill.'.$locked->id, 'cart.'.$locked->cart_id, 'kitchen.'.$locked->kitchen_id,
+                        'user.'.$locked->staff_id, 'role.FINANCE', 'role.MANAGEMENT'],
+                    $locked->rider_id ? ['user.'.$locked->rider_id] : [],
+                    $from === RefillStatus::READY_TO_PICK && $locked->rider_id === null ? ['role.RIDER'] : [],
+                ),
+                array_values(array_unique(array_filter(array_merge(
+                    [$locked->staff_id, $locked->barista_id, $locked->rider_id],
+                    $this->userIdsWithRole(Role::FINANCE),
+                )))),
+                $locked->id,
+                RefillStatus::EXPIRED->value,
+            );
+
+            return true;
+        });
+    }
+
     // ── PREPARE / READY ─────────────────────────────────────────────────────
 
     /**
@@ -352,8 +403,11 @@ class RefillRequestStateMachine
      */
     public function startPreparing(RefillRequest $refill, User $barista, ?string $deviceId = null): RefillRequest
     {
+        $this->expireBeforeWrite($refill);
+
         return DB::transaction(function () use ($refill, $barista, $deviceId): RefillRequest {
             $locked = RefillRequest::query()->whereKey($refill->id)->lockForUpdate()->firstOrFail();
+            $this->assertCurrentOperatingDate($locked);
 
             if ($locked->status !== RefillStatus::APPROVED) {
                 abort(409, 'Request belum disetujui Finance.');
@@ -389,8 +443,11 @@ class RefillRequestStateMachine
      */
     public function markReady(RefillRequest $refill, User $barista, array $data, ?string $deviceId = null): RefillRequest
     {
+        $this->expireBeforeWrite($refill);
+
         return DB::transaction(function () use ($refill, $barista, $data, $deviceId): RefillRequest {
             $locked = RefillRequest::query()->whereKey($refill->id)->lockForUpdate()->firstOrFail();
+            $this->assertCurrentOperatingDate($locked);
 
             if ($locked->status !== RefillStatus::PREPARING) {
                 abort(409, 'Request tidak dalam status sedang disiapkan.');
@@ -478,10 +535,13 @@ class RefillRequestStateMachine
      */
     public function claim(RefillRequest $refill, User $rider, ?string $deviceId = null): RefillRequest
     {
+        $this->expireBeforeWrite($refill);
+
         return DB::transaction(function () use ($refill, $rider, $deviceId): RefillRequest {
             $updated = DB::table('refill_requests')
                 ->where('id', $refill->id)
                 ->where('status', RefillStatus::READY_TO_PICK->value)
+                ->whereDate('operating_date', Carbon::today()->toDateString())
                 ->whereNull('rider_id')
                 ->update([
                     'status' => RefillStatus::PICKED_UP->value,
@@ -548,8 +608,10 @@ class RefillRequestStateMachine
         array $data,
         ?UploadedFile $signatureFile = null,
     ): array {
+        $this->expireBeforeWrite($refill);
         $delivered = DB::transaction(function () use ($refill, $rider, $data, $signatureFile): RefillRequest {
             $locked = RefillRequest::query()->whereKey($refill->id)->lockForUpdate()->firstOrFail();
+            $this->assertCurrentOperatingDate($locked);
 
             if ($locked->status !== RefillStatus::PICKED_UP) {
                 abort(409, 'Request tidak dalam status sedang dikirim.');
@@ -784,6 +846,21 @@ class RefillRequestStateMachine
      * @param  array<int, array{product_id: int, qty_requested: int}>  $lines
      * @return array{0: array<int, array<string, mixed>>, 1: int}
      */
+    private function expireBeforeWrite(RefillRequest $refill): void
+    {
+        if ($this->expireIfStale($refill)) {
+            abort(409, 'Request sudah kedaluwarsa; muat ulang data.');
+        }
+    }
+
+    private function assertCurrentOperatingDate(RefillRequest $refill): void
+    {
+        if ($refill->status->isOpen() && $refill->operating_date->lt(Carbon::today())) {
+            // Covers midnight passing between expireBeforeWrite() and the transition's row lock.
+            abort(409, 'Request sudah melewati tanggal operasional; muat ulang data.');
+        }
+    }
+
     private function priceLines(array $lines): array
     {
         $productIds = collect($lines)->pluck('product_id')->unique()->values();
@@ -843,7 +920,7 @@ class RefillRequestStateMachine
         RefillRequest $refill,
         ?RefillStatus $from,
         RefillStatus $to,
-        User $actor,
+        ?User $actor,
         ?string $reason,
         ?string $deviceId = null,
         $gpsLat = null,
@@ -853,8 +930,8 @@ class RefillRequestStateMachine
             'refill_request_id' => $refill->id,
             'from_status' => $from,
             'to_status' => $to,
-            'actor_id' => $actor->id,
-            'actor_role' => $actor->role instanceof Role ? $actor->role->value : (string) $actor->role,
+            'actor_id' => $actor?->id,
+            'actor_role' => $actor === null ? 'SYSTEM' : ($actor->role instanceof Role ? $actor->role->value : (string) $actor->role),
             'reason' => $reason,
             'device_id' => $deviceId,
             'gps_lat' => $gpsLat,
