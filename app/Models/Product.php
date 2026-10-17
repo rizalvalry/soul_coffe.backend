@@ -6,10 +6,31 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class Product extends Model
 {
     use HasFactory;
+
+    public function save(array $options = []): bool
+    {
+        if (! $this->exists || ! $this->isDirty('unit')) {
+            return parent::save($options);
+        }
+
+        return DB::transaction(function () use ($options): bool {
+            // SaleService holds this same row lock until sale_lines are inserted.
+            DB::table($this->getTable())->where('id', $this->getKey())->lockForUpdate()->first(['id']);
+            if (DB::table('sale_lines')->where('product_id', $this->getKey())->lockForUpdate()->first(['id'])) {
+                throw ValidationException::withMessages([
+                    'unit' => 'Satuan produk yang sudah pernah dijual tidak dapat diubah.',
+                ]);
+            }
+
+            return parent::save($options);
+        });
+    }
 
     protected $fillable = [
         'code',
