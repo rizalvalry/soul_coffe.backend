@@ -23,7 +23,6 @@ class AttendanceService
     public function __construct(
         private readonly EventPublisher $events,
         private readonly AbsenGeofence $geofence,
-        private readonly RefillExpiryService $refillExpiry,
     ) {}
 
     /**
@@ -146,7 +145,7 @@ class AttendanceService
                     'StaffAttendanceWindowOpened',
                     'Absen rider dibuka',
                     sprintf('%s sudah membuka absen. Silakan absen untuk mulai bertugas.', $barista->name),
-                    ['role.STAFF', 'role.ADMINISTRATOR'],
+                    ['role.STAFF'],
                     $this->clockingStaffIds(),
                 );
             }
@@ -154,7 +153,7 @@ class AttendanceService
             return $window;
         });
 
-        $this->refillExpiry->expire();
+        app(RefillExpiryService::class)->expire();
 
         return $window;
     }

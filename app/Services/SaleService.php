@@ -47,7 +47,7 @@ class SaleService
 {
     public function __construct(
         private readonly StockLedgerService $ledger,
-        private readonly AttendanceService $attendance,
+        private readonly RiderDayGate $dayGate,
         private readonly EventPublisher $events,
         private readonly StaffLocationService $locations,
         private readonly SettlementService $settlements,
@@ -66,18 +66,22 @@ class SaleService
         ?string $note = null,
         ?string $deviceId = null,
         ?string $idempotencyKey = null,
-        ?Carbon $operatingDate = null,
     ): Sale {
         if ($staff->role !== Role::STAFF) {
             throw new RuntimeException('Hanya rider yang mencatat penjualan gerobak.');
         }
 
-        $date = ($operatingDate ?? Carbon::today())->startOfDay();
+        $date = Carbon::today();
 
-        // Rule 1 — see the class docblock.
-        if (! $this->attendance->hasClockedIn($staff, $date)) {
-            throw new RuntimeException('Absen dulu sebelum mencatat penjualan.');
+        // A UUID replay is a read of an already accepted sale, including across days.
+        $existing = Sale::query()->where('uuid', $uuid)->first();
+        if ($existing) {
+            abort_unless($existing->staff_id === $staff->id, 403);
+
+            return $existing;
         }
+
+        $this->dayGate->assertReady($staff, $date);
 
         // Rule 2.
         $assignment = StaffAssignment::query()
@@ -106,6 +110,8 @@ class SaleService
             // cannot both pass the check.
             $existing = Sale::query()->where('uuid', $uuid)->first();
             if ($existing) {
+                abort_unless($existing->staff_id === $staff->id, 403);
+
                 return $existing;
             }
 
@@ -234,7 +240,8 @@ class SaleService
                     'action' => 'sale.late_after_settlement', 'subject_type' => Sale::class,
                     'subject_id' => $sale->id, 'before_json' => null,
                     'after_json' => ['cart_id' => $cart->id, 'operating_date' => $date->toDateString(),
-                        'stock_movement' => 'partially_or_already_disposed', 'uncovered_qty_by_product' => $uncoveredStock],
+                        'stock_movement' => 'partially_or_already_disposed',
+                        'uncovered_qty_by_product' => $uncoveredStock],
                     'ip' => request()->ip(), 'device_id' => $deviceId,
                 ]);
             }
@@ -306,6 +313,10 @@ class SaleService
      */
     public function void(Sale $sale, User $actor, string $reason): Sale
     {
+        if ($actor->role === Role::STAFF) {
+            $this->dayGate->assertReady($actor);
+        }
+
         $reason = trim($reason);
 
         if ($reason === '') {

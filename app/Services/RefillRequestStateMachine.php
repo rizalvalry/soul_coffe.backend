@@ -48,6 +48,7 @@ class RefillRequestStateMachine
         private readonly EventPublisher $events,
         private readonly RefillCodeGenerator $codes,
         private readonly MediaService $media,
+        private readonly RiderDayGate $dayGate,
     ) {}
 
     // ── SUBMIT ──────────────────────────────────────────────────────────────
@@ -67,11 +68,15 @@ class RefillRequestStateMachine
         // two requests for the same compose action.
         $existing = RefillRequest::query()->where('uuid', $data['uuid'])->first();
         if ($existing) {
+            abort_unless($existing->staff_id === $staff->id, 403);
+
             return $existing;
         }
 
-        $cartId = (int) $data['cart_id'];
         $today = Carbon::today();
+        $this->dayGate->assertReady($staff, $today, attendanceMessage: 'Absen dulu sebelum meminta refill.');
+
+        $cartId = (int) $data['cart_id'];
 
         $assignment = StaffAssignment::query()
             ->where('user_id', $staff->id)
@@ -105,9 +110,29 @@ class RefillRequestStateMachine
         $outOfHours = $this->isOutOfHours($assignment->kitchen);
 
         $refill = DB::transaction(function () use (
-            $staff, $data, $cartId, $kitchenId, $today, $evidence,
+            $staff, $data, $cartId, $kitchenId, $today,
             $lineInputs, $totalCost, $outOfHours, $idempotencyKey,
         ): RefillRequest {
+            $evidence = Media::query()
+                ->where('id', $data['evidence_media_id'])
+                ->where('kind', 'evidence')
+                ->lockForUpdate()
+                ->first();
+
+            if (! $evidence) {
+                throw ValidationException::withMessages([
+                    'evidence_media_id' => ['Foto bukti tidak ditemukan atau tidak valid.'],
+                ]);
+            }
+
+            abort_unless($evidence->uploaded_by === $staff->id, 403);
+
+            if ($evidence->refillRequestsAsEvidence()->exists()) {
+                throw ValidationException::withMessages([
+                    'evidence_media_id' => ['Foto bukti sudah dipakai pada request refill lain.'],
+                ]);
+            }
+
             $refill = null;
             $lastException = null;
 
@@ -319,6 +344,7 @@ class RefillRequestStateMachine
     public function cancel(RefillRequest $refill, User $staff, ?string $deviceId = null): RefillRequest
     {
         $this->expireBeforeWrite($refill);
+        $this->dayGate->assertReady($staff, attendanceMessage: 'Absen dulu sebelum meminta refill.');
 
         return DB::transaction(function () use ($refill, $staff, $deviceId): RefillRequest {
             $locked = RefillRequest::query()->whereKey($refill->id)->lockForUpdate()->firstOrFail();

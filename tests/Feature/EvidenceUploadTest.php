@@ -9,6 +9,7 @@ use App\Models\CentralKitchen;
 use App\Models\Media;
 use App\Models\RefillRequest;
 use App\Models\User;
+use App\Services\AttendanceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -46,6 +47,12 @@ class EvidenceUploadTest extends TestCase
 
         $this->staff = User::factory()->role(Role::STAFF)->create(['kitchen_id' => $kitchen->id]);
         $this->otherStaff = User::factory()->role(Role::STAFF)->create(['kitchen_id' => $kitchen->id]);
+        $barista = User::factory()->role(Role::BARISTA)->create(['kitchen_id' => $kitchen->id]);
+        $attendance = app(AttendanceService::class);
+        $attendance->clockIn($barista);
+        $attendance->openStaffWindow($barista);
+        $attendance->clockIn($this->staff);
+        $attendance->clockIn($this->otherStaff);
     }
 
     /** The exact same file object cannot be replayed twice, so build an identical one twice. */

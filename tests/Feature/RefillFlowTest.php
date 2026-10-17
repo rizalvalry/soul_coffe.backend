@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\Role;
+use App\Models\Attendance;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\Location;
@@ -12,7 +13,10 @@ use App\Models\Product;
 use App\Models\ProductPriceVersion;
 use App\Models\RefillRequest;
 use App\Models\StaffAssignment;
+use App\Models\StaffAttendanceWindow;
 use App\Models\User;
+use App\Services\AttendanceService;
+use App\Services\RefillExpiryDecisionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
@@ -106,6 +110,11 @@ class RefillFlowTest extends TestCase
             'assigned_by' => $this->admin->id,
             'kitchen_id' => $this->kitchen->id,
         ]);
+
+        $attendance = app(AttendanceService::class);
+        $attendance->clockIn($this->barista);
+        $attendance->openStaffWindow($this->barista);
+        $attendance->clockIn($this->staff);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────
@@ -150,6 +159,132 @@ class RefillFlowTest extends TestCase
         $response->assertCreated();
 
         return RefillRequest::findOrFail($response->json('data.id'));
+    }
+
+    private function refillPayload(): array
+    {
+        return [
+            'uuid' => (string) Str::uuid(),
+            'cart_id' => $this->cart->id,
+            'evidence_media_id' => $this->makeEvidenceMedia($this->staff)->id,
+            'lines' => [['product_id' => $this->product->id, 'qty_requested' => 1]],
+        ];
+    }
+
+    public function test_closed_day_rejects_refill_submit_cancel_and_evidence_upload(): void
+    {
+        $refill = $this->submitRefill();
+        StaffAttendanceWindow::query()->delete();
+
+        $this->actingAs($this->staff)->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/refills', $this->refillPayload())
+            ->assertStatus(422)->assertJsonPath('code', 'DAY_NOT_OPEN');
+        $this->actingAs($this->staff)->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson("/api/v1/refills/{$refill->id}/cancel")
+            ->assertStatus(422)->assertJsonPath('code', 'DAY_NOT_OPEN');
+        $this->actingAs($this->staff)->postJson('/api/v1/media/evidence', [
+            'file' => UploadedFile::fake()->image('evidence.jpg'),
+            'taken_at' => now()->toIso8601String(),
+        ])->assertStatus(422)->assertJsonPath('code', 'DAY_NOT_OPEN');
+        $this->assertSame('SUBMITTED', $refill->fresh()->status->value);
+    }
+
+    public function test_open_window_without_own_absen_rejects_refill(): void
+    {
+        Attendance::query()->where('user_id', $this->staff->id)->delete();
+
+        $this->actingAs($this->staff)->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/refills', $this->refillPayload())
+            ->assertStatus(422)->assertJsonPath('message', 'Absen dulu sebelum meminta refill.');
+    }
+
+    public function test_wrong_role_cannot_submit_or_cancel_refill(): void
+    {
+        $refill = $this->submitRefill();
+
+        foreach ([Role::RIDER, Role::BARISTA, Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR] as $role) {
+            $actor = User::factory()->role($role)->create();
+            $this->actingAs($actor)->withHeader('Idempotency-Key', (string) Str::uuid())
+                ->postJson('/api/v1/refills', $this->refillPayload())->assertForbidden();
+            $this->actingAs($actor)->withHeader('Idempotency-Key', (string) Str::uuid())
+                ->postJson("/api/v1/refills/{$refill->id}/cancel")->assertForbidden();
+        }
+    }
+
+    public function test_another_rider_cannot_replay_a_refill_uuid(): void
+    {
+        $refill = $this->submitRefill();
+        $other = User::factory()->role(Role::STAFF)->create();
+
+        $this->actingAs($other)->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/refills', [
+                ...$this->refillPayload(),
+                'uuid' => $refill->uuid,
+            ])->assertForbidden();
+    }
+
+    public function test_recorded_refill_uuid_replays_on_closed_day_without_another_request(): void
+    {
+        $refill = $this->submitRefill();
+        Carbon::setTestNow(now()->addDay());
+
+        try {
+            $this->actingAs($this->staff)->withHeader('Idempotency-Key', (string) Str::uuid())
+                ->postJson('/api/v1/refills', [
+                    ...$this->refillPayload(),
+                    'uuid' => $refill->uuid,
+                ])->assertCreated()->assertJsonPath('data.id', $refill->id);
+            $this->assertDatabaseCount('refill_requests', 1);
+            $this->assertSame(1, OutboxEvent::query()->where('name', 'RefillRequestSubmitted')->count());
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_refill_rejects_another_riders_evidence(): void
+    {
+        $other = User::factory()->role(Role::STAFF)->create();
+        $payload = $this->refillPayload();
+        $payload['evidence_media_id'] = $this->makeEvidenceMedia($other)->id;
+
+        $this->actingAs($this->staff)->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/refills', $payload)->assertForbidden();
+        $this->assertDatabaseCount('refill_requests', 0);
+    }
+
+    public function test_refill_rejects_evidence_already_attached_to_another_request(): void
+    {
+        $refill = $this->submitRefill();
+        $this->actingAs($this->staff)->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson("/api/v1/refills/{$refill->id}/cancel")->assertOk();
+        $payload = $this->refillPayload();
+        $payload['evidence_media_id'] = $refill->evidence_photo_id;
+
+        $this->actingAs($this->staff)->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/refills', $payload)
+            ->assertStatus(422)->assertJsonValidationErrors('evidence_media_id');
+        $this->assertDatabaseCount('refill_requests', 1);
+    }
+
+    public function test_stale_refill_expires_before_rider_cancel_and_finance_can_decide_without_window(): void
+    {
+        $refill = $this->submitRefill();
+        Carbon::setTestNow(now()->addDay());
+
+        try {
+            $this->actingAs($this->staff)->withHeader('Idempotency-Key', (string) Str::uuid())
+                ->postJson("/api/v1/refills/{$refill->id}/cancel")->assertStatus(409);
+            $this->assertSame('EXPIRED', $refill->fresh()->status->value);
+            $this->assertSame(1, OutboxEvent::query()->where('name', 'RefillRequestExpired')->count());
+
+            $decision = app(RefillExpiryDecisionService::class)->decide(
+                $refill, $this->finance, 'failed', 'Cup tidak berpindah dari dapur.',
+            );
+            $this->assertSame('failed', $decision->outcome);
+            $this->assertSame('EXPIRED', $refill->fresh()->status->value);
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     private function approveRefill(RefillRequest $refill, int $qtyApproved, ?int $version = null, ?string $partialReason = null)

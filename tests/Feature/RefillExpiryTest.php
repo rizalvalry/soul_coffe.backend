@@ -169,6 +169,11 @@ class RefillExpiryTest extends TestCase
 
     public function test_lazy_expiry_on_read_and_new_submission_releases_r2(): void
     {
+        $attendance = app(AttendanceService::class);
+        $attendance->clockIn($this->barista);
+        $attendance->openStaffWindow($this->barista);
+        $attendance->clockIn($this->staff);
+
         $old = $this->refill(RefillStatus::APPROVED);
         StaffAssignment::create([
             'user_id' => $this->staff->id, 'cart_id' => $old->cart_id,
@@ -178,10 +183,17 @@ class RefillExpiryTest extends TestCase
             ])->id,
         ]);
 
+        $newEvidence = Media::create([
+            'kind' => 'evidence', 'path' => 'evidence/'.Str::uuid().'.jpg',
+            'mime' => 'image/jpeg', 'bytes' => 1000,
+            'sha256' => hash('sha256', (string) Str::uuid()),
+            'exif_taken_at' => now(), 'uploaded_by' => $this->staff->id,
+        ]);
+
         $new = $this->actingAs($this->staff)->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson('/api/v1/refills', [
                 'uuid' => (string) Str::uuid(), 'cart_id' => $old->cart_id,
-                'evidence_media_id' => $old->evidence_photo_id,
+                'evidence_media_id' => $newEvidence->id,
                 'lines' => [['product_id' => $this->product->id, 'qty_requested' => 2]],
             ]);
         $new->assertCreated()->assertJsonPath('data.status', 'SUBMITTED');
