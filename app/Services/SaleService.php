@@ -133,6 +133,9 @@ class SaleService
 
             $products = Product::query()
                 ->whereIn('id', $productIds)
+                ->orderBy('id')
+                // Keep each sold unit stable through the sale-line inserts for payroll cups.
+                ->lockForUpdate()
                 ->get()
                 ->keyBy('id');
 
