@@ -19,7 +19,11 @@ use Illuminate\Validation\ValidationException;
 
 class PayrollRunService
 {
-    public function __construct(private readonly PayrollCalculator $calculator, private readonly JournalService $journal) {}
+    public function __construct(
+        private readonly PayrollCalculator $calculator,
+        private readonly JournalService $journal,
+        private readonly RiderCommissionService $commissions,
+    ) {}
 
     public function create(string $period, User $actor): PayrollRun
     {
@@ -167,6 +171,9 @@ class PayrollRunService
                 return;
             }
             $this->draftOnly($run);
+            if ($run->period_start->format('Y-m-t') >= today()->toDateString()) {
+                throw ValidationException::withMessages(['run' => 'Periode payroll masih berjalan. Tunggu sampai bulan selesai sebelum Approve ya.']);
+            }
             if (($previousAccrual?->id ?? 0) !== $expectedPriorAccrualId) {
                 throw ValidationException::withMessages(['run' => 'Permintaan Approve ini sudah kedaluwarsa. Muat ulang run ya.']);
             }
@@ -174,6 +181,12 @@ class PayrollRunService
             $this->calculate($run);
             $this->assertNoLockedDecemberDependency($run);
             $items = $run->items()->with('user')->get();
+            if ($this->commissions->hasUnlockedClosing(
+                $items->pluck('user_id')->map(fn ($id): int => (int) $id)->all(),
+                $run->period_start->format('Y-m-d'), $run->period_start->format('Y-m-t'),
+            )) {
+                throw ValidationException::withMessages(['run' => 'Masih ada Closing Rider yang setoran-nya belum di-approve. Selesaikan dulu sebelum Approve payroll ya.']);
+            }
             $debits = [];
             $credits = [];
             foreach ($items as $item) {

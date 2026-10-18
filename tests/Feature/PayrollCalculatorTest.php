@@ -102,7 +102,7 @@ class PayrollCalculatorTest extends TestCase
         }
     }
 
-    public function test_rider_incentive_excludes_void_sales_and_applies_target_bonus(): void
+    public function test_legacy_flat_rule_and_sales_remain_stored_but_do_not_pay_without_closing(): void
     {
         $this->tax();
         DB::table('rider_incentive_rules')->insert([
@@ -139,10 +139,13 @@ class PayrollCalculatorTest extends TestCase
         $rider->update(['role' => Role::MANAGEMENT]);
         $result = app(PayrollCalculator::class)->calculate($rider->refresh(), '2026-10');
 
-        $this->assertSame(10, $result['rider_cups']);
-        $this->assertSame(15000, $result['rider_incentive_minor']);
-        $this->assertSame(10015000, $result['taxable_gross_minor']);
-        $this->assertSame(9514250, $result['take_home_minor']);
+        $this->assertSame(10, (int) DB::table('sale_lines')->where('product_id', $product->id)
+            ->join('sales', 'sales.id', '=', 'sale_lines.sale_id')->whereNull('sales.voided_at')
+            ->where('sales.operating_date', '2026-10-10')->sum('sale_lines.qty'));
+        $this->assertSame(0, $result['rider_cups']);
+        $this->assertSame(0, $result['rider_incentive_minor']);
+        $this->assertSame(10000000, $result['taxable_gross_minor']);
+        $this->assertSame(9500000, $result['take_home_minor']);
     }
 
     public function test_manual_kasbon_and_taxable_earning_affect_take_home(): void

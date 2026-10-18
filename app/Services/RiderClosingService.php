@@ -116,6 +116,7 @@ class RiderClosingService
             'transfer_minor' => $existing?->transfer_minor ?? 0,
             'cash_minor' => $existing?->cash_minor ?? 0,
             'lines' => $lines,
+            'commission' => app(RiderCommissionService::class)->day($rider->id, $date->toDateString()),
         ];
     }
 

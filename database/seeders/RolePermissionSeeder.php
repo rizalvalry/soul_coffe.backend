@@ -38,5 +38,8 @@ class RolePermissionSeeder extends Seeder
 
         // Finance receives deposits and approves the cup disposition in the CMS.
         PermissionMatrix::set(Role::FINANCE, PanelModule::SETTLEMENTS, ['view', 'create', 'edit']);
+
+        // Finance maintains the Rider tier schedule; Management inherits this grant.
+        PermissionMatrix::set(Role::FINANCE, PanelModule::RIDER_COMMISSIONS, ['view', 'create', 'edit']);
     }
 }
