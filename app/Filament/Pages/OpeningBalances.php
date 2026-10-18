@@ -9,8 +9,14 @@ use App\Models\JournalEntry;
 use App\Services\JournalService;
 use App\Services\Menu\MenuLabels;
 use BackedEnum;
+use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Filament\Schemas\Components\Section;
+use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
@@ -59,6 +65,24 @@ class OpeningBalances extends Page
     public function accounts(): mixed
     {
         return Account::query()->where('is_active', true)->orderBy('code')->get(['id', 'code', 'name']);
+    }
+
+    public function form(Schema $schema): Schema
+    {
+        return $schema->components([
+            Section::make('Isi saldo awal')->schema([
+                DatePicker::make('entryDate')->label('Tanggal cutover')->required(),
+                Repeater::make('lines')->label('Baris saldo awal')->schema([
+                    Select::make('account_id')->label('Akun')
+                        ->options(fn (): array => $this->accounts()->mapWithKeys(
+                            fn (Account $account): array => [$account->id => $account->code.' — '.$account->name],
+                        )->all())->searchable()->required(),
+                    TextInput::make('debit_minor')->label('Debit (Rp)')->numeric()->minValue(0),
+                    TextInput::make('credit_minor')->label('Kredit (Rp)')->numeric()->minValue(0),
+                ])->columns(['default' => 1, 'md' => 3])->minItems(2)
+                    ->addActionLabel('Tambah Baris')->reorderable(false)->columnSpanFull(),
+            ]),
+        ]);
     }
 
     public function addLine(): void

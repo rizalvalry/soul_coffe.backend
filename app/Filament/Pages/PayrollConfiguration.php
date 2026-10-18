@@ -10,8 +10,14 @@ use App\Models\User;
 use App\Services\Menu\MenuLabels;
 use App\Services\PayrollRunService;
 use BackedEnum;
+use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Crypt;
@@ -87,6 +93,142 @@ class PayrollConfiguration extends Page
         $this->annualVersion = ['effective_from' => '', 'source_note' => ''];
         $this->annualBracket = ['version_id' => '', 'lower_taxable_minor' => 0, 'upper_taxable_minor' => null, 'rate_bps' => 0];
         $this->preview = ['user_id' => '', 'period' => now()->format('Y-m')];
+    }
+
+    public function previewForm(Schema $schema): Schema
+    {
+        return $schema->components([
+            Select::make('user_id')->label('Karyawan')
+                ->options(fn (): array => collect($this->employeeOptions())
+                    ->mapWithKeys(fn (User $user): array => [$user->id => $user->name])->all())
+                ->searchable()->required(),
+            TextInput::make('period')->label('Periode')->type('month')->required(),
+        ])->columns(['default' => 1, 'md' => 2])->statePath('preview');
+    }
+
+    public function bpjsForm(Schema $schema): Schema
+    {
+        return $this->configurationForm($schema, 'bpjs');
+    }
+
+    public function ptkpForm(Schema $schema): Schema
+    {
+        return $this->configurationForm($schema, 'ptkp');
+    }
+
+    public function terForm(Schema $schema): Schema
+    {
+        return $this->configurationForm($schema, 'ter');
+    }
+
+    public function incentiveForm(Schema $schema): Schema
+    {
+        return $this->configurationForm($schema, 'incentive');
+    }
+
+    public function componentForm(Schema $schema): Schema
+    {
+        return $this->configurationForm($schema, 'component');
+    }
+
+    public function terPublicationForm(Schema $schema): Schema
+    {
+        return $schema->components([
+            Select::make('category')->label('Kategori')->options(['A' => 'A', 'B' => 'B', 'C' => 'C'])->required(),
+            DatePicker::make('effective_from')->label('Berlaku mulai')->required(),
+        ])->columns(['default' => 1, 'md' => 2])->statePath('terPublication');
+    }
+
+    public function verificationForm(Schema $schema): Schema
+    {
+        return $schema->components([
+            TextInput::make('verificationNote')->label('Catatan verifikasi'),
+        ]);
+    }
+
+    public function annualVersionForm(Schema $schema): Schema
+    {
+        return $schema->components([
+            DatePicker::make('effective_from')->label('Berlaku mulai')->required(),
+            TextInput::make('source_note')->label('Sumber regulasi')->required(),
+        ])->columns(['default' => 1, 'md' => 2])->statePath('annualVersion');
+    }
+
+    public function annualBracketForm(Schema $schema): Schema
+    {
+        return $schema->components([
+            Select::make('version_id')->label('Versi')
+                ->options(fn (): array => collect($this->rows('payroll_annual_tax_versions'))
+                    ->mapWithKeys(fn ($version): array => [$version->id => $version->effective_from])->all())->required(),
+            TextInput::make('lower_taxable_minor')->label('Dasar mulai (Rp)')->numeric()->minValue(0)->required(),
+            TextInput::make('upper_taxable_minor')->label('Dasar sampai (kosong = tanpa batas)')->numeric()->minValue(0),
+            TextInput::make('rate_bps')->label('Tarif (bps)')->numeric()->minValue(0)->maxValue(10000)->required(),
+        ])->columns(['default' => 1, 'md' => 2])->statePath('annualBracket');
+    }
+
+    public function entryForm(Schema $schema): Schema
+    {
+        return $schema->components([
+            Select::make('user_id')->label('Karyawan')
+                ->options(fn (): array => collect($this->employeeOptions())
+                    ->mapWithKeys(fn (User $user): array => [$user->id => $user->name])->all())
+                ->searchable()->required(),
+            Select::make('component_type_id')->label('Jenis komponen')
+                ->options(fn (): array => collect($this->typeOptions())
+                    ->mapWithKeys(fn ($type): array => [$type->id => $type->name.' ('.$type->effective_from->format('Y-m-d').')'])->all())
+                ->searchable()->required(),
+            DatePicker::make('period_start')->label('Awal periode (tanggal 1)')->required(),
+            TextInput::make('amount_minor')->label('Nominal (Rp)')->numeric()->minValue(1)->required(),
+            TextInput::make('note')->label('Catatan'),
+        ])->columns(['default' => 1, 'md' => 3])->statePath('entry');
+    }
+
+    private function configurationForm(Schema $schema, string $state): Schema
+    {
+        $fields = match ($state) {
+            'bpjs' => [
+                'effective_from' => 'Berlaku mulai', 'jht_employer_bps' => 'JHT perusahaan (bps)',
+                'jht_employee_bps' => 'JHT karyawan (bps)', 'jp_employer_bps' => 'JP perusahaan (bps)',
+                'jp_employee_bps' => 'JP karyawan (bps)', 'jkk_employer_bps' => 'JKK perusahaan (bps)',
+                'jkk_employee_bps' => 'JKK karyawan (bps)', 'jkm_employer_bps' => 'JKM perusahaan (bps)',
+                'jkm_employee_bps' => 'JKM karyawan (bps)', 'health_employer_bps' => 'Kesehatan perusahaan (bps)',
+                'health_employee_bps' => 'Kesehatan karyawan (bps)', 'jp_wage_cap_minor' => 'Batas upah JP (Rp)',
+                'health_wage_cap_minor' => 'Batas upah Kesehatan (Rp)', 'source_note' => 'Sumber regulasi / catatan',
+            ],
+            'ptkp' => ['status' => 'Status', 'ter_category' => 'Kategori TER',
+                'annual_amount_minor' => 'PTKP tahunan (Rp)', 'effective_from' => 'Berlaku mulai',
+                'source_note' => 'Sumber regulasi / catatan'],
+            'ter' => ['category' => 'Kategori', 'lower_gross_minor' => 'Bruto mulai (Rp)',
+                'upper_gross_minor' => 'Bruto sampai (Rp, kosong = tanpa batas)', 'rate_bps' => 'Tarif (bps)',
+                'effective_from' => 'Berlaku mulai', 'source_note' => 'Sumber regulasi / catatan'],
+            'incentive' => ['effective_from' => 'Berlaku mulai', 'amount_per_cup_minor' => 'Per cup (Rp)',
+                'target_cups' => 'Target cup', 'bonus_minor' => 'Bonus target (Rp)', 'source_note' => 'Sumber / catatan'],
+            'component' => ['code' => 'Kode', 'name' => 'Nama', 'kind' => 'Jenis', 'taxable' => 'Kena pajak',
+                'account_id' => 'Akun potongan', 'effective_from' => 'Berlaku mulai', 'source_note' => 'Sumber / catatan'],
+        };
+        $components = [];
+        foreach ($fields as $field => $label) {
+            $components[] = match (true) {
+                $field === 'effective_from' => DatePicker::make($field)->label($label)->required(),
+                $field === 'source_note' => Textarea::make($field)->label($label)->columnSpanFull(),
+                $field === 'taxable' => Toggle::make($field)->label($label),
+                $field === 'status' => Select::make($field)->label($label)
+                    ->options(array_combine(['TK/0', 'TK/1', 'TK/2', 'TK/3', 'K/0', 'K/1', 'K/2', 'K/3'],
+                        ['TK/0', 'TK/1', 'TK/2', 'TK/3', 'K/0', 'K/1', 'K/2', 'K/3'])),
+                in_array($field, ['ter_category', 'category'], true) => Select::make($field)->label($label)
+                    ->options(['A' => 'A', 'B' => 'B', 'C' => 'C']),
+                $field === 'kind' => Select::make($field)->label($label)
+                    ->options(['EARNING' => 'Tunjangan / biaya', 'DEDUCTION' => 'Potongan']),
+                $field === 'account_id' => Select::make($field)->label($label)
+                    ->options(fn (): array => collect($this->accountOptions())
+                        ->mapWithKeys(fn ($account): array => [$account->id => $account->code.' · '.$account->name])->all())
+                    ->searchable(),
+                str_ends_with($field, '_minor') || str_ends_with($field, '_bps') || $field === 'target_cups' => TextInput::make($field)->label($label)->numeric()->minValue(0),
+                default => TextInput::make($field)->label($label),
+            };
+        }
+
+        return $schema->components($components)->columns(['default' => 1, 'md' => 3])->statePath($state);
     }
 
     public function previewPayroll(PayrollRunService $payroll): void

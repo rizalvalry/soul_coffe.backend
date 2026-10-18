@@ -6,7 +6,11 @@ use App\Exports\ManagementReportExport;
 use App\Services\Reporting\ManagementReportService;
 use BackedEnum;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Select;
 use Filament\Pages\Page;
+use Filament\Schemas\Components\Section;
+use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
@@ -52,6 +56,24 @@ class ManagementReports extends Page
         $this->toDate = $this->anchorDate;
         $this->reportFrom = $this->anchorDate;
         $this->reportTo = $this->anchorDate;
+    }
+
+    public function rangeForm(Schema $schema): Schema
+    {
+        return $schema->components([
+            Section::make('Pilih periode laporan')->schema([
+                Select::make('period')->label('Periode')->options([
+                    'daily' => 'Harian', 'weekly' => 'Mingguan (Senin–Minggu)',
+                    'monthly' => 'Bulanan', 'custom' => 'Rentang bebas',
+                ])->live()->required(),
+                DatePicker::make('anchorDate')->label('Tanggal acuan')
+                    ->visible(fn (): bool => $this->period !== 'custom')->required(),
+                DatePicker::make('fromDate')->label('Dari')
+                    ->visible(fn (): bool => $this->period === 'custom')->required(),
+                DatePicker::make('toDate')->label('Sampai')
+                    ->visible(fn (): bool => $this->period === 'custom')->required(),
+            ])->columns(['default' => 1, 'md' => 2]),
+        ]);
     }
 
     public function applyRange(): void

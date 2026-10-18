@@ -1,24 +1,9 @@
 <x-filament-panels::page>
     <div class="bsi">
-        <div class="bsi-sheet">
-            <div class="bsi-sheet__head"><h2 class="bsi-title">Pilih periode laporan</h2></div>
-            <form wire:submit="applyRange" x-data="{ period: @js($period) }" class="flex flex-wrap items-end gap-3">
-                <label class="bsi-field"><span class="bsi-label">Periode</span>
-                    <select wire:model="period" x-model="period" class="bsi-select">
-                        <option value="daily">Harian</option>
-                        <option value="weekly">Mingguan (Senin–Minggu)</option>
-                        <option value="monthly">Bulanan</option>
-                        <option value="custom">Rentang bebas</option>
-                    </select>
-                </label>
-                <div x-show="period === 'custom'" class="flex flex-wrap gap-3">
-                    <label class="bsi-field"><span class="bsi-label">Dari</span><input type="date" wire:model="fromDate" class="bsi-input"></label>
-                    <label class="bsi-field"><span class="bsi-label">Sampai</span><input type="date" wire:model="toDate" class="bsi-input"></label>
-                </div>
-                <div x-show="period !== 'custom'">
-                    <label class="bsi-field"><span class="bsi-label">Tanggal acuan</span><input type="date" wire:model="anchorDate" class="bsi-input"></label>
-                </div>
-                <button type="submit" class="bsi-btn bsi-btn--primary">Tampilkan</button>
+        <div>
+            <form wire:submit="applyRange">
+                {{ $this->rangeForm }}
+                <div class="bsi-toolbar bsi-toolbar--end"><x-filament::button type="submit">Tampilkan</x-filament::button></div>
             </form>
             @foreach (['period', 'anchorDate', 'fromDate', 'toDate', 'range'] as $field)
                 @error($field)<p class="text-red-600">{{ $message }}</p>@enderror

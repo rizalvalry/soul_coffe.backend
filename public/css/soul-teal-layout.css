@@ -7,6 +7,139 @@
   gap: 24px;
   font-size: 14px;
   line-height: 1.45;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Payroll pages still use Livewire forms with many conditional sections. Give their
+   native controls the same compiled theme tokens as the other CMS sheets. */
+.bsi-erp {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--bsi-ink);
+}
+
+.bsi-erp > section {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 20px 24px;
+  background: var(--bsi-surface);
+  border: 1px solid var(--bsi-hairline);
+  border-radius: var(--sc-radius-lg);
+  box-shadow: var(--bsi-shadow-card);
+}
+
+.bsi-erp > section:first-child:has(.fi-sc-section) {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.bsi-erp form > .fi-grid {
+  flex: 1 1 100%;
+  width: 100%;
+}
+
+.bsi-erp form > .fi-btn {
+  margin-left: auto;
+}
+
+.bsi-erp h2 {
+  margin: 0 0 12px;
+  color: var(--bsi-ink);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.bsi-erp form,
+.bsi-erp section > div.flex {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.bsi-erp form > label,
+.bsi-erp form > div > label {
+  display: grid;
+  gap: 6px;
+  flex: 1 1 220px;
+  min-width: min(220px, 100%);
+  max-width: 100%;
+}
+
+.bsi-erp input:not([type="checkbox"]),
+.bsi-erp select,
+.bsi-erp textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 12px;
+  color: var(--bsi-ink);
+  background: var(--bsi-surface);
+  border: 1px solid var(--bsi-hairline);
+  border-radius: var(--sc-radius-sm);
+}
+
+.bsi-erp button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 8px 15px;
+  color: var(--bsi-ink);
+  background: var(--bsi-canvas);
+  border: 1px solid var(--bsi-hairline);
+  border-radius: var(--sc-radius-sm);
+  cursor: pointer;
+}
+
+.bsi-erp button[type="submit"] {
+  color: var(--bsi-ink-inverse);
+  background: var(--bsi-ink);
+  border-color: var(--bsi-ink);
+}
+
+.bsi-erp table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.bsi-erp table th,
+.bsi-erp table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--bsi-hairline);
+  text-align: left;
+  vertical-align: top;
+}
+
+.bsi-erp table th {
+  color: var(--bsi-ink-2);
+  background: var(--bsi-surface);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.bsi-erp table td.bsi-num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.bsi-erp .overflow-x-auto {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.bsi-erp [role="alert"],
+.bsi-erp .text-red-600 {
+  color: var(--sc-text-danger, #a63d3d);
 }
 
 .bsi *,
@@ -21,6 +154,10 @@
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 16px;
+}
+
+.bsi-toolbar--end {
+  justify-content: flex-end;
 }
 
 .bsi-toolbar__spacer {
@@ -74,7 +211,8 @@
 
 
 .bsi-field {
-  min-width: 168px;
+  min-width: min(168px, 100%);
+  max-width: 100%;
 }
 
 .bsi-input,
@@ -264,6 +402,15 @@
   overflow: hidden;
 }
 
+.bsi-sheet > .bsi-toolbar,
+.bsi-sheet > form {
+  padding: 20px 24px;
+}
+
+.bsi-sheet > .bsi-scroll {
+  max-width: 100%;
+}
+
 .bsi-sheet__head {
   display: flex;
   flex-wrap: wrap;
@@ -392,6 +539,17 @@
   font-family: var(--bsi-font-mono);
   font-size: 11px;
   color: var(--bsi-ink);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.bsi-commission-intro {
+  margin: 0 0 16px;
+}
+
+.bsi-commission-actions {
+  margin: 16px 0 24px;
 }
 
 .bsi-grid .bsi-num--quiet {
@@ -863,6 +1021,9 @@
 
 
 @media (max-width: 640px) {
+  .bsi-erp > section {
+    padding: 16px;
+  }
   .bsi-card,
   .bsi-sheet,
   .bsi-note {
@@ -870,6 +1031,11 @@
   }
 
   .bsi-sheet__head {
+    padding: 16px;
+  }
+
+  .bsi-sheet > .bsi-toolbar,
+  .bsi-sheet > form {
     padding: 16px;
   }
 
