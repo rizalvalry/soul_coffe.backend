@@ -26,7 +26,7 @@ class CarryForwardStaffAssignments extends Command
         $result = $carryForward->carryForward($date);
 
         $this->info(sprintf(
-            'Penugasan rider %s: %d dibuat, %d rider sudah punya penugasan (dilewati), %d gerobak sudah ada penugasannya (dilewati), %d rider tidak aktif (dilewati).',
+            'Penugasan rider %s: %d dibuat, %d rider sudah punya penugasan (dilewati), %d Coffee Bike sudah ada penugasannya (dilewati), %d rider tidak aktif (dilewati).',
             $date->toDateString(),
             $result['created'],
             $result['skipped_user_conflict'],

@@ -482,7 +482,7 @@ class RefillFlowTest extends TestCase
             ]);
 
         $response->assertStatus(409);
-        $response->assertJson(['message' => 'Masih ada request yang belum selesai untuk gerobak ini.']);
+        $response->assertJson(['message' => 'Masih ada request yang belum selesai untuk Coffee Bike ini.']);
     }
 
     // ── R12 idempotency ──────────────────────────────────────────────────

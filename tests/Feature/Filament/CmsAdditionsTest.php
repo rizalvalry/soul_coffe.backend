@@ -57,7 +57,7 @@ class CmsAdditionsTest extends TestCase
             ->assertSuccessful()
             ->assertSee('Total seluruh cups')
             ->assertSee('Masih di dapur')
-            ->assertSee('Sudah di gerobak');
+            ->assertSee('Sudah di Coffee Bike');
     }
 
     /** Read-only by nature, but still a matrix module: Finance can be given the overview. */

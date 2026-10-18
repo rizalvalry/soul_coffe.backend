@@ -129,8 +129,8 @@ class StaffLocationService
                 if ($arrivalChanged) {
                     $this->events->publish(
                         type: 'CartArrivalChanged',
-                        title: $isInside ? 'Gerobak tiba di dapur' : 'Gerobak keluar dari dapur',
-                        body: sprintf('Gerobak %s %s.', $assignment->cart->code, $isInside ? 'sudah tiba di dapur' : 'keluar dari area dapur'),
+                        title: $isInside ? 'Coffee Bike tiba di dapur' : 'Coffee Bike keluar dari dapur',
+                        body: sprintf('Coffee Bike %s %s.', $assignment->cart->code, $isInside ? 'sudah tiba di dapur' : 'keluar dari area dapur'),
                         channels: ['role.FINANCE', 'role.MANAGEMENT'],
                         status: $isInside ? 'ARRIVED' : 'DEPARTED',
                         context: [

@@ -31,7 +31,7 @@ class DailyTargetsTable
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('cart.code')
-                    ->label('Gerobak')
+                    ->label('Coffee Bike')
                     ->placeholder('Semua')
                     ->sortable(),
                 TextColumn::make('location.name')
@@ -53,7 +53,7 @@ class DailyTargetsTable
                     ->label('Produk')
                     ->relationship('product', 'name'),
                 SelectFilter::make('cart')
-                    ->label('Gerobak')
+                    ->label('Coffee Bike')
                     ->relationship('cart', 'code'),
                 SelectFilter::make('weekday')
                     ->label('Hari')

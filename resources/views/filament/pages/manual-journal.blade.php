@@ -18,7 +18,7 @@
                 @php($accounts = $this->accounts())
                 @php($carts = $this->carts())
                 <table class="bsi-grid">
-                    <thead><tr><th>Akun</th><th>Debit (Rp)</th><th>Kredit (Rp)</th><th>Gerobak (opsional)</th><th></th></tr></thead>
+                    <thead><tr><th>Akun</th><th>Debit (Rp)</th><th>Kredit (Rp)</th><th>Coffee Bike (opsional)</th><th></th></tr></thead>
                     <tbody>
                         @foreach ($lines as $index => $line)
                             <tr wire:key="manual-line-{{ $index }}">
@@ -41,8 +41,8 @@
                                     @error("lines.$index.credit_minor") <span role="alert">{{ $message }}</span> @enderror
                                 </td>
                                 <td>
-                                    <select class="bsi-select" wire:model="lines.{{ $index }}.cart_id" aria-label="Gerobak baris {{ $index + 1 }}">
-                                        <option value="">Tanpa gerobak</option>
+                                    <select class="bsi-select" wire:model="lines.{{ $index }}.cart_id" aria-label="Coffee Bike baris {{ $index + 1 }}">
+                                        <option value="">Tanpa Coffee Bike</option>
                                         @foreach ($carts as $cart)
                                             <option value="{{ $cart->id }}">{{ $cart->code }}</option>
                                         @endforeach

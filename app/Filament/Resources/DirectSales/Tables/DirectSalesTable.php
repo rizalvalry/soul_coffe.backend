@@ -11,10 +11,11 @@ use App\Services\DirectSaleService;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
+use Filament\Tables\Columns\Summarizers\Sum;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Enums\FiltersLayout;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
-use Filament\Tables\Enums\FiltersLayout;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
@@ -39,7 +40,7 @@ class DirectSalesTable
                     ->sortable(),
 
                 TextColumn::make('cart.code')
-                    ->label('Gerobak')
+                    ->label('Coffee Bike')
                     ->badge()
                     ->searchable()
                     ->sortable(),
@@ -59,14 +60,14 @@ class DirectSalesTable
                     ->label('Cups')
                     ->numeric()
                     ->sortable()
-                    ->summarize(\Filament\Tables\Columns\Summarizers\Sum::make()->label('Total cups')),
+                    ->summarize(Sum::make()->label('Total cups')),
 
                 TextColumn::make('total_amount_minor')
                     ->label('Nilai')
                     ->formatStateUsing(fn (int $state): string => 'Rp '.number_format($state, 0, ',', '.'))
                     ->sortable()
                     ->summarize(
-                        \Filament\Tables\Columns\Summarizers\Sum::make()
+                        Sum::make()
                             ->label('Total nilai')
                             ->formatStateUsing(fn (?int $state): string => 'Rp '.number_format((int) $state, 0, ',', '.')),
                     ),
@@ -106,7 +107,7 @@ class DirectSalesTable
                     ->query(fn (Builder $query): Builder => $query->whereNotNull('voided_at')),
 
                 SelectFilter::make('cart_id')
-                    ->label('Gerobak')
+                    ->label('Coffee Bike')
                     ->options(fn (): array => Cart::query()->orderBy('code')->pluck('code', 'id')->all())
                     ->searchable(),
             ], layout: FiltersLayout::AboveContent)
@@ -118,7 +119,7 @@ class DirectSalesTable
                     ->visible(fn (DirectSale $record): bool => ! $record->isVoided() && static::mayVoid())
                     ->requiresConfirmation()
                     ->modalHeading('Batalkan transaksi ini?')
-                    ->modalDescription('Cups yang terjual dikembalikan ke stok gerobak lewat buku besar. Tidak bisa dilakukan lagi setelah setoran gerobak ini untuk tanggal tersebut direkonsiliasi.')
+                    ->modalDescription('Cups yang terjual dikembalikan ke stok Coffee Bike lewat buku besar. Tidak bisa dilakukan lagi setelah setoran Coffee Bike ini untuk tanggal tersebut direkonsiliasi.')
                     ->modalSubmitActionLabel('Batalkan transaksi')
                     ->schema([
                         Textarea::make('reason')
@@ -139,7 +140,7 @@ class DirectSalesTable
                         Notification::make()
                             ->success()
                             ->title('Transaksi dibatalkan')
-                            ->body('Cups sudah dikembalikan ke stok gerobak.')
+                            ->body('Cups sudah dikembalikan ke stok Coffee Bike.')
                             ->send();
                     }),
             ])

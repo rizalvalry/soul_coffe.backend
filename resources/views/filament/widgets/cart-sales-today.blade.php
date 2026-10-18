@@ -16,8 +16,8 @@
             <div class="bsi-sheet">
                 <div class="bsi-sheet__head">
                     <div class="bsi-sheet__head-left">
-                        <span class="bsi-kicker">Hari ini · per gerobak di lokasinya</span>
-                        <h2 class="bsi-title">Penjualan gerobak</h2>
+                        <span class="bsi-kicker">Hari ini · per Coffee Bike di lokasinya</span>
+                        <h2 class="bsi-title">Penjualan Coffee Bike</h2>
                     </div>
 
                     @if ($peak['area'])
@@ -31,14 +31,14 @@
                 @if ($rows === [])
                     <div class="bsi-empty">
                         <p class="bsi-empty__title">Belum ada transaksi hari ini</p>
-                        <p>Baris di sini terisi sendiri begitu rider mencatat penjualan dari gerobaknya.</p>
+                        <p>Baris di sini terisi sendiri begitu rider mencatat penjualan dari Coffee Bike-nya.</p>
                     </div>
                 @else
                     <div class="bsi-scroll">
                         <table class="bsi-grid">
                             <thead>
                                 <tr>
-                                    <th class="bsi-name">Gerobak</th>
+                                    <th class="bsi-name">Coffee Bike</th>
                                     <th>Rider</th>
                                     <th class="bsi-num">Cups</th>
                                     <th class="bsi-num">Pendapatan</th>
@@ -58,7 +58,7 @@
                             </tbody>
                             <tfoot>
                                 <tr class="bsi-foot-total">
-                                    <td class="bsi-name">{{ $totals['carts'] }} gerobak</td>
+                                    <td class="bsi-name">{{ $totals['carts'] }} unit Coffee Bike</td>
                                     <td></td>
                                     <td class="bsi-num">{{ number_format($totals['cups'], 0, ',', '.') }}</td>
                                     <td class="bsi-num">Rp {{ number_format($totals['revenue'], 0, ',', '.') }}</td>

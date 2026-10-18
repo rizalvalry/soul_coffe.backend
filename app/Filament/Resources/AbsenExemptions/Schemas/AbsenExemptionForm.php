@@ -17,7 +17,7 @@ class AbsenExemptionForm
         return $schema
             ->components([
                 Select::make('cart_id')
-                    ->label('Gerobak')
+                    ->label('Coffee Bike')
                     ->options(fn (): array => Cart::query()
                         ->whereIn('status', ['active', 'maintenance'])
                         ->orderBy('code')
@@ -25,7 +25,7 @@ class AbsenExemptionForm
                         ->all())
                     ->searchable()
                     ->required()
-                    ->helperText('Izin melekat pada gerobaknya, bukan pada orangnya — siapa pun yang ditugaskan ke gerobak ini pada tanggal tersebut ikut memakainya.'),
+                    ->helperText('Izin melekat pada Coffee Bike-nya, bukan pada orangnya — siapa pun yang ditugaskan ke Coffee Bike ini pada tanggal tersebut ikut memakainya.'),
 
                 Radio::make('mode')
                     ->label('Bentuk izin')

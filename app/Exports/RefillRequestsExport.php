@@ -21,7 +21,7 @@ class RefillRequestsExport implements FromCollection, ShouldAutoSize, WithHeadin
     public function headings(): array
     {
         return [
-            'Tanggal Operasional', 'Kode', 'Gerobak', 'Dapur', 'Staff', 'Status',
+            'Tanggal Operasional', 'Kode', 'Coffee Bike', 'Dapur', 'Staff', 'Status',
             'Diajukan', 'Diputuskan Finance', 'Disiapkan', 'Diambil Rider', 'Diterima Staff',
             'Total Biaya (Rp)', 'Alasan Keputusan/Kekurangan',
         ];

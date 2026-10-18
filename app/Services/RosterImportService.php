@@ -93,7 +93,7 @@ class RosterImportService
             } elseif (mb_strlen($name) > 255 || mb_strlen($division) > 255 || mb_strlen($position) > 255) {
                 $reason = 'nilai melebihi batas kolom';
             } elseif ($cartCode !== '' && $role !== Role::STAFF) {
-                $reason = 'kode gerobak hanya boleh untuk Rider';
+                $reason = 'kode Coffee Bike hanya boleh untuk Rider';
             }
 
             if ($reason !== null) {
@@ -114,15 +114,15 @@ class RosterImportService
             if ($cartCode !== '') {
                 $normalizedCode = $this->normalizeCartCode($cartCode);
                 if ($normalizedCode === '') {
-                    $this->record($result, $line, 'skipped', 'kode gerobak tidak valid', true);
+                    $this->record($result, $line, 'skipped', 'kode Coffee Bike tidak valid', true);
 
                     continue;
                 }
                 $matches = $carts[$normalizedCode] ?? [];
                 if (count($matches) !== 1) {
                     $this->record($result, $line, 'skipped', count($matches) === 0
-                        ? 'kode gerobak tidak ditemukan'
-                        : 'kode gerobak ambigu', true);
+                        ? 'kode Coffee Bike tidak ditemukan'
+                        : 'kode Coffee Bike ambigu', true);
 
                     continue;
                 }

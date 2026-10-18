@@ -103,7 +103,7 @@ class CentralStock extends Page
                             ? [StockLedgerService::KITCHEN => 'Dapur Pusat']
                             : [
                                 StockLedgerService::KITCHEN => 'Dapur Pusat',
-                                StockLedgerService::CART => 'Gerobak',
+                                StockLedgerService::CART => 'Coffee Bike',
                             ])
                         ->default(StockLedgerService::KITCHEN)
                         ->required()
@@ -117,7 +117,7 @@ class CentralStock extends Page
                                     ->where('status', '!=', 'retired')
                                     ->orderBy('code')
                                     ->get(['id', 'code'])
-                                    ->mapWithKeys(fn (Cart $cart): array => [$cart->id => 'Gerobak '.$cart->code])
+                                    ->mapWithKeys(fn (Cart $cart): array => [$cart->id => 'Coffee Bike '.$cart->code])
                                     ->all(),
                                 StockLedgerService::KITCHEN => CentralKitchen::query()
                                     ->where('is_active', true)
@@ -176,7 +176,7 @@ class CentralStock extends Page
                         : (Product::query()->find($data['product_id'])?->name ?? 'Produk');
 
                     $locationLabel = $data['location_kind'] === StockLedgerService::CART
-                        ? 'Gerobak '.(Cart::query()->find($data['location_id'])?->code ?? $data['location_id'])
+                        ? 'Coffee Bike '.(Cart::query()->find($data['location_id'])?->code ?? $data['location_id'])
                         : (CentralKitchen::query()->find($data['location_id'])?->name ?? (string) $data['location_id']);
 
                     $service = app(StockAdjustmentService::class);

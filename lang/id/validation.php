@@ -55,7 +55,7 @@ return array_replace_recursive($messages, [
     'attributes' => [
         'uuid' => 'ID transaksi',
         'staff_id' => 'Rider tujuan',
-        'cart_id' => 'gerobak',
+        'cart_id' => 'Coffee Bike',
         'product_id' => 'produk',
         'operating_date' => 'tanggal operasional',
         'payment_method' => 'metode pembayaran',

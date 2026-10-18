@@ -82,7 +82,7 @@ class RosterImportTest extends TestCase
 
         $this->assertTrue($result['aborted']);
         $this->assertSame(1, $result['issues']);
-        $this->assertSame('kode gerobak tidak ditemukan', $result['rows'][0]['reason']);
+        $this->assertSame('kode Coffee Bike tidak ditemukan', $result['rows'][0]['reason']);
         $this->assertSame(0, User::query()->count());
         $this->assertSame(0, DB::table('employee_profiles')->count());
     }

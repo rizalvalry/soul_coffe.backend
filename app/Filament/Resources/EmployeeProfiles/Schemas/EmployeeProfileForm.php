@@ -25,11 +25,11 @@ class EmployeeProfileForm
                         ->label('Status kerja')
                         ->options(['tetap' => 'Tetap', 'kontrak' => 'Kontrak', 'harian' => 'Harian']),
                     Select::make('default_cart_id')
-                        ->label('Gerobak asal')
+                        ->label('Coffee Bike asal')
                         ->relationship('defaultCart', 'code')
                         ->searchable()
                         ->visible(fn (?EmployeeProfile $record): bool => $record?->user?->role === Role::STAFF)
-                        ->helperText('Gerobak asal buat referensi. Gerobak Rider hari ini mengikuti Add Stock dari Produksi.'),
+                        ->helperText('Coffee Bike asal buat referensi. Coffee Bike yang dipakai Rider hari ini mengikuti Add Stock dari Produksi.'),
                 ]),
             Section::make('Data payroll terbatas')
                 ->visible(fn (): bool => Gate::allows('manage-payroll'))

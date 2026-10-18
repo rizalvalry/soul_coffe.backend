@@ -15,7 +15,7 @@ class SettlementQueueExport implements FromCollection, ShouldAutoSize, WithHeadi
 
     public function headings(): array
     {
-        return ['Tanggal', 'Gerobak', 'Rider', 'Tiba', 'Ekspektasi Tunai Live', 'Ekspektasi QRIS Live', 'Ekspektasi Transfer Live', 'Ekspektasi Total Live', 'Ekspektasi Tercatat', 'Perubahan Live', 'Tunai Diterima', 'QRIS Diterima', 'Transfer Diterima', 'Selisih', 'Status'];
+        return ['Tanggal', 'Coffee Bike', 'Rider', 'Tiba', 'Ekspektasi Tunai Live', 'Ekspektasi QRIS Live', 'Ekspektasi Transfer Live', 'Ekspektasi Total Live', 'Ekspektasi Tercatat', 'Perubahan Live', 'Tunai Diterima', 'QRIS Diterima', 'Transfer Diterima', 'Selisih', 'Status'];
     }
 
     public function collection(): Collection

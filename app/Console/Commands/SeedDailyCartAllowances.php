@@ -30,7 +30,7 @@ class SeedDailyCartAllowances extends Command
         $created = $allowances->ensureForAllCarts($date);
 
         $this->info(sprintf(
-            'Uang harian %s: %d gerobak baru diisi (yang sudah ada dibiarkan).',
+            'Uang harian %s: %d Coffee Bike baru diisi (yang sudah ada dibiarkan).',
             $date->toDateString(),
             $created,
         ));

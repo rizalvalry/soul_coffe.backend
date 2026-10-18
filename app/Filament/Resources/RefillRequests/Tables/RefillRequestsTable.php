@@ -30,7 +30,7 @@ class RefillRequestsTable
             ->columns([
                 TextColumn::make('code')->label('Kode')->searchable(),
                 TextColumn::make('operating_date')->label('Tanggal operasional')->date('d M Y')->sortable(),
-                TextColumn::make('cart.code')->label('Gerobak'),
+                TextColumn::make('cart.code')->label('Coffee Bike'),
                 TextColumn::make('staff.name')->label('Rider'),
                 TextColumn::make('status')->label('Status')
                     ->formatStateUsing(fn (RefillStatus $state): string => $state->label())->badge(),

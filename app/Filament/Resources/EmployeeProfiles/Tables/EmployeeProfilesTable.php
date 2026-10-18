@@ -20,7 +20,7 @@ class EmployeeProfilesTable
                 TextColumn::make('user.role')->label('Role')->formatStateUsing(fn ($state): string => $state->label()),
                 TextColumn::make('division')->label('Divisi')->searchable()->sortable(),
                 TextColumn::make('position_title')->label('Jabatan')->searchable(),
-                TextColumn::make('defaultCart.code')->label('Gerobak asal')->placeholder('—'),
+                TextColumn::make('defaultCart.code')->label('Coffee Bike asal')->placeholder('—'),
                 IconColumn::make('payroll_active')
                     ->label('Payroll')
                     ->boolean()
