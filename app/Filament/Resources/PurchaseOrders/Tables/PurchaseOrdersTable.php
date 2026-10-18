@@ -4,21 +4,26 @@ namespace App\Filament\Resources\PurchaseOrders\Tables;
 
 use App\Enums\PanelModule;
 use App\Enums\PurchaseOrderStatus;
+use App\Models\CashAccount;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderLine;
 use App\Services\Access\PermissionMatrix;
 use App\Services\PurchaseOrderService;
 use Filament\Actions\Action;
+use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
@@ -68,6 +73,14 @@ class PurchaseOrdersTable
                         PurchaseOrderStatus::CANCELLED => 'danger',
                     }),
 
+                TextColumn::make('accounting_note')
+                    ->label('Jurnal')
+                    ->state(fn (PurchaseOrder $record): ?string => $record->status->isReceived() && $record->payment_method === null
+                        ? 'Sebelum cutover — tanpa jurnal' : null)
+                    ->badge()
+                    ->color('gray')
+                    ->placeholder('-'),
+
                 TextColumn::make('createdBy.name')
                     ->label('Dibuat oleh')
                     ->placeholder('-'),
@@ -78,6 +91,12 @@ class PurchaseOrdersTable
                     ->placeholder('-')
                     ->description(fn (PurchaseOrder $record): ?string => $record->receivedBy?->name)
                     ->toggleable(),
+                TextColumn::make('unpaid_minor')
+                    ->label('Sisa hutang')
+                    ->state(fn (PurchaseOrder $record): ?int => $record->status->isReceived() && $record->payment_method === 'CREDIT'
+                        ? $record->unpaidMinor() : null)
+                    ->money('IDR', 0)
+                    ->placeholder('-'),
             ])
             ->filters([
                 SelectFilter::make('status')
@@ -89,10 +108,31 @@ class PurchaseOrdersTable
                 Filter::make('open')
                     ->label('Hanya yang masih berjalan')
                     ->default()
-                    ->query(fn (Builder $query): Builder => $query->whereIn('status', [
-                        PurchaseOrderStatus::DRAFT->value,
-                        PurchaseOrderStatus::ORDERED->value,
-                    ])),
+                    ->query(fn (Builder $query): Builder => $query->where(function (Builder $query): void {
+                        $query->whereIn('status', [PurchaseOrderStatus::DRAFT->value, PurchaseOrderStatus::ORDERED->value])
+                            ->orWhere(function (Builder $query): void {
+                                $query->where('status', PurchaseOrderStatus::RECEIVED->value)
+                                    ->where('payment_method', 'CREDIT')
+                                    ->whereHas('receiptJournal', fn (Builder $receipt): Builder => $receipt
+                                        ->whereDoesntHave('reversal')
+                                        ->whereRaw('(
+                                            SELECT COALESCE(SUM(debit_minor), 0) FROM journal_lines
+                                            WHERE entry_id = journal_entries.id
+                                        ) > (
+                                            SELECT COALESCE(SUM(payment.amount_minor), 0)
+                                            FROM purchase_order_payments payment
+                                            JOIN journal_entries payment_journal
+                                              ON payment_journal.source_type = ?
+                                             AND payment_journal.source_id = payment.id
+                                             AND payment_journal.purpose = ?
+                                            WHERE payment.purchase_order_id = purchase_orders.id
+                                              AND NOT EXISTS (
+                                                SELECT 1 FROM journal_entries reversal
+                                                WHERE reversal.reverses_entry_id = payment_journal.id
+                                              )
+                                        )', ['purchase_order_payment', 'PAYMENT']));
+                            });
+                    })),
             ])
             ->recordActions([
                 Action::make('markOrdered')
@@ -120,6 +160,13 @@ class PurchaseOrdersTable
                     ->color('success')
                     ->visible(fn (PurchaseOrder $record): bool => $record->status->isOrdered() && static::mayOperate())
                     ->schema([
+                        Select::make('payment_method')->label('Cara bayar')
+                            ->options(['DIRECT' => 'Bayar langsung', 'CREDIT' => 'Kredit / hutang supplier'])
+                            ->required()->live(),
+                        Select::make('cash_account_id')->label('Akun kas / bank')
+                            ->options(fn (): array => static::cashAccountOptions())
+                            ->visible(fn (Get $get): bool => $get('payment_method') === 'DIRECT')
+                            ->required(fn (Get $get): bool => $get('payment_method') === 'DIRECT'),
                         Repeater::make('lines')
                             ->label('Jumlah Diterima')
                             ->schema([
@@ -127,7 +174,7 @@ class PurchaseOrdersTable
                                 TextInput::make('raw_material_name')->label('Bahan Baku')->disabled()->dehydrated(false),
                                 TextInput::make('qty_received')
                                     ->label('Jumlah Diterima')
-                                    ->numeric()
+                                    ->integer()
                                     ->minValue(0)
                                     ->required(),
                             ])
@@ -148,11 +195,11 @@ class PurchaseOrdersTable
                     ->modalSubmitActionLabel('Terima')
                     ->action(function (PurchaseOrder $record, array $data, PurchaseOrderService $service): void {
                         $quantities = collect($data['lines'] ?? [])
-                            ->mapWithKeys(fn (array $line): array => [(int) $line['raw_material_id'] => (int) $line['qty_received']])
+                            ->mapWithKeys(fn (array $line): array => [(int) $line['raw_material_id'] => $line['qty_received']])
                             ->all();
 
                         try {
-                            $service->receive($record, $quantities, Auth::user());
+                            $service->receive($record, $quantities, Auth::user(), $data['payment_method'], isset($data['cash_account_id']) ? (int) $data['cash_account_id'] : null);
                         } catch (RuntimeException $e) {
                             Notification::make()->danger()->title('Tidak bisa diterima')->body($e->getMessage())->send();
 
@@ -162,8 +209,32 @@ class PurchaseOrdersTable
                         Notification::make()
                             ->success()
                             ->title('Purchase order diterima')
-                            ->body('Stok bahan baku sudah bertambah sesuai jumlah yang diterima.')
+                            ->body('Stok dan jurnalnya sudah tercatat sesuai jumlah yang diterima.')
                             ->send();
+                    }),
+
+                Action::make('payDebt')
+                    ->label('Bayar hutang')
+                    ->icon('heroicon-o-banknotes')
+                    ->authorize(fn (): bool => static::mayOperate())
+                    ->visible(fn (PurchaseOrder $record): bool => $record->status->isReceived()
+                        && $record->payment_method === 'CREDIT'
+                        && $record->unpaidMinor() > 0
+                        && static::mayOperate())
+                    ->schema([
+                        Hidden::make('uuid')->default(fn (): string => (string) Str::uuid()),
+                        DatePicker::make('paid_on')->label('Tanggal bayar')->default(today())->required(),
+                        Select::make('cash_account_id')->label('Akun kas / bank')->options(fn (): array => static::cashAccountOptions())->required(),
+                        TextInput::make('amount_minor')->label('Nominal (Rp)')->numeric()->rule('integer')->minValue(1)->required(),
+                    ])
+                    ->fillForm(fn (PurchaseOrder $record): array => [
+                        'uuid' => (string) Str::uuid(), 'paid_on' => today()->toDateString(), 'amount_minor' => $record->unpaidMinor(),
+                    ])
+                    ->modalDescription(fn (PurchaseOrder $record): string => 'Sisa hutang: Rp'.number_format($record->unpaidMinor(), 0, ',', '.'))
+                    ->action(function (PurchaseOrder $record, array $data, PurchaseOrderService $service): void {
+                        abort_unless(static::mayOperate(), 403);
+                        $service->payDebt($record, Auth::user(), $data);
+                        Notification::make()->success()->title('Pembayaran hutang sudah tercatat')->send();
                     }),
 
                 Action::make('cancel')
@@ -194,5 +265,12 @@ class PurchaseOrdersTable
     private static function mayOperate(): bool
     {
         return PermissionMatrix::can(Auth::user(), PanelModule::PURCHASE_ORDERS, 'edit');
+    }
+
+    private static function cashAccountOptions(): array
+    {
+        return CashAccount::query()->where('is_active', true)->whereHas('account', fn (Builder $query): Builder => $query
+            ->where('is_active', true)->whereIn('code', ['1-1100', '1-1200', '1-1300']))
+            ->orderBy('name')->pluck('name', 'id')->all();
     }
 }
