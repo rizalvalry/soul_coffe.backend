@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class PurchaseOrder extends Model
 {
@@ -21,6 +22,8 @@ class PurchaseOrder extends Model
         'received_at',
         'created_by',
         'received_by',
+        'payment_method',
+        'cash_account_id',
     ];
 
     protected function casts(): array
@@ -55,5 +58,39 @@ class PurchaseOrder extends Model
     public function receivedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'received_by');
+    }
+
+    public function cashAccount(): BelongsTo
+    {
+        return $this->belongsTo(CashAccount::class);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(PurchaseOrderPayment::class);
+    }
+
+    public function receiptJournal(): HasOne
+    {
+        return $this->hasOne(JournalEntry::class, 'source_id')
+            ->where('source_type', 'purchase_order')->where('purpose', 'RECEIPT');
+    }
+
+    public function unpaidMinor(): int
+    {
+        if (! $this->status->isReceived() || $this->payment_method !== 'CREDIT') {
+            return 0;
+        }
+
+        $receipt = $this->receiptJournal()->whereDoesntHave('reversal')->first();
+        if (! $receipt) {
+            return 0;
+        }
+
+        $received = (int) $receipt->lines()->sum('debit_minor');
+        $paid = (int) $this->payments()->whereHas('journal', fn ($query) => $query->whereDoesntHave('reversal'))
+            ->sum('amount_minor');
+
+        return max(0, $received - $paid);
     }
 }

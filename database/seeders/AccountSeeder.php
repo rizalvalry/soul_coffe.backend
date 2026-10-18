@@ -17,6 +17,8 @@ class AccountSeeder extends Seeder
             ['1-1400', 'QRIS/Transfer Diterima (Kliring)', 'ASSET'],
             ['1-1500', 'Piutang Karyawan (Kasbon)', 'ASSET'],
             ['1-1600', 'Persediaan', 'ASSET'],
+            ['1-1700', 'Persediaan Bahan Baku', 'ASSET'],
+            ['2-1400', 'Hutang Supplier', 'LIABILITY'],
             ['2-1100', 'Utang Gaji', 'LIABILITY'],
             ['2-1200', 'Utang BPJS', 'LIABILITY'],
             ['2-1300', 'Utang PPh 21', 'LIABILITY'],
