@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Account;
 use App\Models\AccountingPeriod;
+use App\Models\AuditLog;
 use App\Models\JournalEntry;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
@@ -175,6 +176,18 @@ class JournalService
                     $entry->lines()->create($line);
                 }
 
+                if ($header['source_type'] === 'manual' && $header['purpose'] === 'MANUAL') {
+                    AuditLog::query()->create([
+                        'actor_id' => Auth::id(),
+                        'actor_role' => Auth::user()?->role?->value,
+                        'action' => 'journal.manual.posted',
+                        'subject_type' => JournalEntry::class,
+                        'subject_id' => $entry->id,
+                        'after_json' => ['number' => $entry->number, 'source_id' => $entry->source_id],
+                        'ip' => request()->ip(),
+                    ]);
+                }
+
                 return $entry;
             }, 3);
         } catch (UniqueConstraintViolationException $exception) {
@@ -219,6 +232,17 @@ class JournalService
                 'posted_by' => Auth::id() ?? $original->posted_by,
                 'reverses_entry_id' => $original->id,
             ], $lines);
+
+            AuditLog::query()->create([
+                'actor_id' => Auth::id(),
+                'actor_role' => Auth::user()?->role?->value,
+                'action' => 'journal.reversed',
+                'subject_type' => JournalEntry::class,
+                'subject_id' => $original->id,
+                'before_json' => ['status' => 'POSTED'],
+                'after_json' => ['reversal_entry_id' => $reversal->id, 'reason' => $reason],
+                'ip' => request()->ip(),
+            ]);
 
             return $reversal;
         }, 3);
