@@ -3,14 +3,22 @@
 namespace App\Services;
 
 use App\Enums\MovementType;
+use App\Enums\PanelModule;
 use App\Enums\PurchaseOrderStatus;
 use App\Enums\Role;
+use App\Models\Account;
+use App\Models\CashAccount;
+use App\Models\JournalEntry;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderLine;
+use App\Models\PurchaseOrderPayment;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 /**
@@ -28,6 +36,7 @@ class PurchaseOrderService
     public function __construct(
         private readonly StockLedgerService $ledger,
         private readonly RecipeService $recipes,
+        private readonly JournalService $journals,
     ) {}
 
     /**
@@ -113,13 +122,20 @@ class PurchaseOrderService
      * partial/second receive. A line with no explicit `$receivedQuantities` entry defaults to its
      * full `qty_ordered`.
      *
-     * @param  array<int,int>  $receivedQuantities  raw_material_id => qty actually delivered
+     * @param  array<int,int|string>  $receivedQuantities  raw_material_id => qty actually delivered
      */
-    public function receive(PurchaseOrder $po, array $receivedQuantities, User $actor): PurchaseOrder
+    public function receive(PurchaseOrder $po, array $receivedQuantities, User $actor, string $paymentMethod = 'CREDIT', ?int $cashAccountId = null): PurchaseOrder
     {
         $this->assertMayOperate($actor);
+        if (! in_array($paymentMethod, ['DIRECT', 'CREDIT'], true) || ($paymentMethod === 'DIRECT') !== ($cashAccountId !== null)) {
+            throw ValidationException::withMessages(['payment_method' => 'Pilih bayar langsung dengan akun kas/bank, atau kredit.']);
+        }
+        Validator::make(['received_quantities' => $receivedQuantities], [
+            'received_quantities' => ['array'],
+            'received_quantities.*' => ['integer'],
+        ], ['received_quantities.*.integer' => 'Jumlah diterima harus angka bulat ya.'])->validate();
 
-        $received = DB::transaction(function () use ($po, $receivedQuantities, $actor): PurchaseOrder {
+        $received = DB::transaction(function () use ($po, $receivedQuantities, $actor, $paymentMethod, $cashAccountId): PurchaseOrder {
             $locked = PurchaseOrder::query()->with('lines')->whereKey($po->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->status->isReceived()) {
@@ -130,6 +146,7 @@ class PurchaseOrderService
                 throw new RuntimeException('Tandai purchase order ini sudah dipesan dulu ya.');
             }
 
+            $amount = 0;
             foreach ($locked->lines as $line) {
                 $qtyReceived = array_key_exists($line->raw_material_id, $receivedQuantities)
                     ? (int) $receivedQuantities[$line->raw_material_id]
@@ -138,6 +155,12 @@ class PurchaseOrderService
                 if ($qtyReceived < 0) {
                     throw new RuntimeException('Jumlah diterima tidak boleh negatif.');
                 }
+
+                if ($qtyReceived > (int) $line->qty_ordered || ($qtyReceived > 0 && (int) $line->unit_cost_minor > intdiv(1000000000000 - $amount, $qtyReceived))) {
+                    throw ValidationException::withMessages(['lines' => 'Jumlah diterima atau total nilai PO tidak valid.']);
+                }
+                $lineAmount = $qtyReceived * (int) $line->unit_cost_minor;
+                $amount += $lineAmount;
 
                 $line->update(['qty_received' => $qtyReceived]);
 
@@ -153,15 +176,25 @@ class PurchaseOrderService
                         refType: 'purchase_order',
                         refId: $locked->id,
                         rawMaterialId: $line->raw_material_id,
-                        costMinor: $qtyReceived * $line->unit_cost_minor,
+                        costMinor: $lineAmount,
                     );
                 }
             }
 
+            if ($amount === 0) {
+                throw ValidationException::withMessages(['lines' => 'Isi minimal satu jumlah bahan baku yang diterima.']);
+            }
+
+            $cash = $paymentMethod === 'DIRECT' ? $this->cashAccount($cashAccountId) : null;
+
             $locked->status = PurchaseOrderStatus::RECEIVED;
             $locked->received_by = $actor->id;
             $locked->received_at = now();
+            $locked->payment_method = $paymentMethod;
+            $locked->cash_account_id = $cash?->id;
             $locked->save();
+
+            $this->postReceiptJournal($locked, $amount, $actor->id);
 
             return $locked->fresh(['lines']);
         });
@@ -185,6 +218,97 @@ class PurchaseOrderService
         }
 
         return $received;
+    }
+
+    public function payDebt(PurchaseOrder $po, User $actor, array $input): PurchaseOrderPayment
+    {
+        $this->assertMayOperate($actor);
+        if (! PermissionMatrix::can($actor, PanelModule::PURCHASE_ORDERS, 'edit')) {
+            abort(403);
+        }
+        $data = Validator::make($input, [
+            'uuid' => ['required', 'uuid'],
+            'paid_on' => ['required', 'date_format:Y-m-d'],
+            'cash_account_id' => ['required', 'integer', 'exists:cash_accounts,id'],
+            'amount_minor' => ['required', 'integer', 'min:1', 'max:1000000000000'],
+        ])->validate();
+
+        return DB::transaction(function () use ($po, $actor, $data): PurchaseOrderPayment {
+            $locked = PurchaseOrder::query()->whereKey($po->id)->lockForUpdate()->firstOrFail();
+            $existing = PurchaseOrderPayment::query()->where('uuid', $data['uuid'])->lockForUpdate()->first();
+            if ($existing) {
+                foreach (['purchase_order_id' => $locked->id, ...$data] as $field => $value) {
+                    $old = $field === 'paid_on' ? $existing->paid_on->toDateString() : $existing->$field;
+                    if ((string) $old !== (string) $value) {
+                        throw ValidationException::withMessages(['uuid' => 'Kunci pembayaran ini sudah dipakai untuk data lain.']);
+                    }
+                }
+
+                return $existing;
+            }
+
+            if (! $locked->status->isReceived() || $locked->payment_method !== 'CREDIT') {
+                throw ValidationException::withMessages(['purchase_order' => 'Hanya PO kredit yang sudah diterima yang bisa dibayar.']);
+            }
+            if ($locked->received_at === null || $data['paid_on'] < $locked->received_at->toDateString()) {
+                throw ValidationException::withMessages(['paid_on' => 'Tanggal bayar tidak boleh sebelum PO diterima ya.']);
+            }
+            // JournalService::reverse() locks this same row, so reversal cannot slip between
+            // checking the outstanding balance and posting the payment journal.
+            $receipt = $locked->receiptJournal()->lockForUpdate()->first();
+            if (! $receipt || $receipt->reversal()->lockForUpdate()->exists()) {
+                throw ValidationException::withMessages(['purchase_order' => 'Jurnal penerimaan PO ini sudah dibalik atau belum ada.']);
+            }
+            if ((int) $data['amount_minor'] > $locked->unpaidMinor()) {
+                throw ValidationException::withMessages(['amount_minor' => 'Nominal melebihi sisa hutang PO.']);
+            }
+            $cash = $this->cashAccount((int) $data['cash_account_id']);
+            $liability = Account::query()->where('code', '2-1400')->firstOrFail();
+            $payment = PurchaseOrderPayment::query()->create([
+                ...$data, 'purchase_order_id' => $locked->id, 'paid_by' => $actor->id,
+            ]);
+            $amount = (int) $data['amount_minor'];
+            $this->journals->post([
+                'entry_date' => $data['paid_on'],
+                'description' => 'Bayar hutang supplier PO '.$locked->id,
+                'source_type' => 'purchase_order_payment', 'source_id' => $payment->id,
+                'purpose' => 'PAYMENT', 'posted_by' => $actor->id,
+            ], [
+                ['account_id' => $liability->id, 'debit_minor' => $amount, 'credit_minor' => 0],
+                ['account_id' => $cash->account_id, 'debit_minor' => 0, 'credit_minor' => $amount],
+            ]);
+
+            return $payment;
+        }, 3);
+    }
+
+    private function postReceiptJournal(PurchaseOrder $po, int $amount, ?int $actorId): JournalEntry
+    {
+        $inventory = Account::query()->where('code', '1-1700')->firstOrFail();
+        $creditId = $po->payment_method === 'CREDIT'
+            ? Account::query()->where('code', '2-1400')->firstOrFail()->id
+            : $this->cashAccount($po->cash_account_id)->account_id;
+
+        return $this->journals->post([
+            'entry_date' => $po->received_at->toDateString(),
+            'description' => 'Penerimaan bahan baku PO '.$po->id,
+            'source_type' => 'purchase_order', 'source_id' => $po->id,
+            'purpose' => 'RECEIPT', 'posted_by' => $actorId,
+        ], [
+            ['account_id' => $inventory->id, 'debit_minor' => $amount, 'credit_minor' => 0],
+            ['account_id' => $creditId, 'debit_minor' => 0, 'credit_minor' => $amount],
+        ]);
+    }
+
+    private function cashAccount(?int $id): CashAccount
+    {
+        $cash = CashAccount::query()->with('account')->whereKey($id)->lockForUpdate()->first();
+        if (! $cash || ! $cash->is_active || ! $cash->account->is_active
+            || ! in_array($cash->account->code, ['1-1100', '1-1200', '1-1300'], true)) {
+            throw ValidationException::withMessages(['cash_account_id' => 'Pilih akun kas atau bank yang aktif.']);
+        }
+
+        return $cash;
     }
 
     /**
@@ -213,7 +337,7 @@ class PurchaseOrderService
     private function assertMayOperate(User $actor): void
     {
         if (! in_array($actor->role, [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT], true)) {
-            throw new RuntimeException('Cuma Administrator, Finance, atau Management yang bisa kelola purchase order.');
+            abort(403);
         }
     }
 }

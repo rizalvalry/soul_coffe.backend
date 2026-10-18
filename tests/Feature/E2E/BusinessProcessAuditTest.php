@@ -19,6 +19,7 @@ use App\Filament\Resources\PurchaseOrders\PurchaseOrderResource;
 use App\Filament\Resources\Users\UserResource;
 use App\Http\Resources\AllocationResource;
 use App\Models\Cart;
+use App\Models\CashAccount;
 use App\Models\CentralKitchen;
 use App\Models\DailyAllocation;
 use App\Models\JournalEntry;
@@ -197,6 +198,12 @@ class BusinessProcessAuditTest extends TestCase
             ['raw_material_id' => $material->id, 'qty_ordered' => 3000, 'unit_cost_minor' => 10],
         ], $this->finance);
         $orders->receive($orders->markOrdered($po, $this->finance), [], $this->finance);
+        $receiptJournal = JournalEntry::query()->where('source_type', 'purchase_order')
+            ->where('source_id', $po->id)->where('purpose', 'RECEIPT')->with('lines.account')->sole();
+        $this->assertSame(30000, (int) $receiptJournal->lines->sum('debit_minor'));
+        $this->assertSame(30000, (int) $receiptJournal->lines->sum('credit_minor'));
+        $this->assertSame('1-1700', $receiptJournal->lines->firstWhere('debit_minor', 30000)->account->code);
+        $this->assertSame('2-1400', $receiptJournal->lines->firstWhere('credit_minor', 30000)->account->code);
         $this->assertSame(3000, app(StockLedgerService::class)->rawMaterialStockFor(
             StockLedgerService::RAW_MATERIAL_STORE, $this->kitchen->id, $material->id,
         ));
@@ -427,6 +434,9 @@ class BusinessProcessAuditTest extends TestCase
         $po = app(PurchaseOrderService::class)->create($supplier->id, $this->kitchen->id, [
             ['raw_material_id' => $material->id, 'qty_ordered' => 2, 'unit_cost_minor' => 12345],
         ], $this->finance);
+        $po = app(PurchaseOrderService::class)->receive(
+            app(PurchaseOrderService::class)->markOrdered($po, $this->finance), [], $this->finance,
+        );
         foreach (Role::cases() as $role) {
             $user = User::factory()->role($role)->create();
             if ($role !== Role::ADMINISTRATOR) {
@@ -447,9 +457,9 @@ class BusinessProcessAuditTest extends TestCase
             $this->actingAs($user)->get(PurchaseOrderResource::getUrl())->assertOk();
             $purchaseRows = Livewire::test(ListPurchaseOrders::class);
             if ($privileged) {
-                $purchaseRows->assertSee('@Rp12.345');
+                $purchaseRows->assertSee('@Rp12.345')->assertSee('Sisa hutang');
             } else {
-                $purchaseRows->assertDontSee('@Rp12.345');
+                $purchaseRows->assertDontSee('@Rp12.345')->assertDontSee('Sisa hutang')->assertDontSee('24.690');
             }
             $this->assertSame($privileged, PurchaseOrderResource::canCreate());
             $table = Livewire::test(ListProducts::class);
@@ -480,7 +490,8 @@ class BusinessProcessAuditTest extends TestCase
         Livewire::actingAs($this->barista)->test(ListPurchaseOrders::class)
             ->assertTableActionHidden('markOrdered', $po)
             ->assertTableActionHidden('receive', $po)
-            ->assertTableActionHidden('cancel', $po);
+            ->assertTableActionHidden('cancel', $po)
+            ->assertTableActionHidden('payDebt', $po);
     }
 
     public function test_05b_view_only_finance_cannot_forge_price_write_but_edit_grant_can_create_version(): void
@@ -667,8 +678,30 @@ class BusinessProcessAuditTest extends TestCase
         $this->assertTrue(collect($updated->json('data'))->firstWhere('id', $this->product->id)['has_active_recipe']);
     }
 
-    public function test_po_journal_assertion_is_owned_by_t037_until_merged(): void
+    public function test_po_receipt_and_debt_payment_journals_balance(): void
     {
-        $this->markTestSkipped('T-037');
+        PermissionMatrix::set(Role::FINANCE, PanelModule::PURCHASE_ORDERS, ['view', 'edit']);
+        $material = RawMaterial::create([
+            'code' => 'JURNAL-T036', 'name' => 'Bahan Jurnal', 'unit' => 'ml',
+            'is_active' => true, 'sort_order' => 1,
+        ]);
+        $supplier = Supplier::create(['code' => 'JURNAL-SUP', 'name' => 'Supplier Jurnal', 'is_active' => true]);
+        $orders = app(PurchaseOrderService::class);
+        $po = $orders->create($supplier->id, $this->kitchen->id, [
+            ['raw_material_id' => $material->id, 'qty_ordered' => 2, 'unit_cost_minor' => 10000],
+        ], $this->finance);
+        $po = $orders->receive($orders->markOrdered($po, $this->finance), [], $this->finance);
+        $cash = CashAccount::query()->whereHas('account', fn ($query) => $query->where('code', '1-1100'))->firstOrFail();
+        $payment = $orders->payDebt($po, $this->finance, [
+            'uuid' => (string) Str::uuid(), 'paid_on' => today()->toDateString(),
+            'cash_account_id' => $cash->id, 'amount_minor' => 5000,
+        ]);
+        foreach ([['purchase_order', $po->id, 20000], ['purchase_order_payment', $payment->id, 5000]] as [$type, $id, $amount]) {
+            $journal = JournalEntry::query()->where('source_type', $type)->where('source_id', $id)
+                ->with('lines')->sole();
+            $this->assertSame($amount, (int) $journal->lines->sum('debit_minor'));
+            $this->assertSame($amount, (int) $journal->lines->sum('credit_minor'));
+        }
+        $this->assertSame(15000, $po->unpaidMinor());
     }
 }
