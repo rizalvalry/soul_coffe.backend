@@ -632,8 +632,7 @@ class BusinessProcessAuditTest extends TestCase
         $first = DB::table('daily_cart_allowances')->count();
         Artisan::call('soul:seed-daily-allowances');
         $this->assertSame($first, DB::table('daily_cart_allowances')->count());
-        Artisan::call('soul:carry-forward-staff-assignments');
-        Artisan::call('soul:carry-forward-staff-assignments');
+        $this->assertArrayNotHasKey('soul:carry-forward-staff-assignments', Artisan::all());
         $this->assertSame(1, StaffAssignment::count());
         Artisan::call('refills:expire-stale');
         Artisan::call('refills:expire-stale');

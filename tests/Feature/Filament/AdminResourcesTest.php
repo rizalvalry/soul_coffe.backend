@@ -2,21 +2,28 @@
 
 namespace Tests\Feature\Filament;
 
+use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Filament\Resources\AuditLogs\AuditLogResource;
 use App\Filament\Resources\Carts\CartResource;
+use App\Filament\Resources\Carts\Pages\ViewCart;
+use App\Filament\Resources\Carts\RelationManagers\StaffAssignmentsRelationManager;
 use App\Filament\Resources\CentralKitchens\CentralKitchenResource;
 use App\Filament\Resources\DailyTargets\DailyTargetResource;
 use App\Filament\Resources\Locations\LocationResource;
 use App\Filament\Resources\Products\ProductResource;
-use App\Filament\Resources\StaffAssignments\StaffAssignmentResource;
 use App\Filament\Resources\Users\UserResource;
 use App\Models\AuditLog;
+use App\Models\Cart;
+use App\Models\Location;
 use App\Models\StaffAssignment;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schedule;
+use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -49,7 +56,6 @@ class AdminResourcesTest extends TestCase
             'lokasi' => [LocationResource::class],
             'dapur pusat' => [CentralKitchenResource::class],
             'target harian' => [DailyTargetResource::class],
-            'penugasan staff' => [StaffAssignmentResource::class],
             'audit trail' => [AuditLogResource::class],
         ];
     }
@@ -92,30 +98,79 @@ class AdminResourcesTest extends TestCase
         $this->get(AuditLogResource::getUrl('view', ['record' => $log]))->assertSuccessful();
     }
 
-    public function test_staff_assignments_are_hidden_and_only_administrator_can_read_direct_url(): void
+    public function test_old_assignment_resource_url_is_gone_for_every_role(): void
     {
-        $this->assertFalse(StaffAssignmentResource::shouldRegisterNavigation());
-        $this->assertSame(['index'], array_keys(StaffAssignmentResource::getPages()));
-        $record = StaffAssignment::query()->firstOrFail();
-        $this->assertFalse(StaffAssignmentResource::canCreate());
-        $this->assertFalse(StaffAssignmentResource::canEdit($record));
-        $this->assertFalse(StaffAssignmentResource::canDelete($record));
-        $url = StaffAssignmentResource::getUrl('index');
-        $this->get($url)->assertOk();
+        $this->assertDatabaseCount('staff_assignments', 0);
+        $this->assertFalse(Route::has('filament.admin.resources.staff-assignments.index'));
+        $this->get('/admin/staff-assignments')->assertNotFound();
 
         foreach ([Role::STAFF, Role::RIDER, Role::BARISTA, Role::FINANCE, Role::MANAGEMENT, Role::CONTENT_CREATOR] as $role) {
             $this->actingAs(User::factory()->role($role)->create());
-            $this->assertFalse(StaffAssignmentResource::canViewAny());
-            $this->assertContains($this->get($url)->status(), [302, 403]);
+            $this->get('/admin/staff-assignments')->assertNotFound();
         }
-
-        $this->actingAs(User::factory()->role(Role::CONTENT_CREATOR)->create())
-            ->get($url)->assertForbidden();
     }
 
-    public function test_staff_assignment_carry_forward_is_not_scheduled(): void
+    public function test_coffee_bike_history_is_read_only_and_scoped_to_its_record(): void
+    {
+        $cart = Cart::query()->create(['code' => 'T046-A', 'status' => 'active']);
+        $otherCart = Cart::query()->create(['code' => 'T046-B', 'status' => 'active']);
+        $location = Location::query()->firstOrFail();
+        $rider = User::factory()->role(Role::STAFF)->create();
+        $handover = StaffAssignment::query()->create([
+            'user_id' => $rider->id,
+            'cart_id' => $cart->id,
+            'operating_date' => today()->toDateString(),
+            'source' => 'hand_to_cart',
+            'assigned_by' => $this->admin->id,
+            'location_id' => $location->id,
+        ]);
+        $other = StaffAssignment::query()->create([
+            'user_id' => $rider->id,
+            'cart_id' => $otherCart->id,
+            'operating_date' => today()->subDay()->toDateString(),
+            'source' => 'manual',
+            'assigned_by' => $this->admin->id,
+            'location_id' => $location->id,
+        ]);
+
+        $this->get(CartResource::getUrl('view', ['record' => $cart]))->assertOk();
+        $this->assertContains(StaffAssignmentsRelationManager::class, CartResource::getRelations());
+        Livewire::test(StaffAssignmentsRelationManager::class, [
+            'ownerRecord' => $cart, 'pageClass' => ViewCart::class,
+        ])->assertCanSeeTableRecords([$handover])
+            ->assertCanNotSeeTableRecords([$other])
+            ->assertSee('Add Stock')
+            ->assertSee('Riwayat pemegang Coffee Bike')
+            ->assertTableActionDoesNotExist('create')
+            ->assertTableActionDoesNotExist('edit')
+            ->assertTableActionDoesNotExist('delete');
+
+        $this->assertSame(2, StaffAssignment::query()->whereIn('id', [$handover->id, $other->id])->count());
+    }
+
+    public function test_coffee_bike_history_denies_wrong_role_and_revoked_grant(): void
+    {
+        $cart = Cart::query()->firstOrFail();
+        $finance = User::factory()->role(Role::FINANCE)->create();
+        $this->actingAs($finance);
+
+        $this->assertFalse(StaffAssignmentsRelationManager::canViewForRecord($cart, ViewCart::class));
+        $this->get(CartResource::getUrl('view', ['record' => $cart]))->assertForbidden();
+
+        PermissionMatrix::set(Role::FINANCE, PanelModule::CARTS, ['view']);
+        PermissionMatrix::forget();
+        $this->assertTrue(StaffAssignmentsRelationManager::canViewForRecord($cart, ViewCart::class));
+
+        PermissionMatrix::set(Role::FINANCE, PanelModule::CARTS, []);
+        PermissionMatrix::forget();
+        $this->assertFalse(StaffAssignmentsRelationManager::canViewForRecord($cart, ViewCart::class));
+
+    }
+
+    public function test_staff_assignment_carry_forward_is_not_registered_or_scheduled(): void
     {
         Artisan::call('schedule:list');
+        $this->assertArrayNotHasKey('soul:carry-forward-staff-assignments', Artisan::all());
         $this->assertFalse(collect(Schedule::events())
             ->contains(fn ($event): bool => str_contains($event->command, 'soul:carry-forward-staff-assignments')));
     }

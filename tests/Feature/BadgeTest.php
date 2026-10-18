@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\AllocationStatus;
 use App\Models\Cart;
 use App\Models\DailyAllocation;
+use App\Models\Location;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -48,7 +49,7 @@ class BadgeTest extends TestCase
             'staff_id' => $staff->id,
             'kitchen_id' => $cart->kitchen_id,
             'barista_id' => $barista->id,
-            'location_id' => $staff->staffAssignments()->first()->location_id,
+            'location_id' => Location::query()->firstOrFail()->id,
             'status' => AllocationStatus::PENDING_FINANCE,
             'is_correction' => false,
             'over_target_pct' => 40,

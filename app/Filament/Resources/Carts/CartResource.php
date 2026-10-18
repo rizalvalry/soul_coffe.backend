@@ -7,6 +7,8 @@ use App\Filament\Concerns\MatrixGoverned;
 use App\Filament\Resources\Carts\Pages\CreateCart;
 use App\Filament\Resources\Carts\Pages\EditCart;
 use App\Filament\Resources\Carts\Pages\ListCarts;
+use App\Filament\Resources\Carts\Pages\ViewCart;
+use App\Filament\Resources\Carts\RelationManagers\StaffAssignmentsRelationManager;
 use App\Filament\Resources\Carts\Schemas\CartForm;
 use App\Filament\Resources\Carts\Tables\CartsTable;
 use App\Models\Cart;
@@ -55,7 +57,7 @@ class CartResource extends Resource
     public static function getRelations(): array
     {
         return [
-            //
+            StaffAssignmentsRelationManager::class,
         ];
     }
 
@@ -64,6 +66,7 @@ class CartResource extends Resource
         return [
             'index' => ListCarts::route('/'),
             'create' => CreateCart::route('/create'),
+            'view' => ViewCart::route('/{record}'),
             'edit' => EditCart::route('/{record}/edit'),
         ];
     }
