@@ -10,25 +10,19 @@ use App\Models\User;
 use App\Services\EventPublisher;
 use Illuminate\Contracts\Broadcasting\Broadcaster;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Broadcast;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schedule;
+use Illuminate\Support\Str;
 use RuntimeException;
+use Tests\Support\FailingBroadcaster;
 use Tests\TestCase;
 
-/**
- * How a published event actually reaches the socket.
- *
- * These tests exist because of a production failure that no existing test could have caught: the
- * broadcast was dispatched to the `database` queue, the host had no worker and no cron to start
- * one, and so every realtime notification sat in `jobs` forever while the app quietly fell back to
- * a 10-second refetch. The suite passed throughout — nothing asserted that the event actually left
- * the process.
- *
- * So the first test below asserts the thing that was missing: publishing broadcasts NOW, with an
- * empty queue afterwards. If someone reintroduces `PublishOutboxEvent::dispatch()` as the primary
- * path, that test fails.
- */
+/** Queued delivery and recovery of the transactional outbox. */
 class BroadcastDeliveryTest extends TestCase
 {
     use RefreshDatabase;
@@ -38,6 +32,7 @@ class BroadcastDeliveryTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config(['outbox.publish_mode' => 'queue']);
 
         $this->staff = User::factory()->role(Role::STAFF)->create();
     }
@@ -86,21 +81,28 @@ class BroadcastDeliveryTest extends TestCase
         ]);
     }
 
-    /** The regression this whole file is for: no worker, no cron, and the event still goes out. */
-    public function test_publishing_broadcasts_immediately_without_touching_the_queue(): void
+    public function test_publishing_queues_then_worker_broadcasts_same_payload(): void
     {
         Queue::fake();
         Event::fake([SoulEvent::class]);
 
         $eventId = $this->publish();
+        $row = OutboxEvent::query()->where('event_id', $eventId)->sole();
+        Queue::assertPushed(PublishOutboxEvent::class, fn (PublishOutboxEvent $job): bool => $job->outboxEventId === $row->id
+            && $job->connection === 'database');
+        Event::assertNotDispatched(SoulEvent::class);
+        $this->assertNull($row->published_at);
 
-        Event::assertDispatched(SoulEvent::class, function (SoulEvent $event) use ($eventId): bool {
+        (new PublishOutboxEvent($row->id))->handle();
+
+        $expectedPayload = $row->payload_json;
+        unset($expectedPayload['channels']);
+        Event::assertDispatched(SoulEvent::class, function (SoulEvent $event) use ($eventId, $expectedPayload): bool {
             return $event->payload['event_id'] === $eventId
                 && $event->payload['type'] === 'RefillRequestApproved'
+                && $event->payload === $expectedPayload
                 && $event->channels === ["user.{$this->staff->id}", 'role.BARISTA'];
         });
-
-        Queue::assertNothingPushed();
 
         $this->assertNotNull(
             OutboxEvent::query()->where('event_id', $eventId)->value('published_at'),
@@ -108,54 +110,312 @@ class BroadcastDeliveryTest extends TestCase
         );
     }
 
-    /**
-     * A broadcaster outage must not fail the business action that caused the event — the approval
-     * is already committed, and the user still sees the row in their in-app notification list.
-     */
-    public function test_a_broadcaster_outage_does_not_fail_the_caller(): void
+    public function test_database_worker_consumes_queued_outbox_job(): void
+    {
+        Event::fake([SoulEvent::class]);
+
+        $eventId = $this->publish();
+        $row = OutboxEvent::query()->where('event_id', $eventId)->sole();
+        $this->assertNull($row->published_at);
+        $this->assertSame(1, DB::table('jobs')->count());
+
+        Artisan::call('queue:work', ['connection' => 'database', '--once' => true, '--tries' => 3]);
+
+        $this->assertNotNull($row->fresh()->published_at);
+        $this->assertSame(0, DB::table('jobs')->count());
+        Event::assertDispatchedTimes(SoulEvent::class, 1);
+    }
+
+    /** The queued failure leaves the event available for recovery. */
+    public function test_a_broadcaster_outage_keeps_the_outbox_row_for_retry(): void
     {
         Queue::fake();
         $this->useExplodingBroadcaster();
 
         $eventId = $this->publish();
+        $row = OutboxEvent::query()->where('event_id', $eventId)->sole();
 
-        $this->assertSame(1, OutboxEvent::query()->where('event_id', $eventId)->count());
+        Queue::assertPushed(PublishOutboxEvent::class);
+        try {
+            (new PublishOutboxEvent($row->id))->handle();
+            $this->fail('The fake broadcaster should fail.');
+        } catch (RuntimeException $e) {
+            $this->assertSame('pusher unreachable', $e->getMessage());
+        }
+        $this->assertNull($row->fresh()->published_at);
     }
 
-    /**
-     * ...and the event is not lost: the row stays unpublished and the job goes to the queue, so
-     * the next `schedule:run` retries it. This is the only case the worker is needed for.
-     */
-    public function test_a_broadcaster_outage_falls_back_to_the_queue(): void
+    public function test_inline_mode_publishes_after_commit_without_a_queue_job(): void
     {
+        config(['outbox.publish_mode' => 'inline']);
         Queue::fake();
-        $this->useExplodingBroadcaster();
+        Event::fake([SoulEvent::class]);
 
         $eventId = $this->publish();
-        $outboxId = (int) OutboxEvent::query()->where('event_id', $eventId)->value('id');
 
-        $this->assertNull(
-            OutboxEvent::query()->where('event_id', $eventId)->value('published_at'),
-            'An event that never reached the broadcaster must not be marked published.',
-        );
-
-        Queue::assertPushed(
-            PublishOutboxEvent::class,
-            fn (PublishOutboxEvent $job): bool => $job->outboxEventId === $outboxId,
-        );
+        Queue::assertNothingPushed();
+        $this->assertNotNull(OutboxEvent::query()->where('event_id', $eventId)->value('published_at'));
+        Event::assertDispatched(SoulEvent::class, fn (SoulEvent $event): bool => $event->payload['event_id'] === $eventId);
     }
 
-    /**
-     * The two paths can overlap — an inline attempt that succeeded slowly, and a queued retry that
-     * was already scheduled — so running the job twice must broadcast once.
-     */
+    public function test_inline_failure_is_recovered_after_an_authenticated_response_without_cron(): void
+    {
+        config(['outbox.publish_mode' => 'inline']);
+        Cache::forget('outbox.recovery.lazy');
+        Queue::fake();
+        FailingBroadcaster::activate();
+
+        $eventId = $this->publish();
+        $row = OutboxEvent::query()->where('event_id', $eventId)->sole();
+        $this->assertNull($row->published_at);
+        Queue::assertNothingPushed();
+        $row->forceFill(['created_at' => now()->subMinutes(6)])->save();
+
+        $this->getJson('/api/v1/me')->assertUnauthorized();
+        $this->assertNull($row->fresh()->published_at);
+
+        $this->actingAs($this->staff, 'sanctum')->getJson('/api/v1/me')->assertOk();
+        $this->assertNull($row->fresh()->published_at);
+
+        $delivered = new class implements Broadcaster
+        {
+            public array $payloads = [];
+
+            public function auth($request)
+            {
+                return true;
+            }
+
+            public function validAuthenticationResponse($request, $result)
+            {
+                return $result;
+            }
+
+            public function broadcast(array $channels, $event, array $payload = [])
+            {
+                $this->payloads[] = $payload;
+            }
+        };
+        Broadcast::extend('recording', fn (): Broadcaster => $delivered);
+        config([
+            'broadcasting.connections.recording' => ['driver' => 'recording'],
+            'broadcasting.default' => 'recording',
+        ]);
+        $this->getJson('/api/v1/me')->assertOk();
+        $this->assertNull($row->fresh()->published_at);
+        $this->travel(61)->seconds();
+        $this->getJson('/api/v1/me')->assertOk();
+
+        $this->assertNotNull($row->fresh()->published_at);
+        $this->assertCount(1, $delivered->payloads);
+        $this->assertSame($eventId, $delivered->payloads[0]['event_id']);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_lazy_recovery_does_not_run_in_queue_mode(): void
+    {
+        Cache::forget('outbox.recovery.lazy');
+        Queue::fake();
+        Event::fake([SoulEvent::class]);
+
+        $eventId = $this->publish();
+        $row = OutboxEvent::query()->where('event_id', $eventId)->sole();
+        $row->forceFill(['created_at' => now()->subMinutes(6)])->save();
+        $this->actingAs($this->staff, 'sanctum')->getJson('/api/v1/me')->assertOk();
+
+        $this->assertNull($row->fresh()->published_at);
+        Event::assertNotDispatched(SoulEvent::class);
+    }
+
+    public function test_broadcast_channel_auth_also_triggers_inline_recovery(): void
+    {
+        config([
+            'outbox.publish_mode' => 'inline',
+            'broadcasting.default' => 'pusher',
+            'broadcasting.connections.pusher.key' => 'test-key',
+            'broadcasting.connections.pusher.secret' => 'test-secret',
+            'broadcasting.connections.pusher.app_id' => 'test-app',
+        ]);
+        Cache::forget('outbox.recovery.lazy');
+        Event::fake([SoulEvent::class]);
+        require base_path('routes/channels.php');
+
+        $eventId = (string) Str::uuid();
+        $row = OutboxEvent::create([
+            'event_id' => $eventId,
+            'name' => 'RefillRequestApproved',
+            'payload_json' => ['event_id' => $eventId, 'type' => 'RefillRequestApproved', 'channels' => ['role.BARISTA']],
+        ]);
+        $row->forceFill(['created_at' => now()->subMinutes(6)])->save();
+
+        $this->actingAs($this->staff, 'sanctum')->postJson('/api/v1/broadcasting/auth', [
+            'socket_id' => '123.456', 'channel_name' => 'private-user.'.$this->staff->id,
+        ])->assertOk();
+
+        $this->assertNotNull($row->fresh()->published_at);
+        Event::assertDispatchedTimes(SoulEvent::class, 1);
+    }
+
+    /** Recovery only retries rows older than the configured age. */
+    public function test_recovery_respects_configured_age_and_skips_published_rows(): void
+    {
+        Queue::fake();
+        Event::fake([SoulEvent::class]);
+        config(['outbox.recovery_age_minutes' => 7]);
+
+        $eventId = (string) Str::uuid();
+        $row = OutboxEvent::create([
+            'event_id' => $eventId,
+            'name' => 'RefillRequestApproved',
+            'payload_json' => [
+                'event_id' => $eventId,
+                'type' => 'RefillRequestApproved',
+                'channels' => ['role.BARISTA'],
+            ],
+        ]);
+
+        $row->forceFill(['created_at' => now()->subMinutes(6)])->save();
+        Artisan::call('outbox:recover');
+        Queue::assertNothingPushed();
+        Event::assertNotDispatched(SoulEvent::class);
+
+        $row->forceFill(['created_at' => now()->subMinutes(8)])->save();
+        Artisan::call('outbox:recover');
+        $this->assertNotNull($row->fresh()->published_at);
+        Event::assertDispatchedTimes(SoulEvent::class, 1);
+
+        Artisan::call('outbox:recover');
+        Event::assertDispatchedTimes(SoulEvent::class, 1);
+    }
+
+    public function test_repeated_recovery_does_not_add_jobs_or_resend_the_event(): void
+    {
+        Event::fake([SoulEvent::class]);
+        $eventId = $this->publish();
+        $row = OutboxEvent::query()->where('event_id', $eventId)->sole();
+        $row->forceFill(['created_at' => now()->subMinutes(6)])->save();
+
+        Artisan::call('outbox:recover');
+        $this->travel(61)->seconds();
+        Artisan::call('outbox:recover');
+
+        $this->assertSame(1, DB::table('jobs')->count());
+        Event::assertDispatchedTimes(SoulEvent::class, 1);
+    }
+
+    public function test_failed_queue_insert_is_recovered_by_the_scheduler(): void
+    {
+        config(['queue.connections.database.table' => 'missing_outbox_jobs']);
+        $eventId = $this->publish();
+        $row = OutboxEvent::query()->where('event_id', $eventId)->sole();
+        $this->assertNull($row->published_at);
+
+        Event::fake([SoulEvent::class]);
+        $row->forceFill(['created_at' => now()->subMinutes(6)])->save();
+        Artisan::call('outbox:recover');
+
+        $this->assertNotNull($row->fresh()->published_at);
+        Event::assertDispatchedTimes(SoulEvent::class, 1);
+    }
+
+    public function test_failed_recovery_retries_without_piling_up_queued_jobs(): void
+    {
+        $eventId = $this->publish();
+        $row = OutboxEvent::query()->where('event_id', $eventId)->sole();
+        $row->forceFill(['created_at' => now()->subMinutes(6)])->save();
+        FailingBroadcaster::activate();
+
+        Artisan::call('outbox:recover');
+        $this->travel(61)->seconds();
+        Artisan::call('outbox:recover');
+
+        $this->assertNull($row->fresh()->published_at);
+        $this->assertSame(1, DB::table('jobs')->count());
+
+        Event::fake([SoulEvent::class]);
+        Artisan::call('outbox:recover');
+        $this->assertNotNull($row->fresh()->published_at);
+        Event::assertDispatchedTimes(SoulEvent::class, 1);
+    }
+
+    public function test_poisoned_older_rows_do_not_starve_a_newer_recoverable_row(): void
+    {
+        $rows = collect();
+        foreach (range(1, 11) as $number) {
+            $eventId = (string) Str::uuid();
+            $row = OutboxEvent::create([
+                'event_id' => $eventId,
+                'name' => $number <= 10 ? 'Poison' : 'RefillRequestApproved',
+                'payload_json' => [
+                    'event_id' => $eventId,
+                    'type' => $number <= 10 ? 'Poison' : 'RefillRequestApproved',
+                    'channels' => ['role.BARISTA'],
+                ],
+            ]);
+            $row->forceFill(['created_at' => now()->subMinutes(6)])->save();
+            $rows->push($row);
+        }
+        FailingBroadcaster::activate('Poison');
+
+        Artisan::call('outbox:recover');
+        $this->assertNull($rows->last()->fresh()->published_at);
+
+        Artisan::call('outbox:recover');
+        $this->assertNotNull($rows->last()->fresh()->published_at);
+        $this->assertNull($rows->first()->fresh()->published_at);
+    }
+
+    public function test_recovery_returns_failure_when_all_attempts_fail(): void
+    {
+        Queue::fake();
+        FailingBroadcaster::activate();
+        $eventId = $this->publish();
+        $row = OutboxEvent::query()->where('event_id', $eventId)->sole();
+        $row->forceFill(['created_at' => now()->subMinutes(6)])->save();
+
+        $this->assertSame(1, Artisan::call('outbox:recover'));
+        $this->assertNull($row->fresh()->published_at);
+    }
+
+    public function test_outbox_uses_configured_async_queue_connection(): void
+    {
+        Queue::fake();
+        config(['queue.default' => 'redis']);
+
+        $this->publish();
+
+        Queue::assertPushed(PublishOutboxEvent::class, fn (PublishOutboxEvent $job): bool => $job->connection === 'redis');
+    }
+
+    public function test_pusher_request_timeout_is_five_seconds(): void
+    {
+        $this->assertSame(5, config('broadcasting.connections.pusher.options.timeout'));
+        $this->assertSame(2, config('broadcasting.connections.pusher.client_options.connect_timeout'));
+    }
+
+    public function test_recovery_and_worker_schedule_have_short_overlap_expiry(): void
+    {
+        $recovery = collect(Schedule::events())->first(fn ($event): bool => str_contains($event->command, 'outbox:recover'));
+        $worker = collect(Schedule::events())->first(fn ($event): bool => str_contains($event->command, 'queue:work'));
+
+        $this->assertNotNull($recovery);
+        $this->assertNotNull($worker);
+        $this->assertSame('* * * * *', $recovery->expression);
+        $this->assertSame('* * * * *', $worker->expression);
+        $this->assertSame(2, $recovery->expiresAt);
+        $this->assertSame(5, $worker->expiresAt);
+    }
+
+    /** A replay after a completed publish does not send a second event. */
     public function test_replaying_the_job_after_a_successful_publish_broadcasts_nothing(): void
     {
+        Queue::fake();
         Event::fake([SoulEvent::class]);
 
         $eventId = $this->publish();
         $outboxId = (int) OutboxEvent::query()->where('event_id', $eventId)->value('id');
 
+        (new PublishOutboxEvent($outboxId))->handle();
         (new PublishOutboxEvent($outboxId))->handle();
 
         Event::assertDispatchedTimes(SoulEvent::class, 1);

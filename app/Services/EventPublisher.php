@@ -87,7 +87,20 @@ class EventPublisher
         // Deliver only once the surrounding transaction commits. Delivering inside it would
         // broadcast a row that a rollback then erased.
         DB::afterCommit(function () use ($outboxId, $recipients, $actorId, $title, $body, $payload, $includeActorPush): void {
-            $this->broadcast((int) $outboxId);
+            try {
+                if (config('outbox.publish_mode') === 'queue') {
+                    PublishOutboxEvent::enqueue((int) $outboxId);
+                } else {
+                    (new PublishOutboxEvent((int) $outboxId))->handle();
+                }
+            } catch (Throwable $e) {
+                // A failed transport must not undo a committed sale or settlement. The same
+                // outbox row stays unpublished for scheduled or lazy recovery.
+                Log::warning('broadcast: could not publish outbox event', [
+                    'outbox_event_id' => $outboxId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
             // Second transport (E15). Inline rather than queued — see PushNotifier for why.
             // The actor is skipped unless the event explicitly includes them as a recipient.
@@ -109,39 +122,5 @@ class EventPublisher
         });
 
         return $eventId;
-    }
-
-    /**
-     * Push one outbox row onto the WebSocket, immediately, with the queue as the retry path.
-     *
-     * This used to be `PublishOutboxEvent::dispatch()` and nothing else, which made every realtime
-     * notification depend on a resident queue worker. This host has none — no supervisor, no
-     * systemd, and no `crontab` binary — so events accumulated in `jobs` and the app fell back to
-     * its 10-second refetch. The fallback working is what made the bug survive: it looked like
-     * "realtime is slow" rather than "realtime never ran".
-     *
-     * Running the job's own `handle()` inline keeps ONE definition of what publishing means
-     * (find the row, skip if already published, broadcast, stamp `published_at`), so the inline
-     * path and the queued path can never drift apart.
-     *
-     * On failure the row is still unpublished — `handle()` stamps only after the broadcast returns
-     * — so re-dispatching it to the queue loses nothing and duplicates nothing: whichever attempt
-     * wins stamps the row, and the other sees `published_at` set and returns. The queue is now the
-     * degraded path rather than the only path, which is the right shape for shared hosting.
-     */
-    private function broadcast(int $outboxId): void
-    {
-        try {
-            (new PublishOutboxEvent($outboxId))->handle();
-        } catch (Throwable $e) {
-            // Never rethrow: the state change is committed and the event is durable in
-            // `outbox_events`. A Pusher outage must not turn a successful approval into a 500.
-            Log::warning('broadcast: inline publish failed, falling back to queue', [
-                'outbox_event_id' => $outboxId,
-                'error' => $e->getMessage(),
-            ]);
-
-            PublishOutboxEvent::dispatch($outboxId);
-        }
     }
 }

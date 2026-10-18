@@ -6,6 +6,8 @@ use App\Events\SoulEvent;
 use App\Models\OutboxEvent;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Publishes one outbox row to the WebSocket layer, then marks it published.
@@ -14,45 +16,51 @@ use Illuminate\Foundation\Queue\Queueable;
  * null and the row is retried. Marking first would lose the event silently — which is exactly the
  * failure the outbox pattern exists to prevent.
  *
- * `handle()` is called two ways: inline by EventPublisher::broadcast() on the happy path, and by
- * the queue when that inline attempt threw. Both entry points run this same body, and the
- * `published_at !== null` guard below is what makes running it twice harmless — so neither path
- * needs to know whether the other already succeeded.
+ * The row lock serializes a queued worker and the scheduled recovery command; a replay after a
+ * successful send exits without broadcasting again.
  */
 class PublishOutboxEvent implements ShouldQueue
 {
     use Queueable;
 
-    public int $tries = 5;
+    public int $tries = 3;
+
+    public int $timeout = 10;
 
     public function __construct(public readonly int $outboxEventId) {}
 
+    public static function enqueue(int $outboxEventId): void
+    {
+        $job = new self($outboxEventId);
+        $connection = config('queue.default');
+        $job->onConnection($connection === 'sync' ? 'database' : $connection);
+
+        Bus::dispatch($job);
+    }
+
     public function handle(): void
     {
-        $row = OutboxEvent::query()->find($this->outboxEventId);
+        DB::transaction(function (): void {
+            $row = OutboxEvent::query()->whereKey($this->outboxEventId)->lockForUpdate()->first();
 
-        if (! $row || $row->published_at !== null) {
-            return; // already published, or swept away — nothing to do
-        }
+            if (! $row || $row->published_at !== null) {
+                return;
+            }
 
-        $payload = $row->payload_json;
-        $channels = $payload['channels'] ?? [];
-        unset($payload['channels']);
+            $payload = $row->payload_json;
+            $channels = $payload['channels'] ?? [];
+            unset($payload['channels']);
 
-        if ($channels === []) {
-            // Nothing to deliver to; mark it done so the sweeper stops retrying forever.
+            if ($channels !== []) {
+                SoulEvent::dispatch($channels, $payload);
+            }
+
             $row->forceFill(['published_at' => now()])->save();
-
-            return;
-        }
-
-        SoulEvent::dispatch($channels, $payload);
-
-        $row->forceFill(['published_at' => now()])->save();
+        });
     }
 
     public function backoff(): array
     {
-        return [5, 15, 60, 300];
+        return [5, 15];
     }
 }

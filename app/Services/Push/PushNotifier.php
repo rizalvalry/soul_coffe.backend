@@ -9,9 +9,9 @@ use Throwable;
 /**
  * Push transport for business events — the second leg alongside the WebSocket (E15).
  *
- * Called synchronously after the state-change transaction commits, NOT from the queue. That is a
- * deliberate departure from PublishOutboxEvent: on this hosting the `database` queue has no
- * resident worker, so a queued push would sit in `jobs` until a cron tick that may never come.
+ * Called synchronously after the state-change transaction commits, independently of the outbox
+ * publish mode. On shared hosting the `database` queue has no resident worker, so a queued push
+ * would sit in `jobs` until a cron tick that may never come.
  * A push that arrives thirty minutes late is worse than useless for "your refill is ready". The
  * cost is a few hundred milliseconds of HTTP on the request that caused the event, capped by the
  * client timeout — acceptable for an internal ops API with a handful of recipients per event.
