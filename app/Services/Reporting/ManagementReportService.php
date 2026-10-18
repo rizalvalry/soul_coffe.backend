@@ -254,15 +254,15 @@ class ManagementReportService
             'summary' => $summary,
             'sections' => [
                 'ringkasan' => $this->section('Ringkasan', ['Komponen', 'Nilai'], [
-                    ['Pendapatan gerobak', $cartRevenue], ['Penjualan langsung', $directRevenue],
+                    ['Pendapatan Coffee Bike', $cartRevenue], ['Penjualan langsung', $directRevenue],
                     ['Pendapatan lain-lain', $summary['other_revenue_minor']], ['Total pendapatan', $revenue],
                     ['HPP', $cogs], ['Laba kotor', $gross], ['Margin kotor', $summary['gross_margin']],
                     ['Biaya operasional', $summary['operating_expense_minor']], ['Beban gaji dan BPJS', $salary],
                     ['Laba bersih', $net],
                 ], [1]),
-                'setoran' => $this->section('Rekonsiliasi setoran per gerobak',
-                    ['Gerobak', 'Rider', 'Ekspektasi tunai', 'Ekspektasi non-tunai', 'Disetor tunai', 'Disetor non-tunai', 'Selisih', 'Setoran berselisih'], $settlementRows, [2, 3, 4, 5, 6]),
-                'margin_gerobak' => $this->section('Margin per gerobak', ['Gerobak', 'Penjualan', 'HPP snapshot', 'Laba kotor', 'Margin'], $cartRows, [1, 2, 3]),
+                'setoran' => $this->section('Rekonsiliasi setoran per Coffee Bike',
+                    ['Coffee Bike', 'Rider', 'Ekspektasi tunai', 'Ekspektasi non-tunai', 'Disetor tunai', 'Disetor non-tunai', 'Selisih', 'Setoran berselisih'], $settlementRows, [2, 3, 4, 5, 6]),
+                'margin_gerobak' => $this->section('Margin per Coffee Bike', ['Coffee Bike', 'Penjualan', 'HPP snapshot', 'Laba kotor', 'Margin'], $cartRows, [1, 2, 3]),
                 'margin_produk' => $this->section('Margin per produk', ['Produk', 'Penjualan', 'HPP snapshot', 'Laba kotor', 'Margin'], $productRows, [1, 2, 3]),
                 'biaya' => $this->section('Biaya per kategori kas keluar', ['Kategori', 'Nominal'], $expenseRows, [1]),
                 'arus_kas' => $this->section('Arus kas per akun', ['Kode', 'Akun', 'Saldo awal', 'Masuk', 'Keluar', 'Saldo akhir'], $cashRows, [2, 3, 4, 5]),
@@ -272,7 +272,7 @@ class ManagementReportService
                 ], [3]),
                 'neraca_saldo' => $this->section('Neraca saldo dari jurnal sampai '.$toDate,
                     ['Kode', 'Akun', 'Debit', 'Kredit'], $trialRows, [2, 3]),
-                'refill_waste' => $this->section('Refill expired dan waste', ['Gerobak', 'Refill expired', 'Cup waste'], $operationalRows),
+                'refill_waste' => $this->section('Refill expired dan waste', ['Coffee Bike', 'Refill expired', 'Cup waste'], $operationalRows),
             ],
         ];
     }

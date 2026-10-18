@@ -23,7 +23,7 @@ class StaffAssignmentsTable
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('cart.code')
-                    ->label('Gerobak')
+                    ->label('Coffee Bike')
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('source')
@@ -55,7 +55,7 @@ class StaffAssignmentsTable
                     ->label('Hari ini')
                     ->query(fn (Builder $query): Builder => $query->whereDate('operating_date', today())),
                 SelectFilter::make('cart')
-                    ->label('Gerobak')
+                    ->label('Coffee Bike')
                     ->relationship('cart', 'code'),
                 SelectFilter::make('location')
                     ->label('Lokasi')

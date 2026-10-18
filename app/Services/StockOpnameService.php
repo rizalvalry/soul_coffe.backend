@@ -247,7 +247,7 @@ class StockOpnameService
         $kitchenId = Cart::query()->whereKey($locationId)->value('kitchen_id');
 
         if (! $kitchenId) {
-            throw new RuntimeException('Gerobak ini belum terhubung ke dapur pusat.');
+            throw new RuntimeException('Coffee Bike ini belum terhubung ke dapur pusat.');
         }
 
         return (int) $kitchenId;

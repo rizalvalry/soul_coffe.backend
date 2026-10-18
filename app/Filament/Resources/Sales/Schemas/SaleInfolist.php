@@ -17,7 +17,7 @@ class SaleInfolist
                     ->columns(3)
                     ->schema([
                         TextEntry::make('occurred_at')->label('Waktu')->dateTime('d M Y H:i:s'),
-                        TextEntry::make('cart.code')->label('Gerobak')->badge(),
+                        TextEntry::make('cart.code')->label('Coffee Bike')->badge(),
                         TextEntry::make('staff.name')->label('Rider'),
                         TextEntry::make('location.name')->label('Area')->placeholder('-'),
                         TextEntry::make('total_qty')->label('Total cups'),
@@ -57,7 +57,7 @@ class SaleInfolist
 
                 Section::make('Tinjauan')
                     ->columns(2)
-                    ->description('Penandaan hanya berarti "perlu dilihat". Transaksinya sudah tercatat dan stok gerobak sudah berkurang.')
+                    ->description('Penandaan hanya berarti "perlu dilihat". Transaksinya sudah tercatat dan stok Coffee Bike sudah berkurang.')
                     ->schema([
                         TextEntry::make('is_suspect')
                             ->label('Status')

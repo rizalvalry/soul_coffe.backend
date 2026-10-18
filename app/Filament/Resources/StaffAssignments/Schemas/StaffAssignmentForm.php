@@ -31,7 +31,7 @@ class StaffAssignmentForm
                     ->live(),
 
                 Select::make('cart_id')
-                    ->label('Gerobak')
+                    ->label('Coffee Bike')
                     ->relationship('cart', 'code')
                     ->searchable()
                     ->preload()
@@ -59,13 +59,13 @@ class StaffAssignmentForm
                             ->when($record, fn ($q) => $q->whereKeyNot($record->getKey()));
 
                         if ($get('user_id') && (clone $base)->where('user_id', $get('user_id'))->exists()) {
-                            $fail('Rider ini sudah ditugaskan pada tanggal tersebut (satu rider satu gerobak per hari).');
+                            $fail('Rider ini sudah ditugaskan pada tanggal tersebut (satu rider satu Coffee Bike per hari).');
 
                             return;
                         }
 
                         if ($get('cart_id') && (clone $base)->where('cart_id', $get('cart_id'))->exists()) {
-                            $fail('Gerobak ini sudah ada penugasannya pada tanggal tersebut.');
+                            $fail('Coffee Bike ini sudah ada penugasannya pada tanggal tersebut.');
                         }
                     }),
 
@@ -79,7 +79,7 @@ class StaffAssignmentForm
                     ->relationship('kitchen', 'name')
                     ->disabled()
                     ->dehydrated(false)
-                    ->helperText('Terisi otomatis mengikuti dapur pemasok gerobak yang dipilih.'),
+                    ->helperText('Terisi otomatis mengikuti dapur pemasok Coffee Bike yang dipilih.'),
             ]);
     }
 }

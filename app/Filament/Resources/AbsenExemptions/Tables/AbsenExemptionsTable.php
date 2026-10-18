@@ -22,7 +22,7 @@ class AbsenExemptionsTable
             ->defaultSort('effective_from', 'desc')
             ->columns([
                 TextColumn::make('cart.code')
-                    ->label('Gerobak')
+                    ->label('Coffee Bike')
                     ->badge()
                     ->searchable()
                     ->sortable(),
@@ -86,7 +86,7 @@ class AbsenExemptionsTable
                         ->all()),
 
                 SelectFilter::make('cart')
-                    ->label('Gerobak')
+                    ->label('Coffee Bike')
                     ->relationship('cart', 'code')
                     ->searchable(),
             ])

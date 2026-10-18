@@ -179,7 +179,7 @@ class AbsenGeofence
                 // The numbers are in the message on purpose: "too far" leaves someone walking in
                 // a random direction, "34 m, batas 10 m" tells them roughly how far to walk.
                 'message' => sprintf(
-                    'Anda berada %d m dari %s, batasnya %d m. Mendekatlah lalu absen lagi. Kalau memang berjualan jauh hari ini, minta Administrator atau Finance membuatkan izin absen untuk gerobak Anda.',
+                    'Kamu masih %d m dari %s, batasnya %d m. Dekat dulu lalu coba absen lagi ya. Kalau jualan jauh hari ini, minta Administrator atau Finance buatin izin absen buat Coffee Bike kamu.',
                     $distance,
                     $rule['label'] ?? 'lokasi absen',
                     $rule['radius_m'],

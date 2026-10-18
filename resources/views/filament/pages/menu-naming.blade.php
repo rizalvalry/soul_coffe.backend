@@ -13,7 +13,7 @@
                 Halaman ini <strong>hanya mengubah nama yang tampil</strong>. Kunci setiap menu
                 (<em>carts</em>, <em>sales</em>, <em>attendance</em>, …) tetap sama — itulah yang
                 dipakai oleh hak akses, alamat halaman, dan seluruh alur bisnis. Jadi mengganti
-                “Gerobak” menjadi “Armada” tidak memutus satu pun izin yang sudah diberikan dan
+                “Coffee Bike” menjadi “Armada” tidak memutus satu pun izin yang sudah diberikan dan
                 tidak mengubah apa pun pada proses refill, absensi, atau penjualan.
             </p>
             <p>

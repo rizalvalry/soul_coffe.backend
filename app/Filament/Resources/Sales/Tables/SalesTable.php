@@ -42,7 +42,7 @@ class SalesTable
                     ->sortable(),
 
                 TextColumn::make('cart.code')
-                    ->label('Gerobak')
+                    ->label('Coffee Bike')
                     ->badge()
                     ->searchable()
                     ->sortable(),
@@ -127,7 +127,7 @@ class SalesTable
                     ->query(fn (Builder $query): Builder => $query->whereNotNull('voided_at')),
 
                 SelectFilter::make('cart_id')
-                    ->label('Gerobak')
+                    ->label('Coffee Bike')
                     ->options(fn (): array => Cart::query()->orderBy('code')->pluck('code', 'id')->all())
                     ->searchable(),
 
@@ -156,7 +156,7 @@ class SalesTable
                     ->visible(fn (Sale $record): bool => ! $record->isVoided() && static::mayVoid())
                     ->requiresConfirmation()
                     ->modalHeading('Batalkan transaksi ini?')
-                    ->modalDescription('Cups yang terjual dikembalikan ke stok gerobak lewat buku besar. Tidak bisa dilakukan lagi setelah setoran gerobak ini untuk tanggal tersebut direkonsiliasi.')
+                    ->modalDescription('Cups yang terjual dikembalikan ke stok Coffee Bike lewat buku besar. Tidak bisa dilakukan lagi setelah setoran Coffee Bike ini untuk tanggal tersebut direkonsiliasi.')
                     ->modalSubmitActionLabel('Batalkan transaksi')
                     ->schema([
                         Textarea::make('reason')
@@ -177,7 +177,7 @@ class SalesTable
                         Notification::make()
                             ->success()
                             ->title('Transaksi dibatalkan')
-                            ->body('Cups sudah dikembalikan ke stok gerobak.')
+                            ->body('Cups sudah dikembalikan ke stok Coffee Bike.')
                             ->send();
                     }),
             ])

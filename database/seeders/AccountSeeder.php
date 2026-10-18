@@ -24,7 +24,7 @@ class AccountSeeder extends Seeder
             ['2-1300', 'Utang PPh 21', 'LIABILITY'],
             ['3-1100', 'Modal Pemilik', 'EQUITY'],
             ['3-1200', 'Saldo Awal Ekuitas', 'EQUITY'],
-            ['4-1100', 'Pendapatan Penjualan Gerobak', 'REVENUE'],
+            ['4-1100', 'Pendapatan Penjualan Coffee Bike', 'REVENUE'],
             ['4-1200', 'Pendapatan Penjualan Langsung', 'REVENUE'],
             ['4-1300', 'Pendapatan Lain-lain', 'REVENUE'],
             ['5-1100', 'HPP', 'COGS'],

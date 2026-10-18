@@ -262,7 +262,7 @@ class DirectSaleTest extends TestCase
         $this->stockCart($this->assignedCart, 3);
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Stok gerobak untuk Kopi Susu hanya 3 cup.');
+        $this->expectExceptionMessage('Stok Coffee Bike untuk Kopi Susu hanya 3 cup.');
 
         $this->service()->record(
             $this->finance,

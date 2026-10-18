@@ -43,7 +43,7 @@ class SettlementsTable
                     ->sortable(),
 
                 TextColumn::make('cart.code')
-                    ->label('Gerobak')
+                    ->label('Coffee Bike')
                     ->badge()
                     ->searchable()
                     ->sortable(),
@@ -162,7 +162,7 @@ class SettlementsTable
                     ]),
 
                 SelectFilter::make('cart_id')
-                    ->label('Gerobak')
+                    ->label('Coffee Bike')
                     ->options(fn (): array => Cart::query()->orderBy('code')->pluck('code', 'id')->all())
                     ->searchable(),
             ], layout: FiltersLayout::AboveContent)
@@ -174,7 +174,7 @@ class SettlementsTable
                         && PermissionMatrix::can(Auth::user(), PanelModule::SETTLEMENTS, 'edit'))
                     ->requiresConfirmation()
                     ->schema([
-                        Repeater::make('lines')->label('Cadangan: atur sisa cups di gerobak')
+                        Repeater::make('lines')->label('Cadangan: atur sisa cups di Coffee Bike')
                             ->schema([
                                 Select::make('product_id')->label('Produk')->options(fn (): array => Product::query()->orderBy('name')->pluck('name', 'id')->all())->required(),
                                 TextInput::make('qty_returned')->label('Kembali')->integer()->minValue(0)->required(),

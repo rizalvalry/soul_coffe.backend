@@ -45,7 +45,7 @@ use RuntimeException;
  *
  * THE OVERLAP WITH THE BARISTA'S CLOSE-OUT, HANDLED HONESTLY
  * ----------------------------------------------------------
- * "Tutup Gerobak" already moves leftover cups back to the kitchen or writes them off. If a barista
+ * "Tutup Coffee Bike" already moves leftover cups back to the kitchen or writes them off. If a barista
  * has done that before Finance approves, the cart's stock is already zero and this flow will
  * offer nothing to disposition — the quantities here are always measured against LIVE cart stock
  * under a lock, never against what was remaining when the deposit was recorded. So whoever gets
@@ -439,7 +439,7 @@ class SettlementService
                     type: 'SettlementVarianceFlagged',
                     title: 'Selisih setoran perlu ditinjau',
                     body: sprintf(
-                        'Gerobak %s · %s · Ekspektasi Rp %s · Disetor Rp %s · Selisih Rp %s',
+                        'Coffee Bike %s · %s · Ekspektasi Rp %s · Disetor Rp %s · Selisih Rp %s',
                         $cart->code,
                         $date->toDateString(),
                         number_format($expected, 0, ',', '.'),
@@ -456,7 +456,7 @@ class SettlementService
             $this->events->publish(
                 type: 'SettlementRecorded',
                 title: 'Setoran tercatat',
-                body: sprintf('Setoran gerobak %s tercatat.', $cart->code),
+                body: sprintf('Setoran Coffee Bike %s tercatat.', $cart->code),
                 channels: ['role.FINANCE', 'role.MANAGEMENT'],
                 status: $settlement->status,
                 context: [
@@ -493,9 +493,9 @@ class SettlementService
             ->where('is_active', true)->pluck('id')->all();
         $this->events->publish(
             type: 'SettlementExpectedStale', title: 'Ekspektasi setoran berubah',
-            body: sprintf('Ekspektasi gerobak %s berubah setelah setoran dicatat.%s',
+            body: sprintf('Ekspektasi Coffee Bike %s berubah setelah setoran dicatat.%s',
                 $settlement->cart?->code,
-                $stockCorrectionNeeded ? ' Periksa stok melalui Stock Opname karena stok gerobak berubah setelah setoran dicatat.' : ''),
+                $stockCorrectionNeeded ? ' Periksa stok melalui Stock Opname karena stok Coffee Bike berubah setelah setoran dicatat.' : ''),
             channels: array_merge(['role.FINANCE', 'role.MANAGEMENT'], array_map(fn (int $id): string => "user.{$id}", $recipientIds)),
             notifyUserIds: $recipientIds, status: $settlement->status,
             context: ['cart_id' => $cartId, 'operating_date' => $date->toDateString(), 'source_id' => $settlement->id],
@@ -552,7 +552,7 @@ class SettlementService
 
             if ($rows !== []) {
                 if (! $kitchenId) {
-                    throw new RuntimeException('Gerobak ini belum terhubung ke dapur pusat, cups sisa tidak bisa dikembalikan.');
+                    throw new RuntimeException('Coffee Bike ini belum terhubung ke dapur pusat, cups sisa tidak bisa dikembalikan.');
                 }
 
                 // Measured against LIVE stock under a lock, never against the numbers captured
@@ -569,7 +569,7 @@ class SettlementService
                         $name = Product::query()->whereKey($productId)->value('name') ?? ('#'.$productId);
 
                         throw new RuntimeException(sprintf(
-                            'Sisa + reject untuk %s (%d) melebihi stok gerobak yang tinggal %d. Mungkin gerobak ini sudah ditutup Produksi.',
+                            'Sisa + reject untuk %s (%d) melebihi stok Coffee Bike yang tinggal %d. Mungkin Coffee Bike ini sudah ditutup Produksi.',
                             $name,
                             $moving,
                             $onHand,
@@ -627,7 +627,7 @@ class SettlementService
 
             $liveStock = $this->currentCartStock($cart->id);
             if (collect($liveStock)->contains(fn (int $qty): bool => $qty > 0)) {
-                throw new RuntimeException('Masih ada cups di gerobak. Tentukan jumlah kembali atau reject sebelum menyetujui setoran.');
+                throw new RuntimeException('Masih ada cups di Coffee Bike. Tentukan jumlah kembali atau reject sebelum menyetujui setoran.');
             }
 
             $locked->status = 'RECONCILED';
@@ -645,7 +645,7 @@ class SettlementService
             $this->events->publish(
                 type: 'SettlementApproved',
                 title: 'Setoran disetujui',
-                body: sprintf('Setoran gerobak %s disetujui.', $cart->code),
+                body: sprintf('Setoran Coffee Bike %s disetujui.', $cart->code),
                 channels: ['role.FINANCE', 'role.MANAGEMENT'],
                 status: $locked->status,
                 context: [
@@ -721,7 +721,7 @@ class SettlementService
             'entry_date' => $settlement->operating_date->toDateString(),
             'source_type' => 'settlement',
             'source_id' => $settlement->id,
-            'description' => 'Setoran gerobak '.$settlement->cart?->code,
+            'description' => 'Setoran Coffee Bike '.$settlement->cart?->code,
             'posted_by' => $finance->id,
         ];
         if ($lines !== []) {

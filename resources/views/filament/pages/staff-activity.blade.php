@@ -68,12 +68,12 @@
             <div class="bsi-stat">
                 <span class="bsi-kicker">Transaksi</span>
                 <span class="bsi-stat__value">{{ number_format($totals['transactions'], 0, ',', '.') }}</span>
-                <span class="bsi-stat__hint">{{ $totals['carts'] }} gerobak berjualan</span>
+                <span class="bsi-stat__hint">{{ $totals['carts'] }} unit Coffee Bike berjualan</span>
             </div>
             <div class="bsi-stat">
                 <span class="bsi-kicker">Cups terjual</span>
                 <span class="bsi-stat__value">{{ number_format($totals['cups'], 0, ',', '.') }}</span>
-                <span class="bsi-stat__hint">keluar dari stok gerobak</span>
+                <span class="bsi-stat__hint">keluar dari stok Coffee Bike</span>
             </div>
             <div class="bsi-stat">
                 <span class="bsi-kicker">Nilai penjualan</span>
@@ -101,7 +101,7 @@
                         @if ($selectedName)
                             Jejak {{ $selectedName }}
                         @else
-                            Peta sebaran gerobak
+                            Peta sebaran Coffee Bike
                         @endif
                     </h2>
                 </div>
@@ -143,7 +143,7 @@
                     <thead>
                         <tr>
                             <th class="bsi-name">Staff</th>
-                            <th>Gerobak</th>
+                            <th>Coffee Bike</th>
                             <th>Area</th>
                             <th>Absen</th>
                             <th>Laporan posisi</th>
@@ -289,8 +289,8 @@
         <div class="bsi-sheet">
             <div class="bsi-sheet__head">
                 <div class="bsi-sheet__head-left">
-                    <span class="bsi-kicker">Per gerobak</span>
-                    <h2 class="bsi-title">Transaksi tiap gerobak di lokasinya</h2>
+                    <span class="bsi-kicker">Per Coffee Bike</span>
+                    <h2 class="bsi-title">Transaksi tiap Coffee Bike di lokasinya</h2>
                 </div>
             </div>
 
@@ -298,7 +298,7 @@
                 <table class="bsi-grid">
                     <thead>
                         <tr>
-                            <th class="bsi-name">Gerobak</th>
+                            <th class="bsi-name">Coffee Bike</th>
                             <th>Staff</th>
                             <th>Area</th>
                             <th class="bsi-num">Transaksi</th>
@@ -351,9 +351,9 @@
                     <span class="bsi-kicker">Cara membacanya</span>
                     <p>
                         Penandaan ini <strong>tidak pernah menolak transaksi</strong>. Cups-nya sudah
-                        keluar dari stok gerobak dan uangnya sudah tercatat; yang diminta di sini hanya
-                        satu pandangan mata. Untuk gerobak yang memang selalu ramai, matikan penandaan
-                        lewat Master Data → Gerobak → “Zona ramai”.
+                        keluar dari stok Coffee Bike dan uangnya sudah tercatat; yang diminta di sini hanya
+                        satu pandangan mata. Untuk Coffee Bike yang memang selalu ramai, matikan penandaan
+                        lewat Master Data → Coffee Bike → “Zona ramai”.
                     </p>
                 </div>
 
@@ -362,7 +362,7 @@
                         <thead>
                             <tr>
                                 <th>Waktu</th>
-                                <th class="bsi-name">Gerobak</th>
+                                <th class="bsi-name">Coffee Bike</th>
                                 <th>Staff</th>
                                 <th>Area</th>
                                 <th class="bsi-num">Cups</th>

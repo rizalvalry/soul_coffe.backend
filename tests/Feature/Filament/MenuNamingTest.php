@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Services\Access\PermissionMatrix;
 use App\Services\Menu\MenuLabels;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -67,7 +68,7 @@ class MenuNamingTest extends TestCase
 
     public function test_renaming_a_menu_changes_what_the_sidebar_says(): void
     {
-        $this->assertSame('Gerobak', CartResource::getNavigationLabel());
+        $this->assertSame('Coffee Bike', CartResource::getNavigationLabel());
 
         Livewire::actingAs($this->admin)
             ->test(MenuNaming::class)
@@ -134,14 +135,14 @@ class MenuNamingTest extends TestCase
 
         MenuLabels::forget();
 
-        $this->assertSame('Gerobak', MenuLabels::for(PanelModule::CARTS));
+        $this->assertSame('Coffee Bike', MenuLabels::for(PanelModule::CARTS));
         $this->assertSame(0, ModuleLabel::query()->where('module', 'carts')->count());
     }
 
     /** Storing a copy of the default would be a row that can silently drift from the code. */
     public function test_typing_the_default_name_stores_nothing(): void
     {
-        MenuLabels::set(ModuleLabel::SCOPE_MODULE, 'carts', 'Gerobak');
+        MenuLabels::set(ModuleLabel::SCOPE_MODULE, 'carts', 'Coffee Bike');
 
         $this->assertSame(0, ModuleLabel::query()->count());
     }
@@ -158,7 +159,7 @@ class MenuNamingTest extends TestCase
         MenuLabels::forget();
 
         $this->assertSame(0, ModuleLabel::query()->count());
-        $this->assertSame('Gerobak', MenuLabels::for(PanelModule::CARTS));
+        $this->assertSame('Coffee Bike', MenuLabels::for(PanelModule::CARTS));
         $this->assertSame('Operasional', MenuLabels::group('Operasional'));
     }
 
@@ -238,10 +239,10 @@ class MenuNamingTest extends TestCase
     /** A cosmetic table must never be able to take the panel down. */
     public function test_names_fall_back_to_the_built_in_ones_when_the_table_is_missing(): void
     {
-        \Illuminate\Support\Facades\Schema::drop('module_labels');
+        Schema::drop('module_labels');
         MenuLabels::forget();
 
-        $this->assertSame('Gerobak', MenuLabels::for(PanelModule::CARTS));
+        $this->assertSame('Coffee Bike', MenuLabels::for(PanelModule::CARTS));
         $this->assertSame('Operasional', MenuLabels::group('Operasional'));
         $this->actingAs($this->admin)->get(CartResource::getUrl())->assertSuccessful();
     }

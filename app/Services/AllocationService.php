@@ -120,7 +120,7 @@ class AllocationService
             ->exists();
 
         if ($alreadyAllocatedToday && blank($correctionReason)) {
-            abort(409, 'Sudah ada alokasi untuk gerobak ini hari ini. Isi alasan koreksi untuk mencatat alokasi baru.');
+            abort(409, 'Sudah ada alokasi untuk Coffee Bike ini hari ini. Isi alasan koreksi untuk mencatat alokasi baru.');
         }
 
         $isCorrection = $alreadyAllocatedToday;
@@ -181,7 +181,7 @@ class AllocationService
                 ->whereNull('superseded_at')
                 ->exists();
             if (! $stillAssigned) {
-                abort(409, 'Penugasan Rider untuk gerobak ini sudah berubah. Coba cek lagi ya.');
+                abort(409, 'Penugasan Rider untuk Coffee Bike ini sudah berubah. Coba cek lagi ya.');
             }
 
             $allocation = DailyAllocation::query()->create([
@@ -276,7 +276,7 @@ class AllocationService
                     type: 'AllocationOverTarget',
                     title: 'Alokasi melebihi target',
                     body: sprintf(
-                        'Gerobak %s alokasi %d%% di atas target — menunggu approval Finance.',
+                        'Coffee Bike %s alokasi %d%% di atas target — menunggu approval Finance.',
                         $cart->code,
                         $overTargetPct,
                     ),

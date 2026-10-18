@@ -53,8 +53,8 @@ class StoreSaleRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'cart_id.integer' => 'Gerobak asal transaksi ini nggak valid. Cek lagi ya.',
-            'cart_id.min' => 'Gerobak asal transaksi ini nggak valid. Cek lagi ya.',
+            'cart_id.integer' => 'Coffee Bike asal transaksi ini nggak valid. Cek lagi ya.',
+            'cart_id.min' => 'Coffee Bike asal transaksi ini nggak valid. Cek lagi ya.',
             'lines.required' => 'Pilih dulu cups yang terjual.',
             'lines.min' => 'Pilih dulu cups yang terjual.',
         ];

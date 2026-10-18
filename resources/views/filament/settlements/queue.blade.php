@@ -5,7 +5,7 @@
     <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
         <table class="w-full text-sm">
             <thead><tr class="text-left">
-                <th class="p-3">Gerobak</th><th class="p-3">Rider</th><th class="p-3">Kedatangan</th>
+                <th class="p-3">Coffee Bike</th><th class="p-3">Rider</th><th class="p-3">Kedatangan</th>
                 <th class="p-3">Ekspektasi Tunai</th><th class="p-3">QRIS</th><th class="p-3">Transfer</th>
                 <th class="p-3">Setoran</th><th class="p-3">Selisih</th><th class="p-3">Status</th>
             </tr></thead>
@@ -30,7 +30,7 @@
                             <span class="rounded-full bg-amber-100 px-2 py-1 text-amber-800">Sisa kemarin</span>
                         @endif
                         @if ($row['closeout_variance_count'] > 0)
-                            <span class="rounded-full bg-red-100 px-2 py-1 text-red-800">Selisih Tutup Gerobak</span>
+                            <span class="rounded-full bg-red-100 px-2 py-1 text-red-800">Selisih Tutup Coffee Bike</span>
                         @endif
                         @if ($row['settlement_status'] === 'VARIANCE_FLAGGED')
                             <span class="rounded-full bg-red-100 px-2 py-1 font-semibold text-red-800">VARIANCE_FLAGGED</span>

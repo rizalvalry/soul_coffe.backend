@@ -1,5 +1,5 @@
 {{--
-    Penjualan per gerobak hari ini — the dashboard list.
+    Penjualan per Coffee Bike hari ini — the dashboard list.
 
     Styled with the `bsi-` layout classes in soul-teal-layout.css, wrapped in Filament's own widget
     card so it sits with the charts above it instead of floating.
@@ -16,8 +16,8 @@
             <div class="bsi-sheet">
                 <div class="bsi-sheet__head">
                     <div class="bsi-sheet__head-left">
-                        <span class="bsi-kicker">Hari ini · per gerobak di lokasinya</span>
-                        <h2 class="bsi-title">Penjualan gerobak</h2>
+                        <span class="bsi-kicker">Hari ini · per Coffee Bike di lokasinya</span>
+                        <h2 class="bsi-title">Penjualan Coffee Bike</h2>
                     </div>
 
                     @if ($peak['area'])
@@ -38,7 +38,7 @@
                         <table class="bsi-grid">
                             <thead>
                                 <tr>
-                                    <th class="bsi-name">Gerobak</th>
+                                    <th class="bsi-name">Coffee Bike</th>
                                     <th>Rider</th>
                                     <th class="bsi-num">Cups</th>
                                     <th class="bsi-num">Pendapatan</th>
@@ -58,7 +58,7 @@
                             </tbody>
                             <tfoot>
                                 <tr class="bsi-foot-total">
-                                    <td class="bsi-name">{{ $totals['carts'] }} gerobak</td>
+                                    <td class="bsi-name">{{ $totals['carts'] }} unit Coffee Bike</td>
                                     <td></td>
                                     <td class="bsi-num">{{ number_format($totals['cups'], 0, ',', '.') }}</td>
                                     <td class="bsi-num">Rp {{ number_format($totals['revenue'], 0, ',', '.') }}</td>

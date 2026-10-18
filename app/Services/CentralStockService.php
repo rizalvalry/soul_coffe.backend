@@ -112,7 +112,7 @@ class CentralStockService
         $this->assertBarista($barista);
 
         if ($staff->role !== Role::STAFF) {
-            throw new RuntimeException('Penerima gerobak harus rider.');
+            throw new RuntimeException('Penerima Coffee Bike harus rider.');
         }
 
         $rows = $this->normalizeQuantities($qtyByProductId);
@@ -121,7 +121,7 @@ class CentralStockService
         $kitchenId = $cart->kitchen_id ?? $barista->kitchen_id;
 
         if (! $kitchenId) {
-            throw new RuntimeException('Gerobak ini belum terhubung ke dapur pusat.');
+            throw new RuntimeException('Coffee Bike ini belum terhubung ke dapur pusat.');
         }
 
         return DB::transaction(function () use (
@@ -132,7 +132,7 @@ class CentralStockService
             Cart::query()->whereKey($cart->id)->lockForUpdate()->firstOrFail();
             if (RiderClosing::query()->where('cart_id', $cart->id)
                 ->whereDate('operating_date', $date->toDateString())->exists()) {
-                throw new RuntimeException('Gerobak sudah Closing. Add Stock untuk hari ini tidak bisa ditambah lagi ya.');
+                throw new RuntimeException('Coffee Bike sudah Closing. Add Stock untuk hari ini tidak bisa ditambah lagi ya.');
             }
             // Sufficiency is checked against LOCKED rows, in product order, so two baristas
             // handing out the same product at the same moment cannot both pass the check and
@@ -162,8 +162,8 @@ class CentralStockService
             if ($assignment->wasRecentlyCreated) {
                 $this->events->publish(
                     'CartAssignmentChanged',
-                    'Gerobak kamu siap',
-                    "Gerobak {$cart->code} sudah dapat stok. Yuk, mulai jualan!",
+                    'Coffee Bike kamu siap',
+                    "Coffee Bike {$cart->code} sudah dapat stok. Yuk, mulai jualan!",
                     ['user.'.$staff->id],
                     [$staff->id],
                     context: ['cart_id' => $cart->id, 'operating_date' => $date->toDateString()],
@@ -175,8 +175,8 @@ class CentralStockService
                 }
                 $this->events->publish(
                     'CartAssignmentChanged',
-                    'Gerobak diperbarui',
-                    'Gerobak kamu berubah hari ini. Cek lagi sebelum lanjut ya.',
+                    'Coffee Bike diperbarui',
+                    'Coffee Bike kamu berubah hari ini. Cek lagi sebelum lanjut ya.',
                     ['user.'.$displacedStaffId],
                     [$displacedStaffId],
                     context: ['cart_id' => null, 'operating_date' => $date->toDateString()],
@@ -217,9 +217,9 @@ class CentralStockService
             // is loaded and how much operational money was recorded against it today.
             $this->events->publish(
                 'CartStockHandedOver',
-                'Stok gerobak diterima',
+                'Stok Coffee Bike diterima',
                 sprintf(
-                    'Gerobak %s: %d cups dari %s. Uang operasional Rp %s.',
+                    'Coffee Bike %s: %d cups dari %s. Uang operasional Rp %s.',
                     $cart->code,
                     array_sum($rows),
                     $barista->name,
@@ -258,7 +258,7 @@ class CentralStockService
         $kitchenId = $cart->kitchen_id ?? $barista->kitchen_id;
 
         if (! $kitchenId) {
-            throw new RuntimeException('Gerobak ini belum terhubung ke dapur pusat.');
+            throw new RuntimeException('Coffee Bike ini belum terhubung ke dapur pusat.');
         }
 
         DB::transaction(function () use ($barista, $cart, $returned, $rejected, $kitchenId): void {
@@ -285,11 +285,11 @@ class CentralStockService
                         StockLedgerService::CART, $cart->id, $productId,
                         MovementType::ADJUSTMENT, $moving - $available,
                         $barista->id, $kitchenId, 'cart_closeout_count_adjustment', $cart->id,
-                        note: 'Saldo disesuaikan ke hitungan fisik Tutup Gerobak; selisih ditandai.'
+                        note: 'Saldo disesuaikan ke hitungan fisik Tutup Coffee Bike; selisih ditandai.'
                     );
                 } elseif ($moving > $available) {
                     throw new RuntimeException(
-                        "Jumlah sisa + reject untuk produk #{$productId} ({$moving}) melebihi stok gerobak ({$available})."
+                        "Jumlah sisa + reject untuk produk #{$productId} ({$moving}) melebihi stok Coffee Bike ({$available})."
                     );
                 }
             }
@@ -361,8 +361,8 @@ class CentralStockService
                     ->where('is_active', true)->pluck('id')->all();
                 $this->events->publish(
                     'CartCloseOutVarianceFlagged',
-                    'Selisih Tutup Gerobak',
-                    "Hitungan sisa gerobak {$cart->code} beda dari Closing Rider. Cek di antrean setoran ya.",
+                    'Selisih Tutup Coffee Bike',
+                    "Hitungan sisa Coffee Bike {$cart->code} beda dari Closing Rider. Cek di antrean setoran ya.",
                     ['role.ADMINISTRATOR', 'role.FINANCE'],
                     $recipients,
                     context: ['cart_id' => $cart->id, 'operating_date' => today()->toDateString(), 'source_id' => $closing->id],
@@ -378,9 +378,9 @@ class CentralStockService
             $cartStaffIds = $this->cartStaffIds($cart, Carbon::today());
             $this->events->publish(
                 'CartClosedOut',
-                'Tutup gerobak',
+                'Tutup Coffee Bike',
                 sprintf(
-                    'Gerobak %s ditutup: %d cups sisa, %d cups reject.',
+                    'Coffee Bike %s ditutup: %d cups sisa, %d cups reject.',
                     $cart->code,
                     array_sum($returned),
                     array_sum($rejected),

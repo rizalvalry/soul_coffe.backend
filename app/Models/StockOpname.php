@@ -78,7 +78,7 @@ class StockOpname extends Model
     public function locationLabel(): string
     {
         if ($this->location_type === StockLedgerService::CART) {
-            return 'Gerobak '.($this->cart?->code ?? '#'.$this->location_id);
+            return 'Coffee Bike '.($this->cart?->code ?? '#'.$this->location_id);
         }
 
         return $this->kitchen?->name ?? 'Dapur #'.$this->location_id;

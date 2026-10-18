@@ -24,17 +24,17 @@
             <div class="bsi-stat">
                 <span class="bsi-kicker">Total seluruh cups</span>
                 <span class="bsi-stat__value">{{ number_format($snap['grand'], 0, ',', '.') }}</span>
-                <span class="bsi-stat__hint">dapur + seluruh gerobak</span>
+                <span class="bsi-stat__hint">dapur + seluruh Coffee Bike</span>
             </div>
             <div class="bsi-stat">
                 <span class="bsi-kicker">Masih di dapur</span>
                 <span class="bsi-stat__value">{{ number_format($snap['kitchen_grand'], 0, ',', '.') }}</span>
-                <span class="bsi-stat__hint">belum dibagikan ke gerobak</span>
+                <span class="bsi-stat__hint">belum dibagikan ke Coffee Bike</span>
             </div>
             <div class="bsi-stat">
-                <span class="bsi-kicker">Sudah di gerobak</span>
+                <span class="bsi-kicker">Sudah di Coffee Bike</span>
                 <span class="bsi-stat__value">{{ number_format($snap['cart_grand'], 0, ',', '.') }}</span>
-                <span class="bsi-stat__hint">tersebar di gerobak aktif</span>
+                <span class="bsi-stat__hint">tersebar di Coffee Bike aktif</span>
             </div>
         </div>
 
@@ -43,11 +43,11 @@
             <p>
                 Angka di sini <strong>dihitung dari buku besar stok</strong>, bukan dari penghitung
                 yang bisa diketik — jadi tidak mungkin berbeda dari pergerakan yang membentuknya.
-                Stok bergerak lewat aktivitas: Produksi menyeduh (Add Stock), menyerahkan ke gerobak,
-                refill, dan tutup gerobak.
+                Stok bergerak lewat aktivitas: Produksi menyeduh (Add Stock), menyerahkan ke Coffee Bike,
+                refill, dan tutup Coffee Bike.
             </p>
             <p>
-                Gerobak berstatus <em>maintenance</em> tetap dihitung — cups bisa saja masih ada di
+                Coffee Bike berstatus <em>maintenance</em> tetap dihitung — cups bisa saja masih ada di
                 atasnya. Yang berstatus <em>retired</em> tidak lagi ditampilkan.
             </p>
         </div>
@@ -121,7 +121,7 @@
                 <div class="bsi-sheet__head">
                     <div class="bsi-sheet__head-left">
                         <span class="bsi-kicker">Sesudah dibagikan</span>
-                        <h2 class="bsi-title">Stok per kode gerobak</h2>
+                        <h2 class="bsi-title">Stok per kode Coffee Bike</h2>
                     </div>
                     <span class="bsi-serif">{{ number_format($snap['cart_grand'], 0, ',', '.') }} cups</span>
                 </div>
@@ -130,7 +130,7 @@
                     <table class="bsi-grid">
                         <thead>
                             <tr>
-                                <th class="bsi-name">Kode Gerobak</th>
+                                <th class="bsi-name">Kode Coffee Bike</th>
                                 @foreach ($products as $product)
                                     <th>{{ $product->name }}<br><span class="bsi-th-unit">{{ $product->unit }}</span></th>
                                 @endforeach
@@ -156,8 +156,8 @@
                                 <tr>
                                     <td colspan="{{ $colspan }}">
                                         <div class="bsi-empty">
-                                            <p class="bsi-empty__title">Belum ada gerobak</p>
-                                            <p>Tambahkan lewat menu Master Data → Gerobak.</p>
+                                            <p class="bsi-empty__title">Belum ada Coffee Bike</p>
+                                            <p>Tambahkan lewat menu Master Data → Coffee Bike.</p>
                                         </div>
                                     </td>
                                 </tr>
@@ -166,7 +166,7 @@
                         @if ($snap['carts']->isNotEmpty())
                             <tfoot>
                                 <tr>
-                                    <td class="bsi-name bsi-foot">Subtotal gerobak</td>
+                                    <td class="bsi-name bsi-foot">Subtotal Coffee Bike</td>
                                     @foreach ($products as $product)
                                         <td class="bsi-num bsi-num--strong bsi-foot">{{ number_format($snap['cart_totals'][$product->id] ?? 0, 0, ',', '.') }}</td>
                                     @endforeach

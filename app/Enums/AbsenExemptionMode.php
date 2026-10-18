@@ -29,7 +29,7 @@ enum AbsenExemptionMode: string
     public function description(): string
     {
         return match ($this) {
-            self::SELLING_LOCATION => 'Boleh absen dari lokasi berjualan gerobak ini, bukan dari Dapur Pusat.',
+            self::SELLING_LOCATION => 'Boleh absen dari lokasi berjualan Coffee Bike ini, bukan dari Dapur Pusat.',
             self::ANYWHERE => 'Boleh absen dari mana saja. Pakai untuk event, car free day, atau mess yang jauh.',
         };
     }

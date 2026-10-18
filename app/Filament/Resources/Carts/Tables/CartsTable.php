@@ -45,7 +45,7 @@ class CartsTable
                 IconColumn::make('high_volume_zone')
                     ->label('Zona ramai')
                     ->boolean()
-                    ->tooltip('Transaksi besar dari gerobak ini tidak ditandai sebagai perlu ditinjau.')
+                    ->tooltip('Transaksi besar dari Coffee Bike ini tidak ditandai sebagai perlu ditinjau.')
                     ->toggleable(),
             ])
             ->defaultSort('code')

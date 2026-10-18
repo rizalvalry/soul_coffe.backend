@@ -31,7 +31,7 @@ class CentralKitchensTable
                     ->label('Aktif')
                     ->boolean(),
                 TextColumn::make('carts_count')
-                    ->label('Gerobak')
+                    ->label('Coffee Bike')
                     ->counts('carts')
                     ->badge(),
             ])

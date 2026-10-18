@@ -19,11 +19,11 @@ class DirectSaleForm
         return $schema
             ->components([
                 Select::make('cart_id')
-                    ->label('Gerobak')
+                    ->label('Coffee Bike')
                     ->options(fn (): array => static::cartOptions())
                     ->searchable()
                     ->required()
-                    ->helperText('Pilih gerobak yang bertugas di depan kantor hari ini, atau gerobak yang sedang tidak ditugaskan dan berada di dapur.'),
+                    ->helperText('Pilih Coffee Bike yang bertugas di depan kantor hari ini, atau Coffee Bike yang sedang tidak ditugaskan dan berada di dapur.'),
 
                 Repeater::make('lines')
                     ->label('Produk Terjual')

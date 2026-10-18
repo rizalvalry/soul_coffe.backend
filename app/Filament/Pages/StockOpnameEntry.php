@@ -89,7 +89,7 @@ class StockOpnameEntry extends Page
     public function cartOptions(): array
     {
         return Cart::query()->where('status', '!=', 'retired')->orderBy('code')->get(['id', 'code'])
-            ->map(fn (Cart $cart): array => ['value' => $cart->id, 'label' => 'Gerobak '.$cart->code])
+            ->map(fn (Cart $cart): array => ['value' => $cart->id, 'label' => 'Coffee Bike '.$cart->code])
             ->all();
     }
 

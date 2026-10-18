@@ -45,7 +45,7 @@ class RiderClosingService
         if (! $assignment) {
             throw new HttpResponseException(response()->json([
                 'code' => 'NO_CART_TODAY',
-                'message' => 'Produksi belum kasih stok ke gerobak kamu hari ini. Minta Produksi Add Stock dulu ya.',
+                'message' => 'Produksi belum kasih stok ke Coffee Bike kamu hari ini. Minta Produksi Add Stock dulu ya.',
             ], 403));
         }
 
@@ -167,7 +167,7 @@ class RiderClosingService
             $settlement = Settlement::query()->where('cart_id', $cart->id)
                 ->whereDate('operating_date', $date->toDateString())->lockForUpdate()->first();
             if ($closing && $closing->rider_id !== $rider->id) {
-                throw new RuntimeException('Gerobak ini sudah Closing atas nama Rider lain. Minta Finance cek dulu ya.');
+                throw new RuntimeException('Coffee Bike ini sudah Closing atas nama Rider lain. Minta Finance cek dulu ya.');
             }
             $financeActor = in_array($actor->role, [Role::FINANCE, Role::MANAGEMENT], true);
             if ($settlement?->reconciled_at && ! $financeActor) {
@@ -297,7 +297,7 @@ class RiderClosingService
                 if (($settlement?->reconciled_at || ($disposed && $old)) && $netCorrection !== 0) {
                     $this->ledger->post(StockLedgerService::CART, $cart->id, $id, MovementType::ADJUSTMENT,
                         -$netCorrection, $actor->id, (int) $cart->kitchen_id, 'rider_closing_after_disposition', $closing->id,
-                        note: 'Koreksi Closing setelah cups fisik ditutup; stok gerobak tidak berubah.');
+                        note: 'Koreksi Closing setelah cups fisik ditutup; stok Coffee Bike tidak berubah.');
                 }
                 if ($disposed && ! $old) {
                     $needed = $row['qty_sale_posted'] + $row['qty_waste_posted']
@@ -305,7 +305,7 @@ class RiderClosingService
                     if ($needed > 0) {
                         $this->ledger->post(StockLedgerService::CART, $cart->id, $id, MovementType::ADJUSTMENT,
                             $needed, $actor->id, (int) $cart->kitchen_id, 'rider_closing_after_disposition', $closing->id,
-                            note: 'Closing dicatat setelah Tutup Gerobak; saldo fisik diselaraskan.');
+                            note: 'Closing dicatat setelah Tutup Coffee Bike; saldo fisik diselaraskan.');
                     }
                 }
                 if ($row['qty_sale_posted'] > 0) {
@@ -320,14 +320,14 @@ class RiderClosingService
                 if ($disposed && ! $old && $onHand > 0) {
                     $this->ledger->post(StockLedgerService::CART, $cart->id, $id, MovementType::ADJUSTMENT,
                         -$onHand, $actor->id, (int) $cart->kitchen_id, 'rider_closing_after_disposition', $closing->id,
-                        note: 'Closing dicatat setelah Tutup Gerobak; sisa tak terhitung ditandai.');
+                        note: 'Closing dicatat setelah Tutup Coffee Bike; sisa tak terhitung ditandai.');
                     $onHand = 0;
                 }
                 if (! $settlement?->reconciled_at && ! $disposed && $onHand !== $row['qty_remaining']) {
-                    throw new RuntimeException("Stok gerobak produk #{$id} berubah. Muat ulang Closing ya.");
+                    throw new RuntimeException("Stok Coffee Bike produk #{$id} berubah. Muat ulang Closing ya.");
                 }
                 if ($onHand < 0) {
-                    throw new RuntimeException("Stok gerobak produk #{$id} tidak boleh negatif.");
+                    throw new RuntimeException("Stok Coffee Bike produk #{$id} tidak boleh negatif.");
                 }
                 if ($old) {
                     $old->update($row);
@@ -361,7 +361,7 @@ class RiderClosingService
             $this->events->publish(
                 $before ? 'RiderClosingCorrected' : 'RiderClosingRecorded',
                 'Closing Rider sudah masuk',
-                "Closing gerobak {$cart->code} sudah tercatat. Setoran bisa dicek ya.",
+                "Closing Coffee Bike {$cart->code} sudah tercatat. Setoran bisa dicek ya.",
                 ['role.FINANCE', 'role.MANAGEMENT', 'role.ADMINISTRATOR', 'user.'.$rider->id],
                 context: ['cart_id' => $cart->id, 'operating_date' => $date->toDateString(), 'source_id' => $closing->id],
             );
@@ -432,8 +432,8 @@ class RiderClosingService
         if ($flagged) {
             $recipients = User::query()->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE])
                 ->where('is_active', true)->pluck('id')->all();
-            $this->events->publish('CartCloseOutVarianceFlagged', 'Selisih Tutup Gerobak',
-                "Hitungan sisa gerobak {$closing->cart?->code} beda dari Closing Rider. Cek di antrean setoran ya.",
+            $this->events->publish('CartCloseOutVarianceFlagged', 'Selisih Tutup Coffee Bike',
+                "Hitungan sisa Coffee Bike {$closing->cart?->code} beda dari Closing Rider. Cek di antrean setoran ya.",
                 ['role.ADMINISTRATOR', 'role.FINANCE'], $recipients,
                 context: ['cart_id' => $closing->cart_id, 'operating_date' => $closing->operating_date->toDateString(), 'source_id' => $closing->id]);
         }
@@ -469,7 +469,7 @@ class RiderClosingService
         $header = [
             'entry_date' => today()->toDateString(), 'source_type' => 'rider_closing_revision',
             'source_id' => $revisionId, 'posted_by' => $actor->id,
-            'description' => "Koreksi Closing gerobak {$closing->cart?->code}: {$reason}",
+            'description' => "Koreksi Closing Coffee Bike {$closing->cart?->code}: {$reason}",
         ];
         if ($revenueDelta !== 0) {
             $amount = abs($revenueDelta);

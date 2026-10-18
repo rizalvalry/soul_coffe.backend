@@ -21,7 +21,7 @@ class RevenueExport implements FromCollection, ShouldAutoSize, WithHeadings, Wit
     public function headings(): array
     {
         return [
-            'Tanggal Operasional', 'Gerobak', 'Staff', 'Status',
+            'Tanggal Operasional', 'Coffee Bike', 'Staff', 'Status',
             'Tunai (Rp)', 'QRIS (Rp)', 'Transfer (Rp)',
             'Total Dilaporkan (Rp)', 'Total Diharapkan (Rp)', 'Selisih (Rp)', 'Alasan Selisih',
             'Direkonsiliasi Oleh', 'Waktu Rekonsiliasi',

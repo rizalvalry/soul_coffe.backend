@@ -101,6 +101,7 @@ class SettlementPanelTest extends TestCase
         $this->actingAs($this->admin)
             ->get(SettlementResource::getUrl())
             ->assertSuccessful()
+            ->assertSee('Coffee Bike')
             ->assertSee('0018')
             ->assertSee('Rider Uji Satu')
             // The gap in words, and the reason somebody typed for it, side by side.
