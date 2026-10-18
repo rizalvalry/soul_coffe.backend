@@ -26,5 +26,6 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('view-management-reports', fn (User $user): bool => $user->role === Role::MANAGEMENT);
         Gate::define('manage-payroll', fn (User $user): bool => $user->is_active && $user->role === Role::MANAGEMENT);
         Gate::define('manage-accounting-periods', fn (User $user): bool => $user->role === Role::MANAGEMENT);
+        Gate::define('post-manual-journal', fn (User $user): bool => in_array($user->role, [Role::FINANCE, Role::MANAGEMENT], true));
     }
 }

@@ -3,18 +3,21 @@
 namespace App\Filament\Resources\PurchaseOrders;
 
 use App\Enums\PanelModule;
+use App\Enums\Role;
 use App\Filament\Concerns\MatrixGoverned;
 use App\Filament\Resources\PurchaseOrders\Pages\CreatePurchaseOrder;
 use App\Filament\Resources\PurchaseOrders\Pages\ListPurchaseOrders;
 use App\Filament\Resources\PurchaseOrders\Schemas\PurchaseOrderForm;
 use App\Filament\Resources\PurchaseOrders\Tables\PurchaseOrdersTable;
 use App\Models\PurchaseOrder;
+use App\Services\Access\PermissionMatrix;
 use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Auth;
 use UnitEnum;
 
 /**
@@ -71,6 +74,12 @@ class PurchaseOrderResource extends Resource
     public static function canEdit(Model $record): bool
     {
         return false;
+    }
+
+    public static function canCreate(): bool
+    {
+        return in_array(Auth::user()?->role, [Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR], true)
+            && PermissionMatrix::can(Auth::user(), PanelModule::PURCHASE_ORDERS, 'create');
     }
 
     public static function canDelete(Model $record): bool

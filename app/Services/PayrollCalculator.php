@@ -21,23 +21,23 @@ class PayrollCalculator
     public function calculate(User $user, string $period): array
     {
         if (! preg_match('/^\d{4}-(0[1-9]|1[0-2])$/D', $period)) {
-            throw new InvalidArgumentException('Period must be YYYY-MM.');
+            throw new InvalidArgumentException('Periode payroll harus format YYYY-MM ya.');
         }
 
         $start = DateTimeImmutable::createFromFormat('!Y-m-d', $period.'-01');
         if (! $start || $start->format('Y-m') !== $period) {
-            throw new InvalidArgumentException('Invalid payroll period.');
+            throw new InvalidArgumentException('Periode payroll belum valid ya.');
         }
         $from = $start->format('Y-m-d');
         $through = $start->format('Y-m-t');
 
         $profile = $user->employeeProfile;
         if (! $profile || ! $profile->payroll_active || $profile->base_salary_minor === null) {
-            throw new DomainException('Active payroll profile and base salary are required.');
+            throw new DomainException('Profil payroll belum aktif atau gaji pokok belum diisi.');
         }
         $baseSalary = $profile->base_salary_minor;
         if (! is_int($baseSalary) || $baseSalary < 0) {
-            throw new DomainException('Base salary must be nonnegative integer rupiah.');
+            throw new DomainException('Gaji pokok harus rupiah bulat dan tidak boleh negatif.');
         }
 
         $cups = 0;
@@ -72,7 +72,7 @@ class PayrollCalculator
             $type = $entry->type;
             $amount = $entry->amount_minor;
             if (! $type || ! is_int($amount) || $amount < 0 || $type->effective_from->format('Y-m-d') > $from) {
-                throw new DomainException('Invalid payroll component entry.');
+                throw new DomainException('Komponen payroll belum valid ya.');
             }
             if ($type->kind === 'EARNING') {
                 $manualEarnings = self::add($manualEarnings, $amount);
@@ -82,7 +82,7 @@ class PayrollCalculator
             } elseif ($type->kind === 'DEDUCTION') {
                 $manualDeductions = self::add($manualDeductions, $amount);
             } else {
-                throw new DomainException('Invalid payroll component kind.');
+                throw new DomainException('Jenis komponen payroll belum valid ya.');
             }
             $components[] = [
                 'entry_id' => $entry->id, 'name' => $type->name, 'kind' => $type->kind,
@@ -98,7 +98,7 @@ class PayrollCalculator
         foreach (['jht', 'jp', 'jkk', 'jkm', 'health'] as $part) {
             $enrolled = $part === 'health' ? $profile->bpjs_kes_enrolled : $profile->bpjs_tk_enrolled;
             if ($enrolled && ! $settings) {
-                throw new DomainException('BPJS settings are required for enrolled employees.');
+                throw new DomainException('Tarif BPJS belum diisi dan diverifikasi akuntan, jadi payroll belum bisa dihitung.');
             }
             $wage = $baseSalary;
             if ($part === 'jp' && $settings && (int) $settings->jp_wage_cap_minor > 0) {
@@ -114,7 +114,7 @@ class PayrollCalculator
         $ptkp = DB::table('ptkp_rates')->where('status', $profile->ptkp_status)
             ->where('effective_from', '<=', $from)->orderByDesc('effective_from')->first();
         if (! $ptkp || ! in_array($ptkp->ter_category, ['A', 'B', 'C'], true)) {
-            throw new DomainException('Verified PTKP and TER category are required.');
+            throw new DomainException('Tarif PTKP/TER belum diisi dan diverifikasi akuntan, jadi payroll belum bisa dihitung.');
         }
 
         $taxableGross = self::add(self::add($baseSalary, $incentive), $taxableEarnings);
@@ -127,7 +127,7 @@ class PayrollCalculator
                 ->orWhere('upper_gross_minor', '>=', $taxableGross))
             ->orderByDesc('lower_gross_minor')->first();
         if (! $bracket) {
-            throw new DomainException('Verified TER bracket is required for taxable gross.');
+            throw new DomainException('Tarif TER belum diisi dan diverifikasi akuntan untuk gaji ini, jadi payroll belum bisa dihitung.');
         }
         $pph21 = self::percent($taxableGross, (int) $bracket->rate_bps);
         $grossPay = self::add(self::add($baseSalary, $incentive), $manualEarnings);
@@ -227,7 +227,7 @@ class PayrollCalculator
     private static function percent(int $amount, int $basisPoints): int
     {
         if ($basisPoints < 0 || $basisPoints > 10000) {
-            throw new DomainException('Rate must be between 0 and 10000 basis points.');
+            throw new DomainException('Tarif payroll harus antara 0 dan 10000 basis poin ya.');
         }
 
         return self::add(
@@ -239,7 +239,7 @@ class PayrollCalculator
     private static function add(int $left, int $right): int
     {
         if ($left < 0 || $right < 0 || $left > PHP_INT_MAX - $right) {
-            throw new DomainException('Payroll amount is outside integer range.');
+            throw new DomainException('Nominal payroll terlalu besar. Cek lagi angkanya ya.');
         }
 
         return $left + $right;
@@ -248,7 +248,7 @@ class PayrollCalculator
     private static function multiply(int $left, int $right): int
     {
         if ($left < 0 || $right < 0 || ($right !== 0 && $left > intdiv(PHP_INT_MAX, $right))) {
-            throw new DomainException('Payroll amount is outside integer range.');
+            throw new DomainException('Nominal payroll terlalu besar. Cek lagi angkanya ya.');
         }
 
         return $left * $right;

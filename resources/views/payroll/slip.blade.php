@@ -3,6 +3,9 @@
 <style>body{font-family:DejaVu Sans,sans-serif;font-size:12px}table{width:100%;border-collapse:collapse}td,th{padding:6px;border-bottom:1px solid #ddd;text-align:left}.money{text-align:right}</style>
 </head><body>
 <h1>Slip Gaji</h1>
+@if ($run->status === 'CANCELLED')
+<p style="font-size:20px;font-weight:bold;color:#b91c1c">Dibatalkan — slip ini sudah tidak berlaku.</p>
+@endif
 <p>Periode: {{ $run->period_start->format('Y-m') }}<br>Karyawan: {{ $item->user->name }}</p>
 <table><tr><th>Rincian</th><th class="money">Rupiah</th></tr>
 <tr><td>Gaji pokok</td><td class="money">{{ number_format($snapshot['base_salary_minor'], 0, ',', '.') }}</td></tr>

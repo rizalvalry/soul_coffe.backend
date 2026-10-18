@@ -4,6 +4,7 @@ namespace App\Filament\Pages;
 
 use App\Exports\PayrollRunExport;
 use App\Models\PayrollRun;
+use App\Services\JournalService;
 use App\Services\Menu\MenuLabels;
 use App\Services\PayrollRunService;
 use BackedEnum;
@@ -37,6 +38,12 @@ class PayrollRuns extends Page
 
     public string $paymentAccountId = '';
 
+    public string $cancellationReason = '';
+
+    public int $paymentGenerationId = 0;
+
+    public int $accrualGenerationId = 0;
+
     public static function canAccess(): bool
     {
         return Gate::allows('manage-payroll');
@@ -60,13 +67,16 @@ class PayrollRuns extends Page
         $period = $this->validate(['newPeriod' => ['required', 'date_format:Y-m']])['newPeriod'];
         $run = app(PayrollRunService::class)->create($period, Auth::user());
         $this->selectedRunId = $run->id;
+        $this->syncJournalVersions($run);
         $this->notify('Run payroll siap direview');
     }
 
     public function selectRun(int $id): void
     {
         Gate::authorize('manage-payroll');
-        $this->selectedRunId = PayrollRun::query()->findOrFail($id)->id;
+        $run = PayrollRun::query()->findOrFail($id);
+        $this->selectedRunId = $run->id;
+        $this->syncJournalVersions($run);
     }
 
     public function recalculate(): void
@@ -77,14 +87,37 @@ class PayrollRuns extends Page
 
     public function approve(): void
     {
-        app(PayrollRunService::class)->approve($this->selected(), Auth::user());
+        app(PayrollRunService::class)->approve($this->selected(), Auth::user(), $this->accrualGenerationId);
+        $this->syncJournalVersions($this->selected());
         $this->notify('Payroll sudah di-approve');
     }
 
     public function retrySlips(): void
     {
-        app(PayrollRunService::class)->approve($this->selected(), Auth::user());
+        app(PayrollRunService::class)->retrySlips($this->selected(), Auth::user());
         $this->notify('Slip PDF sudah dicek');
+    }
+
+    public function cancelPayment(): void
+    {
+        $reason = $this->validate(['cancellationReason' => ['required', 'string', 'max:225']])['cancellationReason'];
+        app(PayrollRunService::class)->cancelPayment($this->selected(), Auth::user(), $reason, $this->paymentGenerationId);
+        $this->cancellationReason = '';
+        $this->notify('Pembayaran sudah dibatalkan');
+    }
+
+    public function cancelRun(): void
+    {
+        $reason = $this->validate(['cancellationReason' => ['required', 'string', 'max:225']])['cancellationReason'];
+        app(PayrollRunService::class)->cancelRun($this->selected(), Auth::user(), $reason, $this->accrualGenerationId);
+        $this->cancellationReason = '';
+        $this->notify('Run sudah dibatalkan');
+    }
+
+    public function reopenRun(): void
+    {
+        app(PayrollRunService::class)->reopenRun($this->selected(), Auth::user(), $this->accrualGenerationId);
+        $this->notify('Run siap dihitung ulang');
     }
 
     public function markPaid(): void
@@ -94,7 +127,9 @@ class PayrollRuns extends Page
             'paymentDate' => ['required', 'date_format:Y-m-d'],
             'paymentAccountId' => ['required', 'integer', 'exists:accounts,id'],
         ]);
-        app(PayrollRunService::class)->markPaid($this->selected(), Auth::user(), $data['paymentDate'], (int) $data['paymentAccountId']);
+        app(PayrollRunService::class)->markPaid($this->selected(), Auth::user(), $data['paymentDate'],
+            (int) $data['paymentAccountId'], $this->paymentGenerationId);
+        $this->syncJournalVersions($this->selected());
         $this->notify('Payroll sudah ditandai Paid');
     }
 
@@ -127,6 +162,17 @@ class PayrollRuns extends Page
         return $this->selectedRunId ? $this->selected()->status : null;
     }
 
+    public function statusLabel(string $status): string
+    {
+        return match ($status) {
+            'DRAFT' => 'Draft',
+            'APPROVED' => 'Disetujui',
+            'PAID' => 'Paid',
+            'CANCELLED' => 'Dibatalkan',
+            default => $status,
+        };
+    }
+
     public function paymentAccounts(): array
     {
         Gate::authorize('manage-payroll');
@@ -140,6 +186,13 @@ class PayrollRuns extends Page
         Gate::authorize('manage-payroll');
 
         return PayrollRun::query()->findOrFail($this->selectedRunId);
+    }
+
+    private function syncJournalVersions(PayrollRun $run): void
+    {
+        $journal = app(JournalService::class);
+        $this->paymentGenerationId = $journal->latestPayrollPayment($run)?->id ?? 0;
+        $this->accrualGenerationId = $journal->latestPayrollAccrual($run)?->id ?? 0;
     }
 
     private function notify(string $text): void

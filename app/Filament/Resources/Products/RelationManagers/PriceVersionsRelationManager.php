@@ -2,6 +2,9 @@
 
 namespace App\Filament\Resources\Products\RelationManagers;
 
+use App\Enums\PanelModule;
+use App\Enums\Role;
+use App\Services\Access\PermissionMatrix;
 use Filament\Actions\CreateAction;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\TextInput;
@@ -9,6 +12,8 @@ use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Auth\Access\Response;
+use Illuminate\Support\Facades\Auth;
 
 /**
  * Price history for a product.
@@ -32,6 +37,7 @@ class PriceVersionsRelationManager extends RelationManager
             ->components([
                 TextInput::make('cost_price_minor')
                     ->label('HPP (Rp)')
+                    ->visible(fn (): bool => self::canViewCost())
                     ->numeric()
                     ->minValue(0)
                     ->required()
@@ -70,6 +76,7 @@ class PriceVersionsRelationManager extends RelationManager
                     ->sortable(),
                 TextColumn::make('cost_price_minor')
                     ->label('HPP')
+                    ->visible(fn (): bool => self::canViewCost())
                     ->money('IDR', 0),
                 TextColumn::make('sell_price_minor')
                     ->label('Harga Jual')
@@ -81,9 +88,27 @@ class PriceVersionsRelationManager extends RelationManager
             ])
             ->defaultSort('effective_from', 'desc')
             ->headerActions([
-                CreateAction::make()->label('Tambah versi harga'),
+                CreateAction::make()->label('Tambah versi harga')
+                    ->authorize(fn (): bool => self::canCreatePriceVersion())
+                    ->visible(fn (): bool => self::canCreatePriceVersion()),
             ])
             ->recordActions([])
             ->toolbarActions([]);
+    }
+
+    protected function getCreateAuthorizationResponse(): Response
+    {
+        return self::canCreatePriceVersion() ? parent::getCreateAuthorizationResponse() : Response::deny();
+    }
+
+    private static function canViewCost(): bool
+    {
+        return in_array(Auth::user()?->role, [Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR], true);
+    }
+
+    private static function canCreatePriceVersion(): bool
+    {
+        return self::canViewCost()
+            && PermissionMatrix::can(Auth::user(), PanelModule::PRODUCTS, 'edit');
     }
 }

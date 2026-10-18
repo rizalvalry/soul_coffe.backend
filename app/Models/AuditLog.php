@@ -57,7 +57,7 @@ class AuditLog extends Model
         $values = $side === 'before' ? ($this->before_json ?? []) : ($this->after_json ?? []);
         unset($values['_payroll_ciphertext']);
 
-        if (! in_array($this->subject_type, [EmployeeProfile::class, PayrollComponentEntry::class], true)
+        if (! in_array($this->subject_type, [EmployeeProfile::class, PayrollComponentEntry::class, PayrollRun::class], true)
             || ! Gate::allows('manage-payroll')) {
             return $values;
         }

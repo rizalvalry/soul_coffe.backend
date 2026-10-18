@@ -1,6 +1,32 @@
 <x-filament-panels::page>
-    <p>Tambahkan versi baru untuk setiap perubahan. Cek sumber regulasi dengan akuntan, lalu tandai versi sebagai verified sebelum payroll jalan. Semua nominal dalam rupiah bulat; tarif dalam basis poin (2% = 200).</p>
+    <p>Tambah versi baru tiap ada perubahan. Cek sumber tarif BPJS, PTKP, TER, dan Pasal 17 dengan akuntan, lalu tandai verified sebelum payroll jalan ya. Semua nominal pakai rupiah bulat; tarif pakai basis poin (2% = 200).</p>
     <p>Riwayat di halaman ini menampilkan 100 versi terbaru per bagian; versi lama tetap tersimpan.</p>
+
+    <section class="rounded-xl border p-4">
+        <h2 class="text-lg font-semibold">Cek kalkulasi payroll</h2>
+        <p>Preview ini tidak menyimpan atau memposting gaji.</p>
+        <form wire:submit="previewPayroll" class="mt-3 flex flex-wrap gap-3">
+            <label>Karyawan
+                <select wire:model="preview.user_id" class="rounded border p-2">
+                    <option value="">Pilih karyawan</option>
+                    @foreach ($this->employeeOptions() as $employee)
+                        <option value="{{ $employee->id }}">{{ $employee->name }}</option>
+                    @endforeach
+                </select>
+                @error('preview.user_id') <span class="text-red-600">{{ $message }}</span> @enderror
+            </label>
+            <label>Periode
+                <input type="month" wire:model="preview.period" class="rounded border p-2">
+                @error('preview.period') <span class="text-red-600">{{ $message }}</span> @enderror
+            </label>
+            <button type="submit" class="rounded bg-primary-600 px-4 py-2 text-white">Cek kalkulasi</button>
+        </form>
+        @if ($previewError)
+            <p role="alert" class="mt-3 text-red-600">{{ $previewError }}</p>
+        @elseif ($previewResult)
+            <p class="mt-3">Bruto Rp {{ number_format($previewResult['gross_pay_minor'], 0, ',', '.') }} · Potongan Rp {{ number_format($previewResult['gross_pay_minor'] - $previewResult['take_home_minor'], 0, ',', '.') }} · Dibawa pulang Rp {{ number_format($previewResult['take_home_minor'], 0, ',', '.') }}</p>
+        @endif
+    </section>
 
     @php
         $sections = [

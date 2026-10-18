@@ -41,6 +41,7 @@ class CentralStockService
         private readonly StockLedgerService $ledger,
         private readonly DailyAllowanceService $allowances,
         private readonly EventPublisher $events,
+        private readonly RiderDayGate $dayGate,
     ) {}
 
     /**
@@ -114,6 +115,7 @@ class CentralStockService
 
         $rows = $this->normalizeQuantities($qtyByProductId);
         $date = ($operatingDate ?? Carbon::today());
+        $this->dayGate->assertReady($staff, $date, 'Rider belum absen hari ini. Minta Rider absen dulu ya.');
         $kitchenId = $cart->kitchen_id ?? $barista->kitchen_id;
 
         if (! $kitchenId) {

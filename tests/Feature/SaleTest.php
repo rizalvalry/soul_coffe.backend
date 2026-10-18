@@ -399,7 +399,7 @@ class SaleTest extends TestCase
         $this->sell([['product_id' => $this->coffee->id, 'qty' => 1]])
             ->assertStatus(422)
             ->assertJsonPath('code', 'DAY_NOT_OPEN')
-            ->assertJsonPath('message', 'Produksi belum membuka absen hari ini. Fitur transaksi belum bisa dipakai.');
+            ->assertJsonPath('message', 'Produksi belum buka absen hari ini, jadi transaksi belum bisa jalan dulu ya.');
 
         $this->assertDatabaseCount('sales', 0);
     }

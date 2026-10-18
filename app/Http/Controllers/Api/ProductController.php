@@ -21,6 +21,9 @@ class ProductController extends Controller
                     ->orderByDesc('effective_from')
                     ->orderByDesc('id');
             }])
+            ->withExists(['recipes as has_active_recipe' => fn ($query) => $query
+                ->where('is_active', true)
+                ->where('effective_from', '<=', now())])
             ->get();
 
         return ProductResource::collection($products);

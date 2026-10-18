@@ -15,7 +15,7 @@ class MyPayrollSlipsController extends Controller
     {
         abort_unless($request->user()->is_active, 403);
         $items = PayrollItem::query()->where('user_id', $request->user()->id)
-            ->whereHas('run', fn ($query) => $query->whereIn('status', ['APPROVED', 'PAID']))
+            ->whereHas('run', fn ($query) => $query->whereIn('status', ['APPROVED', 'PAID', 'CANCELLED']))
             ->with('run')->orderByDesc('id')->get();
 
         return response()->json(['data' => $items->map(fn (PayrollItem $item): array => [
@@ -33,8 +33,12 @@ class MyPayrollSlipsController extends Controller
     {
         abort_unless($request->user()->is_active, 403);
         abort_unless($item->user_id === $request->user()->id, 403);
-        abort_unless(in_array($item->run->status, ['APPROVED', 'PAID'], true), 404);
-        abort_unless($item->slip_path === 'payroll-slips/'.$item->run_id.'/'.$item->user_id.'.pdf'
+        abort_unless(in_array($item->run->status, ['APPROVED', 'PAID', 'CANCELLED'], true), 404);
+        $expectedPath = 'payroll-slips/'.$item->run_id.'/item-'.$item->id
+            .($item->run->status === 'CANCELLED' ? '-cancelled' : '').'.pdf';
+        $legacyPath = 'payroll-slips/'.$item->run_id.'/'.$item->user_id.'.pdf';
+        abort_unless(($item->slip_path === $expectedPath
+            || ($item->run->status !== 'CANCELLED' && $item->slip_path === $legacyPath))
             && Storage::disk('local')->exists($item->slip_path), 404);
 
         return Storage::disk('local')->download($item->slip_path, 'slip-gaji-'.$item->run->period_start->format('Y-m').'.pdf');

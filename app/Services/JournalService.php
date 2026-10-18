@@ -4,11 +4,16 @@ namespace App\Services;
 
 use App\Models\Account;
 use App\Models\AccountingPeriod;
+use App\Models\AuditLog;
 use App\Models\JournalEntry;
+use App\Models\PayrollRun;
+use App\Models\User;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
@@ -151,7 +156,8 @@ class JournalService
                 $accounts = Account::query()->whereIn('id', array_column($lines, 'account_id'))
                     ->lockForUpdate()->get()->keyBy('id');
                 foreach ($lines as $index => $line) {
-                    if (! $accounts->get($line['account_id'])?->is_active) {
+                    if (! $accounts->has($line['account_id'])
+                        || ($header['purpose'] !== 'REVERSAL' && ! $accounts->get($line['account_id'])->is_active)) {
                         throw ValidationException::withMessages(["lines.$index.account_id" => 'Akun tidak aktif.']);
                     }
                 }
@@ -175,6 +181,18 @@ class JournalService
                     $entry->lines()->create($line);
                 }
 
+                if ($header['source_type'] === 'manual' && $header['purpose'] === 'MANUAL') {
+                    AuditLog::query()->create([
+                        'actor_id' => Auth::id(),
+                        'actor_role' => Auth::user()?->role?->value,
+                        'action' => 'journal.manual.posted',
+                        'subject_type' => JournalEntry::class,
+                        'subject_id' => $entry->id,
+                        'after_json' => ['number' => $entry->number, 'source_id' => $entry->source_id],
+                        'ip' => request()->ip(),
+                    ]);
+                }
+
                 return $entry;
             }, 3);
         } catch (UniqueConstraintViolationException $exception) {
@@ -188,14 +206,64 @@ class JournalService
         }
     }
 
-    public function reverse(JournalEntry $entry, string $reason): JournalEntry
+    public function latestPayrollPayment(PayrollRun $run): ?JournalEntry
+    {
+        return $this->latestPayrollJournal($run, 'PAYROLL_PAYMENT', 'payroll_run_payment_retry');
+    }
+
+    public function latestPayrollAccrual(PayrollRun $run): ?JournalEntry
+    {
+        return $this->latestPayrollJournal($run, 'PAYROLL_ACCRUAL', 'payroll_run_accrual_retry');
+    }
+
+    private function latestPayrollJournal(PayrollRun $run, string $purpose, string $retrySource): ?JournalEntry
+    {
+        $entry = JournalEntry::query()->where('source_type', 'payroll_run')
+            ->where('source_id', $run->id)->where('purpose', $purpose)->first();
+        while ($entry) {
+            $reversal = $entry->reversal()->first();
+            if (! $reversal) {
+                break;
+            }
+            $next = JournalEntry::query()->where('source_type', $retrySource)
+                ->where('source_id', $reversal->id)->where('purpose', $purpose)->first();
+            if (! $next) {
+                break;
+            }
+            $entry = $next;
+        }
+
+        return $entry;
+    }
+
+    public function reverse(JournalEntry $entry, string $reason, ?PayrollRun $payrollRun = null, ?User $payrollActor = null): JournalEntry
     {
         if (trim($reason) === '' || mb_strlen($reason) > 225) {
             throw ValidationException::withMessages(['reason' => 'Alasan pembalik wajib diisi, maksimal 225 karakter.']);
         }
 
-        return DB::transaction(function () use ($entry, $reason): JournalEntry {
+        return DB::transaction(function () use ($entry, $reason, $payrollRun, $payrollActor): JournalEntry {
+            if ($payrollRun) {
+                Account::query()->orderBy('id')->lockForUpdate()->firstOrFail();
+            }
+            $run = $payrollRun ? PayrollRun::query()->whereKey($payrollRun->id)->lockForUpdate()->firstOrFail() : null;
             $original = JournalEntry::query()->lockForUpdate()->findOrFail($entry->id);
+            $isPayroll = in_array($original->source_type, ['payroll_run', 'payroll_run_payment_retry', 'payroll_run_accrual_retry'], true);
+            if ($isPayroll) {
+                if (! $run || ! $payrollActor) {
+                    throw ValidationException::withMessages(['journal' => 'Balik jurnal payroll lewat halaman Payroll ya.']);
+                }
+                Gate::forUser($payrollActor)->authorize('manage-payroll');
+                $isPayment = $original->purpose === 'PAYROLL_PAYMENT'
+                    && in_array($original->source_type, ['payroll_run', 'payroll_run_payment_retry'], true);
+                $isAccrual = $original->purpose === 'PAYROLL_ACCRUAL'
+                    && in_array($original->source_type, ['payroll_run', 'payroll_run_accrual_retry'], true)
+                    && $this->latestPayrollAccrual($run)?->id === $original->id;
+                if (($isPayment && ($run->status !== 'PAID' || $this->latestPayrollPayment($run)?->id !== $original->id))
+                    || ($isAccrual && $run->status !== 'APPROVED') || (! $isPayment && ! $isAccrual)) {
+                    throw ValidationException::withMessages(['journal' => 'Status run dan jurnal payroll tidak cocok. Cek halaman Payroll ya.']);
+                }
+            }
             if ($original->reverses_entry_id !== null || $original->reversal()->exists()) {
                 throw ValidationException::withMessages(['journal' => 'Jurnal ini sudah dibalik atau merupakan jurnal pembalik.']);
             }
@@ -205,20 +273,57 @@ class JournalService
                 'debit_minor' => $line->credit_minor,
                 'credit_minor' => $line->debit_minor,
                 'cart_id' => $line->cart_id,
-                'memo' => $reason,
+                'memo' => $isPayroll ? 'Pembatalan payroll' : $reason,
             ])->all();
 
             // A reversal is a new posting in the current open period, never an edit of history.
             $reversal = $this->postInternal([
                 'entry_date' => $original->purpose === 'OPENING'
                     ? $original->entry_date->toDateString() : today()->toDateString(),
-                'description' => 'Pembalik '.$original->number.': '.$reason,
+                'description' => $isPayroll ? 'Pembalik jurnal payroll '.$original->number : 'Pembalik '.$original->number.': '.$reason,
                 'source_type' => 'journal_reversal',
                 'source_id' => $original->id,
                 'purpose' => 'REVERSAL',
-                'posted_by' => Auth::id() ?? $original->posted_by,
+                'posted_by' => $payrollActor?->id ?? Auth::id() ?? $original->posted_by,
                 'reverses_entry_id' => $original->id,
             ], $lines);
+
+            if ($isPayroll) {
+                $before = $run->status;
+                $run->update($original->purpose === 'PAYROLL_PAYMENT'
+                    ? ['status' => 'APPROVED', 'paid_at' => null, 'payment_account_id' => null]
+                    : ['status' => 'CANCELLED']);
+                if ($run->status === 'CANCELLED') {
+                    $run->items()->update(['slip_path' => null]);
+                }
+                AuditLog::query()->create([
+                    'actor_id' => $payrollActor->id,
+                    'actor_role' => $payrollActor->role->value,
+                    'action' => $original->purpose === 'PAYROLL_PAYMENT' ? 'payroll_payment_cancelled' : 'payroll_run_cancelled',
+                    'subject_type' => PayrollRun::class,
+                    'subject_id' => $run->id,
+                    'before_json' => ['status' => $before],
+                    'after_json' => [
+                        'status' => $run->status,
+                        'reversal_entry_id' => $reversal->id,
+                        '_payroll_ciphertext' => Crypt::encryptString(json_encode(['after' => ['reason' => $reason]], JSON_THROW_ON_ERROR)),
+                    ],
+                    'ip' => request()->ip(),
+                ]);
+            }
+
+            AuditLog::query()->create([
+                'actor_id' => $payrollActor?->id ?? Auth::id(),
+                'actor_role' => $payrollActor?->role->value ?? Auth::user()?->role?->value,
+                'action' => 'journal.reversed',
+                'subject_type' => JournalEntry::class,
+                'subject_id' => $original->id,
+                'before_json' => ['status' => 'POSTED'],
+                'after_json' => $isPayroll
+                    ? ['reversal_entry_id' => $reversal->id]
+                    : ['reversal_entry_id' => $reversal->id, 'reason' => $reason],
+                'ip' => request()->ip(),
+            ]);
 
             return $reversal;
         }, 3);
