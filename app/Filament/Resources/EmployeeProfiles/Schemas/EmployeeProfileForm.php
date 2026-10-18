@@ -29,7 +29,7 @@ class EmployeeProfileForm
                         ->relationship('defaultCart', 'code')
                         ->searchable()
                         ->visible(fn (?EmployeeProfile $record): bool => $record?->user?->role === Role::STAFF)
-                        ->helperText('Referensi karyawan; penugasan gerobak harian tetap di modul Penugasan Rider.'),
+                        ->helperText('Gerobak asal buat referensi. Gerobak Rider hari ini mengikuti Add Stock dari Produksi.'),
                 ]),
             Section::make('Data payroll terbatas')
                 ->visible(fn (): bool => Gate::allows('manage-payroll'))

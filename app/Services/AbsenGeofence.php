@@ -76,6 +76,9 @@ class AbsenGeofence
                 ->with(['cart', 'location'])
                 ->where('user_id', $user->id)
                 ->whereDate('operating_date', $date->toDateString())
+                ->where('source', 'hand_to_cart')
+                ->whereNull('superseded_at')
+                ->latest('id')
                 ->first()
             : null;
 

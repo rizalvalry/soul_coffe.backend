@@ -108,6 +108,7 @@ class BusinessProcessAuditTest extends TestCase
         $this->staff = User::factory()->role(Role::STAFF)->create();
         $this->runner = User::factory()->role(Role::RIDER)->create();
         StaffAssignment::create([
+            'source' => 'hand_to_cart',
             'user_id' => $this->staff->id, 'cart_id' => $this->cart->id,
             'location_id' => $this->location->id, 'operating_date' => today(),
             'assigned_by' => $this->admin->id, 'kitchen_id' => $this->kitchen->id,
@@ -225,12 +226,12 @@ class BusinessProcessAuditTest extends TestCase
 
         $this->actingAs($this->staff)->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson('/api/v1/sales', [
-                'uuid' => (string) Str::uuid(), 'payment_method' => 'cash',
+                'uuid' => (string) Str::uuid(), 'cart_id' => $this->cart->id, 'payment_method' => 'cash',
                 'lines' => [['product_id' => $this->product->id, 'qty' => 2]],
             ])->assertCreated();
         $this->actingAs($this->staff)->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson('/api/v1/sales', [
-                'uuid' => (string) Str::uuid(), 'payment_method' => 'qris',
+                'uuid' => (string) Str::uuid(), 'cart_id' => $this->cart->id, 'payment_method' => 'qris',
                 'lines' => [['product_id' => $this->product->id, 'qty' => 3]],
             ])->assertCreated();
         $refill = $this->deliveredRefill();
@@ -292,7 +293,8 @@ class BusinessProcessAuditTest extends TestCase
             ->postJson('/api/v1/showcase/hand-to-cart', $handover)->assertStatus(422)->assertJsonPath('code', 'DAY_NOT_OPEN');
         $this->actingAs($this->staff)->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson('/api/v1/sales', [
-                'uuid' => (string) Str::uuid(), 'lines' => [['product_id' => $this->product->id, 'qty' => 1]],
+                'uuid' => (string) Str::uuid(), 'cart_id' => $this->cart->id,
+                'lines' => [['product_id' => $this->product->id, 'qty' => 1]],
             ])->assertStatus(422)->assertJsonPath('code', 'DAY_NOT_OPEN');
         $this->actingAs($this->finance)->getJson('/api/v1/settlements/queue')->assertOk();
         $management = User::factory()->role(Role::MANAGEMENT)->create();
@@ -351,6 +353,7 @@ class BusinessProcessAuditTest extends TestCase
         $attendance->openStaffWindow($this->barista);
         $attendance->clockIn($this->staff);
         StaffAssignment::create([
+            'source' => 'hand_to_cart',
             'user_id' => $this->staff->id, 'cart_id' => $this->cart->id,
             'location_id' => $this->location->id, 'operating_date' => today(),
             'assigned_by' => $this->admin->id, 'kitchen_id' => $this->kitchen->id,
@@ -387,7 +390,7 @@ class BusinessProcessAuditTest extends TestCase
         $this->openDay();
         app(ProductionService::class)->brew($this->kitchen->id, [$this->product->id => 3], $this->barista);
         app(CentralStockService::class)->handToCart($this->barista, $this->cart, $this->staff, [$this->product->id => 3]);
-        app(SaleService::class)->record($this->staff, [['product_id' => $this->product->id, 'qty' => 2]], (string) Str::uuid());
+        app(SaleService::class)->record($this->staff, [['product_id' => $this->product->id, 'qty' => 2]], (string) Str::uuid(), submittedCartId: $this->cart->id);
         $settlement = app(SettlementService::class)->record($this->cart, $this->finance, ['cash' => 30000, 'qris' => 0, 'transfer' => 0]);
         $this->assertSame('VARIANCE_FLAGGED', $settlement->status);
         PermissionMatrix::set(Role::FINANCE, PanelModule::SETTLEMENTS, ['view', 'edit']);
@@ -405,6 +408,7 @@ class BusinessProcessAuditTest extends TestCase
         $otherCart = Cart::create(['code' => 'T036-B', 'status' => 'active', 'kitchen_id' => $this->kitchen->id]);
         $otherStaff = User::factory()->role(Role::STAFF)->create();
         StaffAssignment::create([
+            'source' => 'hand_to_cart',
             'user_id' => $otherStaff->id, 'cart_id' => $otherCart->id,
             'location_id' => $this->location->id, 'operating_date' => today(),
             'assigned_by' => $this->admin->id, 'kitchen_id' => $this->kitchen->id,
@@ -412,7 +416,7 @@ class BusinessProcessAuditTest extends TestCase
         app(AttendanceService::class)->clockIn($otherStaff);
         app(ProductionService::class)->brew($this->kitchen->id, [$this->product->id => 3], $this->barista);
         app(CentralStockService::class)->handToCart($this->barista, $otherCart, $otherStaff, [$this->product->id => 3]);
-        app(SaleService::class)->record($otherStaff, [['product_id' => $this->product->id, 'qty' => 2]], (string) Str::uuid());
+        app(SaleService::class)->record($otherStaff, [['product_id' => $this->product->id, 'qty' => 2]], (string) Str::uuid(), submittedCartId: $otherCart->id);
         $over = app(SettlementService::class)->record($otherCart, $this->finance, ['cash' => 50000, 'qris' => 0, 'transfer' => 0]);
         $this->assertSame(10000, $over->variance_minor);
         $this->actingAs($this->finance)->get('/admin/settlements')->assertOk()->assertSee('Perlu ditinjau');
@@ -614,9 +618,10 @@ class BusinessProcessAuditTest extends TestCase
     {
         Artisan::call('schedule:list');
         $schedule = Artisan::output();
-        foreach (['soul:seed-daily-allowances', 'soul:carry-forward-staff-assignments', 'refills:expire-stale', 'queue:work'] as $command) {
+        foreach (['soul:seed-daily-allowances', 'refills:expire-stale', 'queue:work'] as $command) {
             $this->assertStringContainsString($command, $schedule);
         }
+        $this->assertStringNotContainsString('soul:carry-forward-staff-assignments', $schedule);
         $expiryEvent = collect(Schedule::events())->first(fn ($event): bool => str_contains($event->command, 'refills:expire-stale'));
         $this->assertNotNull($expiryEvent);
         $this->assertSame('0 * * * *', $expiryEvent->expression);
@@ -643,7 +648,8 @@ class BusinessProcessAuditTest extends TestCase
             ])->assertStatus(422)->assertJsonPath('errors.uuid.0', 'Isi ID transaksi dulu ya.');
         $this->actingAs($this->staff)->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson('/api/v1/sales', [
-                'uuid' => (string) Str::uuid(), 'lines' => [['product_id' => $this->product->id, 'qty' => 1]],
+                'uuid' => (string) Str::uuid(), 'cart_id' => $this->cart->id,
+                'lines' => [['product_id' => $this->product->id, 'qty' => 1]],
             ])->assertStatus(422)->assertJsonPath('code', 'DAY_NOT_OPEN')
             ->assertJsonPath('message', 'Produksi belum buka absen hari ini, jadi transaksi belum bisa jalan dulu ya.');
         $this->assertSame('Alokasi (Cadangan)', (new AllocationResource(

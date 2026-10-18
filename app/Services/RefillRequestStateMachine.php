@@ -7,6 +7,7 @@ use App\Enums\RefillStatus;
 use App\Enums\Role;
 use App\Enums\SignatureMethod;
 use App\Jobs\PostRefillStockLedger;
+use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\Media;
 use App\Models\Product;
@@ -15,6 +16,7 @@ use App\Models\RefillRequestLine;
 use App\Models\RefillStatusHistory;
 use App\Models\StaffAssignment;
 use App\Models\User;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -82,11 +84,15 @@ class RefillRequestStateMachine
             ->where('user_id', $staff->id)
             ->where('cart_id', $cartId)
             ->whereDate('operating_date', $today)
+            ->where('source', 'hand_to_cart')
+            ->whereNull('superseded_at')
             ->first();
 
         if (! $assignment) {
-            // R11 / §9.
-            abort(403, 'Anda tidak bertugas di gerobak ini hari ini');
+            throw new HttpResponseException(response()->json([
+                'code' => 'NO_CART_TODAY',
+                'message' => 'Produksi belum kasih stok ke gerobak kamu hari ini. Minta Produksi Add Stock dulu ya.',
+            ], 403));
         }
 
         // R2 must not let yesterday's unfinished request occupy this cart forever.
@@ -110,9 +116,19 @@ class RefillRequestStateMachine
         $outOfHours = $this->isOutOfHours($assignment->kitchen);
 
         $refill = DB::transaction(function () use (
-            $staff, $data, $cartId, $kitchenId, $today,
+            $staff, $data, $cartId, $kitchenId, $today, $assignment,
             $lineInputs, $totalCost, $outOfHours, $idempotencyKey,
         ): RefillRequest {
+            Cart::query()->whereKey($cartId)->lockForUpdate()->firstOrFail();
+            $stillAssigned = StaffAssignment::query()->whereKey($assignment->id)
+                ->where('source', 'hand_to_cart')->whereNull('superseded_at')
+                ->lockForUpdate()->first();
+            if (! $stillAssigned) {
+                throw new HttpResponseException(response()->json([
+                    'code' => 'NO_CART_TODAY',
+                    'message' => 'Produksi belum kasih stok ke gerobak kamu hari ini. Minta Produksi Add Stock dulu ya.',
+                ], 403));
+            }
             $evidence = Media::query()
                 ->where('id', $data['evidence_media_id'])
                 ->where('kind', 'evidence')
@@ -201,7 +217,7 @@ class RefillRequestStateMachine
                 'RefillRequestSubmitted',
                 'Request refill baru',
                 "{$refill->code} · Gerobak {$refill->cart->code} · {$totalQty} cups",
-                ['refill.'.$refill->id, 'role.FINANCE', 'role.MANAGEMENT', 'kitchen.'.$kitchenId, 'cart.'.$cartId],
+                ['refill.'.$refill->id, 'user.'.$staff->id, 'role.FINANCE', 'role.MANAGEMENT', 'kitchen.'.$kitchenId],
                 array_merge($this->userIdsWithRole(Role::FINANCE), [$staff->id]),
                 $refill->id,
                 RefillStatus::SUBMITTED->value,
@@ -296,7 +312,7 @@ class RefillRequestStateMachine
                 'RefillRequestApproved',
                 'Permintaan disetujui Finance',
                 "{$locked->code} · Gerobak {$locked->cart->code}",
-                ['refill.'.$locked->id, 'kitchen.'.$locked->kitchen_id, 'cart.'.$locked->cart_id],
+                ['refill.'.$locked->id, 'user.'.$locked->staff_id, 'kitchen.'.$locked->kitchen_id],
                 array_merge($this->userIdsWithRole(Role::BARISTA, $locked->kitchen_id), [$locked->staff_id]),
                 $locked->id,
                 RefillStatus::APPROVED->value,
@@ -331,7 +347,7 @@ class RefillRequestStateMachine
                 'RefillRequestRejected',
                 'Permintaan ditolak',
                 "{$locked->code} · {$reason}",
-                ['refill.'.$locked->id, 'cart.'.$locked->cart_id],
+                ['refill.'.$locked->id, 'user.'.$locked->staff_id],
                 [$locked->staff_id],
                 $locked->id,
                 RefillStatus::REJECTED->value,
@@ -402,7 +418,7 @@ class RefillRequestStateMachine
                 'Request refill kedaluwarsa',
                 "{$locked->code} · request hari sebelumnya tidak selesai. Rider dapat mengajukan request baru.",
                 array_merge(
-                    ['refill.'.$locked->id, 'cart.'.$locked->cart_id, 'kitchen.'.$locked->kitchen_id,
+                    ['refill.'.$locked->id, 'kitchen.'.$locked->kitchen_id,
                         'user.'.$locked->staff_id, 'role.FINANCE', 'role.MANAGEMENT'],
                     $locked->rider_id ? ['user.'.$locked->rider_id] : [],
                     $from === RefillStatus::READY_TO_PICK && $locked->rider_id === null ? ['role.RIDER'] : [],
@@ -454,7 +470,7 @@ class RefillRequestStateMachine
                 'RefillPreparingStarted',
                 'Produksi mulai menyiapkan',
                 "{$locked->code} · Gerobak {$locked->cart->code}",
-                ['refill.'.$locked->id, 'cart.'.$locked->cart_id],
+                ['refill.'.$locked->id, 'user.'.$locked->staff_id],
                 [$locked->staff_id],
                 $locked->id,
                 RefillStatus::PREPARING->value,
@@ -540,7 +556,7 @@ class RefillRequestStateMachine
                 'RefillReadyToPick',
                 'Siap diambil',
                 "{$locked->code} · Gerobak {$locked->cart->code}",
-                ['refill.'.$locked->id, 'role.RIDER', 'cart.'.$locked->cart_id],
+                ['refill.'.$locked->id, 'user.'.$locked->staff_id, 'role.RIDER'],
                 array_merge($this->userIdsWithRole(Role::RIDER), [$locked->staff_id]),
                 $locked->id,
                 RefillStatus::READY_TO_PICK->value,
@@ -589,7 +605,7 @@ class RefillRequestStateMachine
                 'RefillPickedUp',
                 'Rider dalam perjalanan',
                 "{$fresh->code} · Gerobak {$fresh->cart->code}",
-                ['refill.'.$fresh->id, 'kitchen.'.$fresh->kitchen_id, 'cart.'.$fresh->cart_id],
+                ['refill.'.$fresh->id, 'user.'.$fresh->staff_id, 'kitchen.'.$fresh->kitchen_id],
                 [$fresh->staff_id],
                 $fresh->id,
                 RefillStatus::PICKED_UP->value,
@@ -764,7 +780,7 @@ class RefillRequestStateMachine
                 'RefillDelivered',
                 'Refill terkirim',
                 "{$locked->code} · Gerobak {$locked->cart->code}",
-                ['refill.'.$locked->id, 'kitchen.'.$locked->kitchen_id, 'cart.'.$locked->cart_id, 'role.FINANCE', 'role.MANAGEMENT'],
+                ['refill.'.$locked->id, 'user.'.$locked->staff_id, 'kitchen.'.$locked->kitchen_id, 'role.FINANCE', 'role.MANAGEMENT'],
                 array_filter(array_merge(
                     $this->userIdsWithRole(Role::FINANCE),
                     $this->userIdsWithRole(Role::ADMINISTRATOR),
@@ -858,7 +874,7 @@ class RefillRequestStateMachine
                 'RefillRequestClosed',
                 'Refill selesai',
                 "{$locked->code} · Gerobak {$locked->cart->code}",
-                ['refill.'.$locked->id, 'kitchen.'.$locked->kitchen_id, 'cart.'.$locked->cart_id],
+                ['refill.'.$locked->id, 'user.'.$locked->staff_id, 'kitchen.'.$locked->kitchen_id],
                 [$locked->staff_id],
                 $locked->id,
                 RefillStatus::CLOSED->value,

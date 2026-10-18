@@ -85,6 +85,7 @@ class DirectSaleTest extends TestCase
         $location = Location::create(['name' => 'Pulomas', 'lat' => -6.18, 'lng' => 106.88]);
 
         StaffAssignment::create([
+            'source' => 'hand_to_cart',
             'user_id' => $this->rider->id,
             'cart_id' => $this->assignedCart->id,
             'location_id' => $location->id,

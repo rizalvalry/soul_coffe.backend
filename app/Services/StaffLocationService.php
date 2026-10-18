@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Enums\Role;
-use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\StaffAssignment;
 use App\Models\StaffLocationPing;
@@ -59,15 +58,15 @@ class StaffLocationService
         $pings = array_slice(array_values($pings), -$max);
 
         return DB::transaction(function () use ($staff, $pings, $deviceId): int {
+            // Hand-to-cart locks this Rider before replacing their active assignment. A
+            // locking read here makes the following assignment query use the post-lock state,
+            // so an in-flight ping cannot stamp the former cart after reassignment commits.
+            // It also serializes two batches from the same phone without a cart lock.
+            User::query()->whereKey($staff->id)->lockForUpdate()->firstOrFail();
             $assignment = $this->assignmentFor($staff);
-            // Serialize pings for a cart so two uploads cannot both emit the same transition.
-            if ($assignment?->cart_id) {
-                Cart::query()->whereKey($assignment->cart_id)->lockForUpdate()->firstOrFail();
-            }
             $kitchen = $assignment?->kitchen ?? $assignment?->cart?->kitchen;
             $hasGeofence = $kitchen && $kitchen->lat !== null && $kitchen->lng !== null && $kitchen->geofence_m;
-            // A locking read sees the preceding upload after the cart lock becomes available,
-            // even when assignmentFor() already established a REPEATABLE READ snapshot.
+            // A locking read sees the preceding upload after the Rider lock becomes available.
             $last = $this->latestFor($staff, lockForUpdate: true);
             $wasInside = $hasGeofence && $last
                 && $last->operating_date->toDateString() === Carbon::today()->toDateString()
@@ -233,6 +232,8 @@ class StaffLocationService
             ->keyBy('user_id');
 
         $assignments = StaffAssignment::query()
+            ->where('source', 'hand_to_cart')
+            ->whereNull('superseded_at')
             ->with(['cart:id,code', 'location:id,name,lat,lng'])
             ->whereIn('user_id', $ids)
             ->whereDate('operating_date', $date->toDateString())
@@ -319,6 +320,8 @@ class StaffLocationService
     private function assignmentFor(User $staff): ?StaffAssignment
     {
         return StaffAssignment::query()
+            ->where('source', 'hand_to_cart')
+            ->whereNull('superseded_at')
             ->with(['cart:id,code,kitchen_id', 'cart.kitchen:id,lat,lng,geofence_m', 'kitchen:id,lat,lng,geofence_m'])
             ->where('user_id', $staff->id)
             ->whereDate('operating_date', Carbon::today()->toDateString())

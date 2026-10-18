@@ -20,6 +20,7 @@ class StaffAssignmentSeeder extends Seeder
         $location = Location::query()->firstOrFail();
 
         StaffAssignment::query()->create([
+            'source' => 'hand_to_cart',
             'user_id' => $maufu->id,
             'cart_id' => $cart0018->id,
             'location_id' => $location->id,

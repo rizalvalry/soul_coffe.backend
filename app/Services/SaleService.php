@@ -13,6 +13,7 @@ use App\Models\Settlement;
 use App\Models\StaffAssignment;
 use App\Models\StockLedger;
 use App\Models\User;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -26,8 +27,9 @@ use RuntimeException;
  *    sale from someone who never absen would put revenue against a person the attendance sheet
  *    says was not working — two reports contradicting each other about the same morning.
  *
- * 2. **A cart, from today's roster.** The cups come out of a specific cart's stock, so there has
- *    to be one. StaffAssignment is where "which cart today" already lives.
+ * 2. **A cart, from today's Add Stock.** The cups leave a specific cart. Current clients
+ *    send the cart captured with the sale; the server checks that it is still the Rider's
+ *    active assignment. Older clients omit it and use the active cart when submitted.
  *
  * 3. **Stock must cover the sale.** The ledger is append-only (R6) and stock is SUM(qty_delta),
  *    so an oversell would leave the cart permanently negative and quietly poison every total
@@ -66,6 +68,7 @@ class SaleService
         ?string $note = null,
         ?string $deviceId = null,
         ?string $idempotencyKey = null,
+        ?int $submittedCartId = null,
     ): Sale {
         if ($staff->role !== Role::STAFF) {
             throw new RuntimeException('Hanya rider yang mencatat penjualan gerobak.');
@@ -88,10 +91,29 @@ class SaleService
             ->with('cart')
             ->where('user_id', $staff->id)
             ->whereDate('operating_date', $date->toDateString())
+            ->where('source', 'hand_to_cart')
+            ->whereNull('superseded_at')
+            ->latest('id')
             ->first();
 
         if (! $assignment || ! $assignment->cart) {
-            throw new RuntimeException('Anda belum ditugaskan ke gerobak mana pun hari ini.');
+            if ($submittedCartId !== null) {
+                throw new HttpResponseException(response()->json([
+                    'code' => 'CART_CHANGED',
+                    'message' => 'Gerobak kamu sudah berubah. Cek transaksi ini bareng Administrator ya.',
+                ], 422));
+            }
+            throw new HttpResponseException(response()->json([
+                'code' => 'NO_CART_TODAY',
+                'message' => 'Produksi belum kasih stok ke gerobak kamu hari ini. Minta Produksi Add Stock dulu ya.',
+            ], 403));
+        }
+
+        if ($submittedCartId !== null && $submittedCartId !== (int) $assignment->cart_id) {
+            throw new HttpResponseException(response()->json([
+                'code' => 'CART_CHANGED',
+                'message' => 'Gerobak kamu sudah berubah. Cek transaksi ini bareng Administrator ya.',
+            ], 422));
         }
 
         $merged = $this->mergeLines($lines);
@@ -104,6 +126,15 @@ class SaleService
             // First database read in this transaction is a current locking read. A plain UUID
             // lookup before this lock would pin an old REPEATABLE READ stock snapshot.
             $cart = Cart::query()->whereKey($assignment->cart_id)->lockForUpdate()->firstOrFail();
+            $stillAssigned = StaffAssignment::query()->whereKey($assignment->id)
+                ->where('source', 'hand_to_cart')->whereNull('superseded_at')
+                ->lockForUpdate()->first();
+            if (! $stillAssigned) {
+                throw new HttpResponseException(response()->json([
+                    'code' => 'CART_CHANGED',
+                    'message' => 'Gerobak kamu sudah berubah. Cek transaksi ini bareng Administrator ya.',
+                ], 422));
+            }
 
             // A replay of the same tap returns the sale that already exists rather than selling
             // the cups twice (R14). Checked inside the transaction so two concurrent replays

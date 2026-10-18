@@ -56,6 +56,7 @@ class SettlementPanelTest extends TestCase
         $this->admin = User::factory()->role(Role::ADMINISTRATOR)->create();
         $staff = User::factory()->role(Role::STAFF)->create(['name' => 'Rider Uji Satu']);
         StaffAssignment::create([
+            'source' => 'hand_to_cart',
             'user_id' => $staff->id, 'cart_id' => $cart->id,
             'location_id' => $location->id,
             'operating_date' => Carbon::today()->toDateString(),

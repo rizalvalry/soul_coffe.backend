@@ -103,6 +103,7 @@ class RefillFlowTest extends TestCase
         $this->rider = User::factory()->role(Role::RIDER)->create();
 
         StaffAssignment::create([
+            'source' => 'hand_to_cart',
             'user_id' => $this->staff->id,
             'cart_id' => $this->cart->id,
             'location_id' => $location->id,
@@ -380,6 +381,11 @@ class RefillFlowTest extends TestCase
 
         $event = OutboxEvent::query()->where('name', 'RefillPreparingStarted')->firstOrFail();
         $this->assertSame('Produksi mulai menyiapkan', $event->payload_json['title']);
+        foreach (['RefillRequestSubmitted', 'RefillRequestApproved', 'RefillPreparingStarted'] as $name) {
+            $channels = OutboxEvent::query()->where('name', $name)->sole()->payload_json['channels'];
+            $this->assertContains('user.'.$this->staff->id, $channels);
+            $this->assertNotContains('cart.'.$this->cart->id, $channels);
+        }
     }
 
     // ── R4 monotonic chain ───────────────────────────────────────────────

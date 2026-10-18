@@ -142,6 +142,7 @@ class DirectSalePanelTest extends TestCase
         $rider = User::factory()->role(Role::RIDER)->create(['name' => 'Rider Uji Satu']);
 
         StaffAssignment::create([
+            'source' => 'hand_to_cart',
             'user_id' => $rider->id,
             'cart_id' => $this->cart->id,
             'location_id' => $location->id,

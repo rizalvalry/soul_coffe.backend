@@ -25,6 +25,9 @@ class MeController extends Controller
                 ->with('location')
                 ->where('user_id', $user->id)
                 ->whereDate('operating_date', now()->toDateString())
+                ->where('source', 'hand_to_cart')
+                ->whereNull('superseded_at')
+                ->latest('id')
                 ->first();
 
             $todayLocationName = $assignment?->location?->name;

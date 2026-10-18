@@ -53,12 +53,17 @@ Broadcast::channel('cart.{cartId}', function ($user, string $cartId) use ($roleO
     if (in_array($role, ['ADMINISTRATOR', 'FINANCE', 'MANAGEMENT', 'BARISTA'], true)) {
         return true;
     }
+    if ($role !== 'STAFF') {
+        return false;
+    }
 
     // A staff member may only listen to the cart they are actually assigned to today (R11).
     return DB::table('staff_assignments')
         ->where('user_id', $user->id)
         ->where('cart_id', $cartId)
         ->whereDate('operating_date', now()->toDateString())
+        ->where('source', 'hand_to_cart')
+        ->whereNull('superseded_at')
         ->exists();
 });
 

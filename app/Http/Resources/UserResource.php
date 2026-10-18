@@ -27,6 +27,7 @@ class UserResource extends JsonResource
 
         $cartId = null;
         $cartCode = null;
+        $todayCart = null;
         $kitchenId = null;
         $kitchenName = null;
 
@@ -35,10 +36,18 @@ class UserResource extends JsonResource
                 ->with('cart')
                 ->where('user_id', $user->id)
                 ->whereDate('operating_date', now()->toDateString())
+                ->where('source', 'hand_to_cart')
+                ->whereNull('superseded_at')
+                ->latest('id')
                 ->first();
 
             $cartId = $assignment?->cart_id;
             $cartCode = $assignment?->cart?->code;
+            $todayCart = $assignment ? [
+                'id' => $assignment->cart_id,
+                'code' => $assignment->cart?->code,
+                'assigned_at' => $assignment->created_at?->toIso8601String(),
+            ] : null;
         }
 
         if ($user->role === Role::BARISTA) {
@@ -52,6 +61,7 @@ class UserResource extends JsonResource
             'role' => $user->role->value,
             'cart_code' => $cartCode,
             'cart_id' => $cartId,
+            'today_cart' => $todayCart,
             'kitchen_name' => $kitchenName,
             'kitchen_id' => $kitchenId,
             // Whether a PIN exists, never the PIN itself. The Settings screen needs this to show

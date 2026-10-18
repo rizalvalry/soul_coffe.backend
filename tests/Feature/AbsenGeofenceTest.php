@@ -77,6 +77,7 @@ class AbsenGeofenceTest extends TestCase
         $this->staff = User::factory()->role(Role::STAFF)->create(['name' => 'Rider Uji Satu']);
 
         StaffAssignment::create([
+            'source' => 'hand_to_cart',
             'user_id' => $this->staff->id,
             'cart_id' => $this->cart->id,
             'location_id' => $this->location->id,

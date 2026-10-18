@@ -125,6 +125,9 @@ class CentralStockService
         return DB::transaction(function () use (
             $barista, $cart, $staff, $rows, $allowanceAmount, $date, $kitchenId, $locationId
         ): StaffAssignment {
+            // Cart sales and refill submissions lock this row before checking the
+            // active assignment. Whichever operation gets it first completes first.
+            Cart::query()->whereKey($cart->id)->lockForUpdate()->firstOrFail();
             // Sufficiency is checked against LOCKED rows, in product order, so two baristas
             // handing out the same product at the same moment cannot both pass the check and
             // drive the showcase negative (the same guard AllocationService uses).
@@ -148,7 +151,31 @@ class CentralStockService
                 );
             }
 
-            $assignment = $this->ensureAssignment($barista, $cart, $staff, $date, $kitchenId, $locationId);
+            [$assignment, $displacedStaffIds] = $this->ensureAssignment($barista, $cart, $staff, $date, $kitchenId, $locationId);
+
+            if ($assignment->wasRecentlyCreated) {
+                $this->events->publish(
+                    'CartAssignmentChanged',
+                    'Gerobak kamu siap',
+                    "Gerobak {$cart->code} sudah dapat stok. Yuk, mulai jualan!",
+                    ['user.'.$staff->id],
+                    [$staff->id],
+                    context: ['cart_id' => $cart->id, 'operating_date' => $date->toDateString()],
+                );
+            }
+            foreach ($displacedStaffIds as $displacedStaffId) {
+                if ($displacedStaffId === (int) $staff->id) {
+                    continue;
+                }
+                $this->events->publish(
+                    'CartAssignmentChanged',
+                    'Gerobak diperbarui',
+                    'Gerobak kamu berubah hari ini. Cek lagi sebelum lanjut ya.',
+                    ['user.'.$displacedStaffId],
+                    [$displacedStaffId],
+                    context: ['cart_id' => null, 'operating_date' => $date->toDateString()],
+                );
+            }
 
             foreach ($rows as $productId => $qty) {
                 $this->ledger->transfer(
@@ -192,7 +219,7 @@ class CentralStockService
                     $barista->name,
                     number_format((int) $allowance->amount_minor, 0, ',', '.'),
                 ),
-                ['cart.'.$cart->id, 'user.'.$staff->id, 'kitchen.'.$kitchenId, 'role.ADMINISTRATOR'],
+                ['user.'.$staff->id, 'kitchen.'.$kitchenId, 'role.ADMINISTRATOR'],
                 array_merge([$staff->id], $this->kitchenWatcherIds($kitchenId)),
             );
 
@@ -288,6 +315,7 @@ class CentralStockService
                 'rejected' => $rejected,
             ]);
 
+            $cartStaffIds = $this->cartStaffIds($cart, Carbon::today());
             $this->events->publish(
                 'CartClosedOut',
                 'Tutup gerobak',
@@ -297,8 +325,9 @@ class CentralStockService
                     array_sum($returned),
                     array_sum($rejected),
                 ),
-                ['cart.'.$cart->id, 'kitchen.'.$kitchenId, 'role.ADMINISTRATOR', 'role.FINANCE', 'role.MANAGEMENT'],
-                array_merge($this->cartStaffIds($cart, Carbon::today()), $this->kitchenWatcherIds($kitchenId)),
+                array_merge(array_map(fn (int $id): string => 'user.'.$id, $cartStaffIds),
+                    ['kitchen.'.$kitchenId, 'role.ADMINISTRATOR', 'role.FINANCE', 'role.MANAGEMENT']),
+                array_merge($cartStaffIds, $this->kitchenWatcherIds($kitchenId)),
             );
         });
     }
@@ -313,9 +342,7 @@ class CentralStockService
      * Today's assignment for this cart, created if the barista is handing it stock for the
      * first time today.
      *
-     * R11 (one cart per staff per operating day) still holds: if this staff member is already
-     * on a different cart today, that is a real conflict and the caller has to resolve it rather
-     * than have the system silently move them.
+     * @return array{StaffAssignment, array<int,int>} Active row and displaced Rider IDs.
      */
     private function ensureAssignment(
         User $barista,
@@ -324,56 +351,48 @@ class CentralStockService
         Carbon $date,
         int $kitchenId,
         ?int $locationId = null,
-    ): StaffAssignment {
+    ): array {
         $dateString = $date->toDateString();
-
-        $existingForCart = StaffAssignment::query()
-            ->where('cart_id', $cart->id)
+        // Serialize the two identity slots before reading active rows. Historical rows are
+        // retained; only a hand-to-cart row with no superseded timestamp is active.
+        User::query()->whereKey($staff->id)->lockForUpdate()->firstOrFail();
+        $active = StaffAssignment::query()
             ->whereDate('operating_date', $dateString)
-            ->first();
-
-        if ($existingForCart) {
-            if ((int) $existingForCart->user_id !== (int) $staff->id) {
-                throw new RuntimeException(
-                    "Gerobak {$cart->code} hari ini sudah ditugaskan ke staff lain."
-                );
-            }
-
-            return $existingForCart;
+            ->where('source', 'hand_to_cart')
+            ->whereNull('superseded_at')
+            ->where(fn ($query) => $query->where('cart_id', $cart->id)->orWhere('user_id', $staff->id))
+            ->lockForUpdate()
+            ->get();
+        $same = $active->first(fn (StaffAssignment $row): bool => (int) $row->cart_id === (int) $cart->id
+            && (int) $row->user_id === (int) $staff->id);
+        if ($same) {
+            return [$same, []];
         }
 
-        $staffElsewhere = StaffAssignment::query()
-            ->where('user_id', $staff->id)
-            ->whereDate('operating_date', $dateString)
-            ->where('cart_id', '!=', $cart->id)
-            ->exists();
-
-        if ($staffElsewhere) {
-            throw new RuntimeException(
-                "{$staff->name} hari ini sudah ditugaskan di gerobak lain (R11)."
-            );
-        }
-
-        // `staff_assignments.location_id` is NOT NULL, so a cart has to have a known spot before
-        // it can go on the roster. Inherited from where this cart last stood rather than asked
-        // for again — the barista is handing over cups, not deciding pitch locations — and only
-        // demanded explicitly when the cart has no history to inherit from.
         $resolvedLocationId = $locationId ?? $this->resolveLocationId($cart);
-
-        if (! $resolvedLocationId) {
-            throw new RuntimeException(
-                "Gerobak {$cart->code} belum pernah punya lokasi. Tetapkan lokasinya dulu di menu Penugasan."
-            );
+        $displacedStaffIds = [];
+        foreach ($active as $old) {
+            $old->update(['superseded_at' => now()]);
+            $displacedStaffIds[] = (int) $old->user_id;
+            $this->audit($barista, 'central_stock.assignment_superseded', $old->id, [
+                'old_user_id' => $old->user_id,
+                'old_cart_id' => $old->cart_id,
+                'new_user_id' => $staff->id,
+                'new_cart_id' => $cart->id,
+                'operating_date' => $dateString,
+            ]);
         }
-
-        return StaffAssignment::query()->create([
+        $assignment = StaffAssignment::query()->create([
             'user_id' => $staff->id,
             'cart_id' => $cart->id,
             'location_id' => $resolvedLocationId,
             'operating_date' => $dateString,
             'assigned_by' => $barista->id,
             'kitchen_id' => $kitchenId,
+            'source' => 'hand_to_cart',
         ]);
+
+        return [$assignment, array_values(array_unique($displacedStaffIds))];
     }
 
     /**
@@ -389,6 +408,7 @@ class CentralStockService
             ->where('cart_id', $cart->id)
             ->whereNotNull('location_id')
             ->latest('operating_date')
+            ->latest('id')
             ->value('location_id');
     }
 
@@ -447,6 +467,8 @@ class CentralStockService
     private function cartStaffIds(Cart $cart, Carbon $date): array
     {
         return StaffAssignment::query()
+            ->where('source', 'hand_to_cart')
+            ->whereNull('superseded_at')
             ->where('cart_id', $cart->id)
             ->whereDate('operating_date', $date->toDateString())
             ->pluck('user_id')

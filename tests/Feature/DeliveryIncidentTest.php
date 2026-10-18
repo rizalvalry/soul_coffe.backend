@@ -89,6 +89,7 @@ class DeliveryIncidentTest extends TestCase
         $this->rider = User::factory()->role(Role::RIDER)->create(['name' => 'Runner Uji Satu']);
 
         StaffAssignment::create([
+            'source' => 'hand_to_cart',
             'user_id' => $this->staff->id,
             'cart_id' => $this->cart->id,
             'location_id' => $location->id,

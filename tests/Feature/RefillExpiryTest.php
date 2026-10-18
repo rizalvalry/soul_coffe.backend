@@ -176,6 +176,7 @@ class RefillExpiryTest extends TestCase
 
         $old = $this->refill(RefillStatus::APPROVED);
         StaffAssignment::create([
+            'source' => 'hand_to_cart',
             'user_id' => $this->staff->id, 'cart_id' => $old->cart_id,
             'kitchen_id' => $this->kitchen->id, 'operating_date' => Carbon::today(),
             'assigned_by' => $this->finance->id, 'location_id' => Location::create([
