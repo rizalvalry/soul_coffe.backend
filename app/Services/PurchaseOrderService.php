@@ -143,7 +143,7 @@ class PurchaseOrderService
             }
 
             if (! $locked->status->isOrdered()) {
-                throw new RuntimeException('Tandai purchase order ini sebagai dipesan terlebih dahulu.');
+                throw new RuntimeException('Tandai purchase order ini sudah dipesan dulu ya.');
             }
 
             $amount = 0;

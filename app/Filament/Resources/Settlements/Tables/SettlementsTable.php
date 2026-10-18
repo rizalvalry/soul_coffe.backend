@@ -174,7 +174,7 @@ class SettlementsTable
                         && PermissionMatrix::can(Auth::user(), PanelModule::SETTLEMENTS, 'edit'))
                     ->requiresConfirmation()
                     ->schema([
-                        Repeater::make('lines')->label('Cups tersisa di gerobak')
+                        Repeater::make('lines')->label('Cadangan: atur sisa cups di gerobak')
                             ->schema([
                                 Select::make('product_id')->label('Produk')->options(fn (): array => Product::query()->orderBy('name')->pluck('name', 'id')->all())->required(),
                                 TextInput::make('qty_returned')->label('Kembali')->integer()->minValue(0)->required(),

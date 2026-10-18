@@ -81,6 +81,14 @@ class Product extends Model
         return $this->hasMany(Recipe::class, 'product_id');
     }
 
+    public function hasActiveRecipe(): bool
+    {
+        return $this->recipes()
+            ->where('is_active', true)
+            ->where('effective_from', '<=', now())
+            ->exists();
+    }
+
     /**
      * The price version in effect right now — the "current" price. §12: price
      * versions are never edited in place, only appended.

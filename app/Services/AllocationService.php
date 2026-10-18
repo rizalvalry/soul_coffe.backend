@@ -32,6 +32,7 @@ class AllocationService
     public function __construct(
         private readonly StockLedgerService $ledger,
         private readonly EventPublisher $events,
+        private readonly RiderDayGate $dayGate,
     ) {}
 
     /**
@@ -102,6 +103,11 @@ class AllocationService
         $location = Location::query()->findOrFail($input['location_id']);
         $kitchenId = $cart->kitchen_id;
         $operatingDate = $input['operating_date'];
+        $staff = User::query()->findOrFail($input['staff_id']);
+        if ($staff->role !== Role::STAFF) {
+            abort(422, 'Alokasi hanya bisa buat Rider ya.');
+        }
+        $this->dayGate->assertReady($staff, Carbon::parse($operatingDate), 'Rider belum absen hari ini. Minta Rider absen dulu ya.');
         $correctionReason = $input['correction_reason'] ?? null;
 
         // E20: one allocation per cart per operating day. A second requires a correction

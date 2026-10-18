@@ -233,7 +233,7 @@ class RefillRequestStateMachine
             }
 
             if ($locked->status !== RefillStatus::SUBMITTED) {
-                abort(409, 'Request tidak dalam status menunggu approval.');
+                abort(409, 'Request ini belum menunggu approval ya. Cek lagi statusnya.');
             }
 
             $lines = $locked->lines()->get()->keyBy('id');
@@ -315,7 +315,7 @@ class RefillRequestStateMachine
             $this->assertCurrentOperatingDate($locked);
 
             if ($locked->status !== RefillStatus::SUBMITTED) {
-                abort(409, 'Request tidak dalam status menunggu approval.');
+                abort(409, 'Request ini belum menunggu approval ya. Cek lagi statusnya.');
             }
 
             $locked->status = RefillStatus::REJECTED;

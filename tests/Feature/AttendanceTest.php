@@ -123,7 +123,7 @@ class AttendanceTest extends TestCase
     public function test_only_a_barista_may_open_the_gate(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Hanya Produksi');
+        $this->expectExceptionMessage('Absen Rider cuma bisa dibuka oleh Produksi ya.');
 
         $this->service->openStaffWindow($this->staff);
     }

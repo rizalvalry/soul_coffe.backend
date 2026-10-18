@@ -2,11 +2,13 @@
 
 namespace App\Filament\Resources\Productions\Tables;
 
+use App\Enums\Role;
 use App\Models\Production;
 use App\Models\ProductionLine;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Auth;
 
 class ProductionsTable
 {
@@ -37,16 +39,16 @@ class ProductionsTable
                             '%s x%d%s',
                             $line->product?->name ?? '-',
                             $line->qty_brewed,
-                            $line->recipe_id ? '' : ' (tanpa resep)',
+                            $line->recipe_id ? '' : ' (Resep belum ada)',
                         ))
                         ->implode(', ')),
 
                 TextColumn::make('cost')
                     ->label('Estimasi HPP Bahan Baku')
-                    ->state(fn (Production $record): ?int => $record->lines
-                        ->sum(fn (ProductionLine $line): int => ($line->recipe_cost_minor ?? 0) * $line->qty_brewed) ?: null)
-                    ->money('IDR', 0)
-                    ->placeholder('-'),
+                    ->visible(fn (): bool => in_array(Auth::user()?->role, [Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR], true))
+                    ->state(fn (Production $record): int => $record->lines
+                        ->sum(fn (ProductionLine $line): int => ($line->recipe_cost_minor ?? 0) * $line->qty_brewed))
+                    ->money('IDR', 0),
             ]);
     }
 }

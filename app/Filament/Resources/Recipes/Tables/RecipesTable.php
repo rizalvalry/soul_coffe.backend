@@ -2,11 +2,13 @@
 
 namespace App\Filament\Resources\Recipes\Tables;
 
+use App\Enums\Role;
 use App\Models\Recipe;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Auth;
 
 class RecipesTable
 {
@@ -43,6 +45,7 @@ class RecipesTable
 
                 TextColumn::make('computed_cost_minor')
                     ->label('HPP Terhitung')
+                    ->visible(fn (): bool => in_array(Auth::user()?->role, [Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR], true))
                     ->money('IDR', 0)
                     ->placeholder('belum diketahui'),
 

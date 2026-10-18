@@ -8,6 +8,7 @@ use App\Models\DailyCartAllowance;
 use App\Models\Product;
 use App\Models\StaffAssignment;
 use App\Models\User;
+use App\Services\AttendanceService;
 use App\Services\CentralStockService;
 use App\Services\StockLedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -47,6 +48,10 @@ class CentralStockTest extends TestCase
         $this->product = Product::query()->where('name', 'Soul Coffee')->firstOrFail();
         $this->service = app(CentralStockService::class);
         $this->ledger = app(StockLedgerService::class);
+        $attendance = app(AttendanceService::class);
+        $attendance->clockIn($this->barista);
+        $attendance->openStaffWindow($this->barista);
+        $attendance->clockIn($this->staff);
     }
 
     private function kitchenStock(): int
@@ -163,6 +168,7 @@ class CentralStockTest extends TestCase
         $otherStaff = User::factory()->role(Role::STAFF)->create([
             'kitchen_id' => $this->barista->kitchen_id,
         ]);
+        app(AttendanceService::class)->clockIn($otherStaff);
 
         $this->service->handToCart($this->barista, $this->cart, $this->staff, [$this->product->id => 5]);
 

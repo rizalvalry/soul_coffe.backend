@@ -17,6 +17,7 @@ use App\Services\CentralStockService;
 use App\Services\DailyAllowanceService;
 use App\Services\ProductionService;
 use App\Services\StockLedgerService;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -107,6 +108,8 @@ class ShowcaseStockController extends Controller implements HasMiddleware
                 $request->filled('operating_date') ? $request->date('operating_date') : null,
                 $request->filled('location_id') ? $request->integer('location_id') : null,
             );
+        } catch (HttpResponseException $e) {
+            throw $e;
         } catch (RuntimeException $e) {
             abort(422, $e->getMessage());
         }
@@ -215,7 +218,7 @@ class ShowcaseStockController extends Controller implements HasMiddleware
     private function kitchenIdFor(User $user): int
     {
         if (! $user->kitchen_id) {
-            abort(422, 'Akun Produksi ini belum terhubung ke dapur pusat.');
+            abort(422, 'Akun Produksi belum terhubung ke dapur pusat. Hubungi Administrator dulu ya.');
         }
 
         return (int) $user->kitchen_id;

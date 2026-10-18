@@ -117,7 +117,7 @@ class AttendanceService
         $date = ($operatingDate ?? Carbon::today())->toDateString();
 
         if ($barista->role !== Role::BARISTA) {
-            throw new RuntimeException('Hanya Produksi yang dapat membuka absen rider.');
+            throw new RuntimeException('Absen Rider cuma bisa dibuka oleh Produksi ya.');
         }
 
         $hasClockedIn = Attendance::query()
