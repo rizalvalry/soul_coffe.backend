@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\Role;
 use App\Events\SoulEvent;
+use App\Jobs\PublishOutboxEvent;
 use App\Models\AppNotification;
 use App\Models\OutboxEvent;
 use App\Models\User;
@@ -29,6 +30,7 @@ class AttendanceApiTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config(['outbox.publish_mode' => 'queue']);
         $this->seed();
 
         $this->barista = User::query()->where('phone_e164', '081100000003')->firstOrFail();
@@ -170,7 +172,7 @@ class AttendanceApiTest extends TestCase
         $this->assertSame(1, OutboxEvent::query()->where('name', 'StaffAttendanceWindowOpened')->count());
     }
 
-    public function test_window_open_broadcasts_only_after_outer_commit(): void
+    public function test_window_open_queues_broadcast_only_after_outer_commit(): void
     {
         $attendance = app(AttendanceService::class);
         $attendance->clockIn($this->barista);
@@ -182,6 +184,11 @@ class AttendanceApiTest extends TestCase
             Event::assertNotDispatched(SoulEvent::class);
         });
 
+        $row = OutboxEvent::query()->where('name', 'StaffAttendanceWindowOpened')->sole();
+        $this->assertNull($row->published_at);
+        Event::assertNotDispatched(SoulEvent::class);
+
+        (new PublishOutboxEvent($row->id))->handle();
         Event::assertDispatched(SoulEvent::class, fn (SoulEvent $event): bool => $event->payload['type'] === 'StaffAttendanceWindowOpened');
     }
 

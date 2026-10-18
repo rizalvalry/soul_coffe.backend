@@ -6,6 +6,7 @@ use App\Enums\MovementType;
 use App\Enums\Role;
 use App\Events\SoulEvent;
 use App\Filament\Resources\Sales\SaleResource;
+use App\Jobs\PublishOutboxEvent;
 use App\Models\AppNotification;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
@@ -59,6 +60,7 @@ class SaleVoidTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config(['outbox.publish_mode' => 'queue']);
 
         $this->kitchen = CentralKitchen::create([
             'name' => 'Dapur Uji', 'address' => 'Jl. Uji 1',
@@ -230,7 +232,9 @@ class SaleVoidTest extends TestCase
         $this->assertSame($this->cart->id, $payload['cart_id']);
         $this->assertSame(Carbon::today()->toDateString(), $payload['operating_date']);
         $this->assertSame($sale->id, $payload['source_id']);
-        $this->assertNotNull($outbox->published_at);
+        $this->assertNull($outbox->published_at);
+        (new PublishOutboxEvent($outbox->id))->handle();
+        $this->assertNotNull($outbox->fresh()->published_at);
         Event::assertDispatched(SoulEvent::class, fn (SoulEvent $sent): bool => $sent->payload['event_id'] === $outbox->event_id);
     }
 
