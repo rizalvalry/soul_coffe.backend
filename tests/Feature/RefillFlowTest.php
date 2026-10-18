@@ -22,6 +22,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -197,6 +198,39 @@ class RefillFlowTest extends TestCase
         $this->actingAs($this->staff)->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson('/api/v1/refills', $this->refillPayload())
             ->assertStatus(422)->assertJsonPath('message', 'Absen dulu sebelum meminta refill.');
+    }
+
+    public static function financeDecisionCases(): array
+    {
+        return [
+            'Finance approves' => [Role::FINANCE, 'approve'],
+            'Finance rejects' => [Role::FINANCE, 'reject'],
+            'Management approves' => [Role::MANAGEMENT, 'approve'],
+            'Management rejects' => [Role::MANAGEMENT, 'reject'],
+        ];
+    }
+
+    #[DataProvider('financeDecisionCases')]
+    public function test_finance_and_management_decide_refills_without_attendance(Role $role, string $decision): void
+    {
+        $refill = $this->submitRefill();
+        $actor = $role === Role::FINANCE ? $this->finance : User::factory()->role(Role::MANAGEMENT)->create();
+        $this->assertFalse(Attendance::query()->where('user_id', $actor->id)->exists());
+
+        $payload = $decision === 'approve'
+            ? [
+                'version' => $refill->version,
+                'lines' => [['line_id' => $refill->lines()->first()->id, 'qty_approved' => 5]],
+            ]
+            : ['reason' => 'Stok refill tidak tersedia hari ini.'];
+
+        $this->actingAs($actor)
+            ->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson("/api/v1/refills/{$refill->id}/{$decision}", $payload)
+            ->assertOk();
+
+        $this->assertSame($decision === 'approve' ? 'APPROVED' : 'REJECTED', $refill->fresh()->status->value);
+        $this->assertFalse(Attendance::query()->where('user_id', $actor->id)->exists());
     }
 
     public function test_wrong_role_cannot_submit_or_cancel_refill(): void
