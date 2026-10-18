@@ -100,7 +100,11 @@ class StaffLocationService
                 // Only the batch's final position can change the visible queue status. A replay
                 // of an outside-to-inside batch must not manufacture DEPARTED then ARRIVED events.
                 $arrivalChanged = $hasGeofence && $index === $finalPingIndex && $isInside !== $wasInside;
-                if (! $arrivalChanged && ! $this->shouldKeep($last, $lat, $lng)) {
+                // Keep the final position if an intermediate ping crossed the boundary, even
+                // when the batch ends back where it started and needs no event.
+                $finalStatusNeedsSaving = $hasGeofence && $index === $finalPingIndex && $last
+                    && $isInside !== $this->isInsideKitchen((float) $last->lat, (float) $last->lng, $kitchen);
+                if (! $arrivalChanged && ! $finalStatusNeedsSaving && ! $this->shouldKeep($last, $lat, $lng)) {
                     continue;
                 }
 
