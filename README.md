@@ -31,7 +31,7 @@ php artisan storage:link
 php artisan serve --host=0.0.0.0 --port=8000
 ```
 
-Realtime and queued work each need their own long-running process:
+For local queue mode, realtime and queued work each need their own long-running process:
 
 ```bash
 php artisan reverb:start      # WebSocket server (requirement 3)
@@ -45,13 +45,20 @@ and this command (replace the PHP binary and application path with the paths sho
 /usr/bin/php /home/<user>/domains/<domain>/public_html/artisan schedule:run >> /home/<user>/domains/<domain>/public_html/storage/logs/scheduler.log 2>&1
 ```
 
-The Laravel scheduler runs `outbox:recover` and a short-lived `queue:work` every minute. Set
-`QUEUE_CONNECTION=database`; `OUTBOX_RECOVERY_AGE_MINUTES` defaults to `5`. Pusher delivery is
-queued after commit, so the HTTP request does not wait for Pusher. The scheduler retries up to
-10 unpublished rows older than the recovery age each minute; already published rows are skipped.
-This cron entry is needed because the Hostinger shell has no `crontab` binary or resident worker.
-Check and rotate `storage/logs/scheduler.log` alongside the application logs. On a VPS, the
-resident queue worker must consume the configured `QUEUE_CONNECTION` used by the publisher.
+`OUTBOX_PUBLISH_MODE=inline` is the default for Hostinger, where the hPanel cron entry is not yet
+active. It broadcasts after commit in the request with a 5-second Pusher timeout. A failed send
+leaves its outbox row unpublished; the next authenticated API request triggers a batch of at most
+2 stale rows **after its response**, at most once per minute. `OUTBOX_RECOVERY_AGE_MINUTES`
+defaults to `5`. Realtime delivery therefore does not depend on a queue worker or cron on this
+host. Set up the hPanel cron above for the application's other scheduled work; when it runs, it
+also retries up to 10 stale outbox rows per minute. Check and rotate `scheduler.log` alongside
+the application logs.
+
+On the VPS, set `OUTBOX_PUBLISH_MODE=queue` and run a resident `php artisan queue:work` service
+on the configured `QUEUE_CONNECTION` plus a systemd timer for `php artisan schedule:run` each
+minute. Queue mode inserts a job after commit, so the request does not wait for Pusher; the
+scheduler recovers unpublished rows if a job insert or worker fails. Both modes reuse the same
+outbox event and `event_id`; already published rows are skipped on retry.
 
 ## Production deployment
 
@@ -159,8 +166,9 @@ demo, but requirement 3 is not met. A small VPS is the right target if realtime 
 8. **Idempotency-Key is required on every state transition (R12).** A rider on a bad
    connection who taps twice must not create two requests.
 
-9. **Events are written to `outbox_events` inside the state-change transaction** and published by
-   the queue worker after commit. The scheduler recovers unpublished rows after a worker crash.
+9. **Events are written to `outbox_events` inside the state-change transaction** and published
+   after commit. Hostinger uses inline delivery with lazy recovery; the VPS uses a queue worker
+   with scheduled recovery. Both retry the same unpublished row after a failure.
 
 ## Sign-in credentials: password, then PIN
 

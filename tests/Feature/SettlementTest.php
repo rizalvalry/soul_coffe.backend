@@ -66,6 +66,7 @@ class SettlementTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config(['outbox.publish_mode' => 'queue']);
 
         $this->seed(AccountSeeder::class);
 
@@ -220,6 +221,23 @@ class SettlementTest extends TestCase
         Queue::assertPushed(PublishOutboxEvent::class);
         $this->expectExceptionMessage('pusher timeout');
         (new PublishOutboxEvent($row->id))->handle();
+    }
+
+    public function test_settlement_request_succeeds_while_inline_pusher_times_out(): void
+    {
+        $this->issue(10);
+        config(['outbox.publish_mode' => 'inline']);
+        Queue::fake();
+        FailingBroadcaster::activate();
+
+        $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', [
+                'cart_id' => $this->cart->id, 'cash' => 0, 'qris' => 0, 'transfer' => 0,
+            ])->assertCreated();
+
+        $this->assertSame(1, Settlement::query()->count());
+        $this->assertNull(OutboxEvent::query()->where('name', 'SettlementRecorded')->sole()->published_at);
+        Queue::assertNothingPushed();
     }
 
     // ── What Finance is told before typing anything ──────────────────────

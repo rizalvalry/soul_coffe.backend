@@ -1,5 +1,8 @@
 <?php
 
+use App\Http\Middleware\EnsureRole;
+use App\Http\Middleware\Idempotency;
+use App\Http\Middleware\RecoverOutboxAfterResponse;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -17,7 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
     // token, so the default web-guarded /broadcasting/auth would reject every subscription.
     ->withBroadcasting(
         __DIR__.'/../routes/channels.php',
-        ['prefix' => 'api/v1', 'middleware' => ['auth:sanctum']],
+        ['prefix' => 'api/v1', 'middleware' => ['auth:sanctum', RecoverOutboxAfterResponse::class]],
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // This app has no web login route. Authenticate::unauthenticated() calls redirectTo()
@@ -34,11 +37,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // Applied per-route rather than globally: only state transitions require a key, and a
         // global copy would run twice on routes that also declare it.
         $middleware->alias([
-            'idempotent' => \App\Http\Middleware\Idempotency::class,
+            'idempotent' => Idempotency::class,
             // Role gate (docs/02 §2.1). Applied per-controller via the HasMiddleware
             // interface (e.g. AllocationController::middleware()) rather than in
             // routes/api.php, which is owned by another workstream.
-            'role' => \App\Http\Middleware\EnsureRole::class,
+            'role' => EnsureRole::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

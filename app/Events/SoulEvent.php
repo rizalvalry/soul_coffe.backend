@@ -16,9 +16,8 @@ use Illuminate\Queue\SerializesModels;
  * every notification, and `event_id` gives it one dedupe key across both the WebSocket and the
  * push transport (E15).
  *
- * ShouldBroadcastNow, not ShouldBroadcast: this is dispatched from inside the queued
- * PublishOutboxEvent job, so queueing it again would add a second hop and a second failure mode
- * for no benefit.
+ * ShouldBroadcastNow, not ShouldBroadcast: PublishOutboxEvent already chooses inline or queued
+ * delivery, so queueing the broadcast again would add a second hop and failure mode.
  */
 class SoulEvent implements ShouldBroadcastNow
 {

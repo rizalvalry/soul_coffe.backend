@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\RefillTransitionController;
 use App\Http\Controllers\Api\SaleController;
 use App\Http\Controllers\Api\SettlementController;
 use App\Http\Controllers\Api\ShowcaseStockController;
+use App\Http\Middleware\RecoverOutboxAfterResponse;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -59,7 +60,7 @@ Route::post('auth/login-pin', [AuthController::class, 'loginWithPin'])
 Route::post('auth/pin-reset-requests', [PinResetRequestController::class, 'store'])
     ->middleware('throttle:auth-pin-reset');
 
-Route::middleware('auth:sanctum')->group(function (): void {
+Route::middleware(['auth:sanctum', RecoverOutboxAfterResponse::class])->group(function (): void {
     Route::post('auth/logout', [AuthController::class, 'logout']);
     Route::get('me', [MeController::class, 'show']);
 

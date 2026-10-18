@@ -30,6 +30,7 @@ class AttendanceApiTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config(['outbox.publish_mode' => 'queue']);
         $this->seed();
 
         $this->barista = User::query()->where('phone_e164', '081100000003')->firstOrFail();

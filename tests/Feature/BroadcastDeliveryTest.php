@@ -12,6 +12,7 @@ use Illuminate\Contracts\Broadcasting\Broadcaster;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Broadcast;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
@@ -31,6 +32,7 @@ class BroadcastDeliveryTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config(['outbox.publish_mode' => 'queue']);
 
         $this->staff = User::factory()->role(Role::STAFF)->create();
     }
@@ -143,6 +145,117 @@ class BroadcastDeliveryTest extends TestCase
         $this->assertNull($row->fresh()->published_at);
     }
 
+    public function test_inline_mode_publishes_after_commit_without_a_queue_job(): void
+    {
+        config(['outbox.publish_mode' => 'inline']);
+        Queue::fake();
+        Event::fake([SoulEvent::class]);
+
+        $eventId = $this->publish();
+
+        Queue::assertNothingPushed();
+        $this->assertNotNull(OutboxEvent::query()->where('event_id', $eventId)->value('published_at'));
+        Event::assertDispatched(SoulEvent::class, fn (SoulEvent $event): bool => $event->payload['event_id'] === $eventId);
+    }
+
+    public function test_inline_failure_is_recovered_after_an_authenticated_response_without_cron(): void
+    {
+        config(['outbox.publish_mode' => 'inline']);
+        Cache::forget('outbox.recovery.lazy');
+        Queue::fake();
+        FailingBroadcaster::activate();
+
+        $eventId = $this->publish();
+        $row = OutboxEvent::query()->where('event_id', $eventId)->sole();
+        $this->assertNull($row->published_at);
+        Queue::assertNothingPushed();
+        $row->forceFill(['created_at' => now()->subMinutes(6)])->save();
+
+        $this->getJson('/api/v1/me')->assertUnauthorized();
+        $this->assertNull($row->fresh()->published_at);
+
+        $this->actingAs($this->staff, 'sanctum')->getJson('/api/v1/me')->assertOk();
+        $this->assertNull($row->fresh()->published_at);
+
+        $delivered = new class implements Broadcaster
+        {
+            public array $payloads = [];
+
+            public function auth($request)
+            {
+                return true;
+            }
+
+            public function validAuthenticationResponse($request, $result)
+            {
+                return $result;
+            }
+
+            public function broadcast(array $channels, $event, array $payload = [])
+            {
+                $this->payloads[] = $payload;
+            }
+        };
+        Broadcast::extend('recording', fn (): Broadcaster => $delivered);
+        config([
+            'broadcasting.connections.recording' => ['driver' => 'recording'],
+            'broadcasting.default' => 'recording',
+        ]);
+        $this->getJson('/api/v1/me')->assertOk();
+        $this->assertNull($row->fresh()->published_at);
+        $this->travel(61)->seconds();
+        $this->getJson('/api/v1/me')->assertOk();
+
+        $this->assertNotNull($row->fresh()->published_at);
+        $this->assertCount(1, $delivered->payloads);
+        $this->assertSame($eventId, $delivered->payloads[0]['event_id']);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_lazy_recovery_does_not_run_in_queue_mode(): void
+    {
+        Cache::forget('outbox.recovery.lazy');
+        Queue::fake();
+        Event::fake([SoulEvent::class]);
+
+        $eventId = $this->publish();
+        $row = OutboxEvent::query()->where('event_id', $eventId)->sole();
+        $row->forceFill(['created_at' => now()->subMinutes(6)])->save();
+        $this->actingAs($this->staff, 'sanctum')->getJson('/api/v1/me')->assertOk();
+
+        $this->assertNull($row->fresh()->published_at);
+        Event::assertNotDispatched(SoulEvent::class);
+    }
+
+    public function test_broadcast_channel_auth_also_triggers_inline_recovery(): void
+    {
+        config([
+            'outbox.publish_mode' => 'inline',
+            'broadcasting.default' => 'pusher',
+            'broadcasting.connections.pusher.key' => 'test-key',
+            'broadcasting.connections.pusher.secret' => 'test-secret',
+            'broadcasting.connections.pusher.app_id' => 'test-app',
+        ]);
+        Cache::forget('outbox.recovery.lazy');
+        Event::fake([SoulEvent::class]);
+        require base_path('routes/channels.php');
+
+        $eventId = (string) Str::uuid();
+        $row = OutboxEvent::create([
+            'event_id' => $eventId,
+            'name' => 'RefillRequestApproved',
+            'payload_json' => ['event_id' => $eventId, 'type' => 'RefillRequestApproved', 'channels' => ['role.BARISTA']],
+        ]);
+        $row->forceFill(['created_at' => now()->subMinutes(6)])->save();
+
+        $this->actingAs($this->staff, 'sanctum')->postJson('/api/v1/broadcasting/auth', [
+            'socket_id' => '123.456', 'channel_name' => 'private-user.'.$this->staff->id,
+        ])->assertOk();
+
+        $this->assertNotNull($row->fresh()->published_at);
+        Event::assertDispatchedTimes(SoulEvent::class, 1);
+    }
+
     /** Recovery only retries rows older than the configured age. */
     public function test_recovery_respects_configured_age_and_skips_published_rows(): void
     {
@@ -250,6 +363,18 @@ class BroadcastDeliveryTest extends TestCase
         Artisan::call('outbox:recover');
         $this->assertNotNull($rows->last()->fresh()->published_at);
         $this->assertNull($rows->first()->fresh()->published_at);
+    }
+
+    public function test_recovery_returns_failure_when_all_attempts_fail(): void
+    {
+        Queue::fake();
+        FailingBroadcaster::activate();
+        $eventId = $this->publish();
+        $row = OutboxEvent::query()->where('event_id', $eventId)->sole();
+        $row->forceFill(['created_at' => now()->subMinutes(6)])->save();
+
+        $this->assertSame(1, Artisan::call('outbox:recover'));
+        $this->assertNull($row->fresh()->published_at);
     }
 
     public function test_outbox_uses_configured_async_queue_connection(): void

@@ -11,7 +11,7 @@ use Throwable;
 
 class RecoverOutboxEvents extends Command
 {
-    protected $signature = 'outbox:recover';
+    protected $signature = 'outbox:recover {--limit=10 : Maximum rows to retry in this run}';
 
     protected $description = 'Retry unpublished outbox events after the recovery age';
 
@@ -19,6 +19,8 @@ class RecoverOutboxEvents extends Command
     {
         $cutoff = now()->subMinutes(max(1, (int) config('outbox.recovery_age_minutes')));
         $attempted = 0;
+        $failed = 0;
+        $limit = max(1, min(10, (int) $this->option('limit')));
 
         $stale = OutboxEvent::query()
             ->whereNull('published_at')
@@ -27,18 +29,19 @@ class RecoverOutboxEvents extends Command
         $ids = (clone $stale)
             ->where('id', '>', $cursor)
             ->orderBy('id')
-            ->limit(10)
+            ->limit($limit)
             ->pluck('id');
 
         if ($ids->isEmpty() && $cursor > 0) {
-            $ids = $stale->orderBy('id')->limit(10)->pluck('id');
+            $ids = $stale->orderBy('id')->limit($limit)->pluck('id');
         }
 
-        $ids->each(function (int $id) use (&$attempted): void {
+        $ids->each(function (int $id) use (&$attempted, &$failed): void {
             $attempted++;
             try {
                 (new PublishOutboxEvent($id))->handle();
             } catch (Throwable $e) {
+                $failed++;
                 Log::warning('broadcast: outbox recovery failed', [
                     'outbox_event_id' => $id,
                     'error' => $e->getMessage(),
@@ -53,6 +56,6 @@ class RecoverOutboxEvents extends Command
 
         $this->info('Dicoba pulihkan: '.$attempted);
 
-        return self::SUCCESS;
+        return $attempted > 0 && $failed === $attempted ? self::FAILURE : self::SUCCESS;
     }
 }

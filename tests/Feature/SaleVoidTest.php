@@ -60,6 +60,7 @@ class SaleVoidTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config(['outbox.publish_mode' => 'queue']);
 
         $this->kitchen = CentralKitchen::create([
             'name' => 'Dapur Uji', 'address' => 'Jl. Uji 1',

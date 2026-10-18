@@ -88,10 +88,15 @@ class EventPublisher
         // broadcast a row that a rollback then erased.
         DB::afterCommit(function () use ($outboxId, $recipients, $actorId, $title, $body, $payload, $includeActorPush): void {
             try {
-                // The outbox row remains recoverable if inserting the job fails after commit.
-                PublishOutboxEvent::enqueue((int) $outboxId);
+                if (config('outbox.publish_mode') === 'queue') {
+                    PublishOutboxEvent::enqueue((int) $outboxId);
+                } else {
+                    (new PublishOutboxEvent((int) $outboxId))->handle();
+                }
             } catch (Throwable $e) {
-                Log::warning('broadcast: could not queue outbox event', [
+                // A failed transport must not undo a committed sale or settlement. The same
+                // outbox row stays unpublished for scheduled or lazy recovery.
+                Log::warning('broadcast: could not publish outbox event', [
                     'outbox_event_id' => $outboxId,
                     'error' => $e->getMessage(),
                 ]);

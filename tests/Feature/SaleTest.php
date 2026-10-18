@@ -57,6 +57,7 @@ class SaleTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config(['outbox.publish_mode' => 'queue']);
 
         $this->kitchen = CentralKitchen::create([
             'name' => 'Dapur Uji',
@@ -198,6 +199,21 @@ class SaleTest extends TestCase
         Queue::assertPushed(PublishOutboxEvent::class);
         $this->expectExceptionMessage('pusher timeout');
         (new PublishOutboxEvent($row->id))->handle();
+    }
+
+    public function test_sale_request_succeeds_while_inline_pusher_times_out(): void
+    {
+        $this->clockIn();
+        $this->stockCart($this->coffee, 10);
+        config(['outbox.publish_mode' => 'inline']);
+        Queue::fake();
+        FailingBroadcaster::activate();
+
+        $this->sell([['product_id' => $this->coffee->id, 'qty' => 1]])->assertCreated();
+
+        $this->assertSame(1, Sale::query()->count());
+        $this->assertNull(OutboxEvent::query()->where('name', 'SaleRecorded')->sole()->published_at);
+        Queue::assertNothingPushed();
     }
 
     public function test_rolled_back_sale_has_no_outbox_row_or_broadcast(): void
