@@ -22,6 +22,7 @@ enum PanelModule: string
     case LOCATIONS = 'locations';
     case CENTRAL_KITCHENS = 'central_kitchens';
     case DAILY_TARGETS = 'daily_targets';
+    case RIDER_COMMISSIONS = 'rider_commissions';
     case CENTRAL_STOCK = 'central_stock';
     case STOCK_OPNAME = 'stock_opname';
     case SALES = 'sales';
@@ -59,6 +60,7 @@ enum PanelModule: string
             self::LOCATIONS => 'Lokasi',
             self::CENTRAL_KITCHENS => 'Dapur Pusat',
             self::DAILY_TARGETS => 'Target Harian',
+            self::RIDER_COMMISSIONS => 'Target & Komisi',
             self::CENTRAL_STOCK => 'Stok Terpusat',
             self::STOCK_OPNAME => 'Stock Opname',
             self::SALES => 'Penjualan Coffee Bike',

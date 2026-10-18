@@ -9,7 +9,7 @@
 <p>Periode: {{ $run->period_start->format('Y-m') }}<br>Karyawan: {{ $item->user->name }}</p>
 <table><tr><th>Rincian</th><th class="money">Rupiah</th></tr>
 <tr><td>Gaji pokok</td><td class="money">{{ number_format($snapshot['base_salary_minor'], 0, ',', '.') }}</td></tr>
-<tr><td>Insentif Rider</td><td class="money">{{ number_format($snapshot['rider_incentive_minor'], 0, ',', '.') }}</td></tr>
+<tr><td>Komisi target harian</td><td class="money">{{ number_format($snapshot['rider_incentive_minor'], 0, ',', '.') }}</td></tr>
 @foreach ($snapshot['components'] as $component)
 <tr><td>{{ $component['name'] }} ({{ $component['kind'] === 'DEDUCTION' ? 'potongan' : 'tunjangan' }})</td><td class="money">{{ number_format($component['amount_minor'], 0, ',', '.') }}</td></tr>
 @endforeach

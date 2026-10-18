@@ -2,6 +2,9 @@
 
 namespace App\Filament\Resources\DailyTargets;
 
+use App\Enums\PanelModule;
+use App\Enums\Role;
+use App\Filament\Concerns\MatrixGoverned;
 use App\Filament\Resources\DailyTargets\Pages\CreateDailyTarget;
 use App\Filament\Resources\DailyTargets\Pages\EditDailyTarget;
 use App\Filament\Resources\DailyTargets\Pages\ListDailyTargets;
@@ -9,13 +12,12 @@ use App\Filament\Resources\DailyTargets\Schemas\DailyTargetForm;
 use App\Filament\Resources\DailyTargets\Tables\DailyTargetsTable;
 use App\Models\DailyTarget;
 use BackedEnum;
-use UnitEnum;
-use App\Enums\PanelModule;
-use App\Filament\Concerns\MatrixGoverned;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use Illuminate\Support\Facades\Auth;
+use UnitEnum;
 
 class DailyTargetResource extends Resource
 {
@@ -35,9 +37,33 @@ class DailyTargetResource extends Resource
 
     protected static ?int $navigationSort = 1;
 
+    protected static bool $shouldRegisterNavigation = false;
+
     public static function panelModule(): PanelModule
     {
         return PanelModule::DAILY_TARGETS;
+    }
+
+    // This archived Flow A editor remains reachable by URL for Administrator only. The
+    // RIDER_COMMISSIONS has its own matrix grant, separate from these old stock targets.
+    public static function canViewAny(): bool
+    {
+        return Auth::user()?->role === Role::ADMINISTRATOR;
+    }
+
+    public static function canCreate(): bool
+    {
+        return static::canViewAny();
+    }
+
+    public static function canEdit(mixed $record): bool
+    {
+        return static::canViewAny();
+    }
+
+    public static function canDelete(mixed $record): bool
+    {
+        return static::canViewAny();
     }
 
     public static function form(Schema $schema): Schema

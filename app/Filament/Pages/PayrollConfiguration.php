@@ -44,8 +44,6 @@ class PayrollConfiguration extends Page
 
     public array $terPublication = [];
 
-    public array $incentive = [];
-
     public array $component = [];
 
     public array $entry = [];
@@ -84,7 +82,6 @@ class PayrollConfiguration extends Page
         $this->ptkp = ['status' => '', 'ter_category' => '', 'annual_amount_minor' => 0, 'effective_from' => '', 'source_note' => ''];
         $this->ter = ['category' => '', 'lower_gross_minor' => 0, 'upper_gross_minor' => null, 'rate_bps' => 0, 'effective_from' => '', 'source_note' => ''];
         $this->terPublication = ['category' => '', 'effective_from' => ''];
-        $this->incentive = ['effective_from' => '', 'amount_per_cup_minor' => 0, 'target_cups' => 0, 'bonus_minor' => 0, 'source_note' => ''];
         $this->component = ['code' => '', 'name' => '', 'kind' => '', 'taxable' => false, 'account_id' => '', 'effective_from' => '', 'source_note' => ''];
         $this->entry = ['user_id' => '', 'component_type_id' => '', 'period_start' => '', 'request_key' => (string) Str::uuid(), 'amount_minor' => '', 'note' => ''];
         $this->annualVersion = ['effective_from' => '', 'source_note' => ''];
@@ -209,20 +206,6 @@ class PayrollConfiguration extends Page
             DB::table('payroll_ter_versions')->where('id', $version->id)->update(['source_note' => $rows->first()->source_note]);
             $this->audit('payroll_ter_version_published', 'payroll_ter_versions', $version->id, $data);
         });
-        $this->success();
-    }
-
-    public function saveIncentive(): void
-    {
-        Gate::authorize('manage-payroll');
-        $data = $this->validate([
-            'incentive.effective_from' => ['required', 'date_format:Y-m-d', Rule::unique('rider_incentive_rules', 'effective_from')],
-            'incentive.amount_per_cup_minor' => ['required', 'integer', 'min:0'],
-            'incentive.target_cups' => ['required', 'integer', 'min:0'],
-            'incentive.bonus_minor' => ['required', 'integer', 'min:0'],
-            'incentive.source_note' => ['required', 'string', 'min:3', 'max:2000'],
-        ])['incentive'];
-        $this->append('rider_incentive_rules', $data);
         $this->success();
     }
 
