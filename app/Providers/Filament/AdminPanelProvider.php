@@ -25,7 +25,7 @@ use Illuminate\View\Middleware\ShareErrorsFromSession;
 class AdminPanelProvider extends PanelProvider
 {
     /** Cache-buster for the public theme files. */
-    private const THEME_VERSION = '2026-10-16b';
+    private const THEME_VERSION = '2026-10-19-erp';
 
     public function panel(Panel $panel): Panel
     {

@@ -8,8 +8,14 @@ use App\Models\Cart;
 use App\Models\JournalEntry;
 use App\Services\JournalService;
 use BackedEnum;
+use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Filament\Schemas\Components\Section;
+use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Locked;
@@ -59,6 +65,27 @@ class ManualJournal extends Page
     public function carts(): mixed
     {
         return Cart::query()->orderBy('code')->get(['id', 'code']);
+    }
+
+    public function form(Schema $schema): Schema
+    {
+        return $schema->components([
+            Section::make('Jurnal manual')->schema([
+                DatePicker::make('entryDate')->label('Tanggal')->required(),
+                TextInput::make('description')->label('Keterangan')->maxLength(255)->required(),
+                Repeater::make('lines')->label('Baris jurnal')->schema([
+                    Select::make('account_id')->label('Akun')
+                        ->options(fn (): array => $this->accounts()->mapWithKeys(
+                            fn (Account $account): array => [$account->id => $account->code.' — '.$account->name],
+                        )->all())->searchable()->required(),
+                    TextInput::make('debit_minor')->label('Debit (Rp)')->numeric()->minValue(0)->live(debounce: 150),
+                    TextInput::make('credit_minor')->label('Kredit (Rp)')->numeric()->minValue(0)->live(debounce: 150),
+                    Select::make('cart_id')->label('Coffee Bike (opsional)')
+                        ->options(fn (): array => $this->carts()->pluck('code', 'id')->all()),
+                ])->columns(['default' => 1, 'md' => 4])->minItems(2)->maxItems(1000)
+                    ->addActionLabel('Tambah Baris')->reorderable(false)->columnSpanFull(),
+            ])->columns(['default' => 1, 'md' => 2]),
+        ]);
     }
 
     public function addLine(): void

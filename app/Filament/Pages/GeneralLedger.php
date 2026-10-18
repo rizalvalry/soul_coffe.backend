@@ -3,21 +3,29 @@
 namespace App\Filament\Pages;
 
 use App\Enums\Role;
+use App\Filament\Resources\Journals\JournalResource;
 use App\Models\Account;
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
 use App\Services\Menu\MenuLabels;
 use BackedEnum;
+use Filament\Forms\Components\Select;
 use Filament\Pages\Page;
+use Filament\Schemas\Components\Section;
+use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Concerns\InteractsWithTable;
+use Filament\Tables\Contracts\HasTable;
+use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
-use Livewire\WithPagination;
 use UnitEnum;
 
-class GeneralLedger extends Page
+class GeneralLedger extends Page implements HasTable
 {
-    use WithPagination;
+    use InteractsWithTable;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedListBullet;
 
@@ -45,7 +53,19 @@ class GeneralLedger extends Page
 
     public function updatedAccountId(): void
     {
-        $this->resetPage();
+        $this->resetTable();
+    }
+
+    public function accountForm(Schema $schema): Schema
+    {
+        return $schema->components([
+            Section::make('Pilih akun')->schema([
+                Select::make('accountId')->label('Akun')
+                    ->options(fn (): array => Account::query()->orderBy('code')->get()
+                        ->mapWithKeys(fn (Account $account): array => [$account->id => $account->code.' · '.$account->name])->all())
+                    ->searchable()->live(),
+            ]),
+        ]);
     }
 
     public function selectedAccount(): ?Account
@@ -60,6 +80,30 @@ class GeneralLedger extends Page
 
     public function ledgerRows(Account $account): LengthAwarePaginator
     {
+        return $this->ledgerQuery($account)->paginate(50);
+    }
+
+    public function table(Table $table): Table
+    {
+        abort_unless(self::canAccess(), 403);
+        $account = $this->selectedAccount();
+
+        return $table
+            ->query($account ? $this->ledgerQuery($account) : JournalLine::query()->whereKey(0))
+            ->defaultPaginationPageOption(50)
+            ->columns([
+                TextColumn::make('entry_date')->label('Tanggal')->date('Y-m-d'),
+                TextColumn::make('number')->label('Jurnal')
+                    ->url(fn (JournalLine $record): string => JournalResource::getUrl('view', ['record' => $record->entry_id])),
+                TextColumn::make('memo')->label('Catatan')->placeholder('—'),
+                TextColumn::make('debit_minor')->label('Debit')->numeric(decimalPlaces: 0, locale: 'id')->prefix('Rp ')->alignEnd(),
+                TextColumn::make('credit_minor')->label('Kredit')->numeric(decimalPlaces: 0, locale: 'id')->prefix('Rp ')->alignEnd(),
+                TextColumn::make('running_minor')->label('Saldo berjalan')->numeric(decimalPlaces: 0, locale: 'id')->prefix('Rp ')->alignEnd(),
+            ]);
+    }
+
+    private function ledgerQuery(Account $account): Builder
+    {
         $signed = $account->normal_balance === 'DEBIT'
             ? 'CAST(journal_lines.debit_minor AS SIGNED) - CAST(journal_lines.credit_minor AS SIGNED)'
             : 'CAST(journal_lines.credit_minor AS SIGNED) - CAST(journal_lines.debit_minor AS SIGNED)';
@@ -73,7 +117,6 @@ class GeneralLedger extends Page
             ->when($cutover, fn ($query) => $query->whereDate('journal_entries.entry_date', '>=', $cutover))
             ->select('journal_lines.*', 'journal_entries.entry_date', 'journal_entries.number')
             ->selectRaw("SUM($signed) OVER (ORDER BY journal_entries.entry_date, journal_entries.id, journal_lines.id ROWS UNBOUNDED PRECEDING) AS running_minor")
-            ->orderBy('journal_entries.entry_date')->orderBy('journal_entries.id')->orderBy('journal_lines.id')
-            ->paginate(50);
+            ->orderBy('journal_entries.entry_date')->orderBy('journal_entries.id')->orderBy('journal_lines.id');
     }
 }

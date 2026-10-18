@@ -2,26 +2,51 @@
 
 namespace Tests\Feature;
 
+use App\Enums\MovementType;
+use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Exports\PayrollRunExport;
+use App\Filament\Pages\GeneralLedger;
 use App\Filament\Pages\PayrollConfiguration;
 use App\Filament\Pages\PayrollPriorWithholding;
 use App\Filament\Pages\PayrollRuns;
 use App\Filament\Resources\Journals\Pages\ListJournals;
+use App\Models\Account;
 use App\Models\AccountingPeriod;
 use App\Models\AuditLog;
+use App\Models\Cart;
+use App\Models\CashAccount;
+use App\Models\CashCategory;
+use App\Models\CentralKitchen;
 use App\Models\JournalEntry;
+use App\Models\JournalLine;
+use App\Models\Location;
 use App\Models\PayrollComponentEntry;
+use App\Models\PayrollItem;
 use App\Models\PayrollPriorWithholding as PayrollPriorWithholdingRecord;
 use App\Models\PayrollRun;
+use App\Models\Product;
+use App\Models\ProductPriceVersion;
+use App\Models\RawMaterial;
+use App\Models\StaffAssignment;
+use App\Models\Supplier;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
+use App\Services\AccountingPeriodService;
+use App\Services\AttendanceService;
+use App\Services\CashTransactionService;
+use App\Services\DirectSaleService;
 use App\Services\JournalService;
 use App\Services\PayrollCalculator;
 use App\Services\PayrollRunService;
+use App\Services\PurchaseOrderService;
+use App\Services\Reporting\ManagementReportService;
+use App\Services\StockLedgerService;
 use Database\Seeders\AccountSeeder;
 use Database\Seeders\PayrollConfigurationSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -91,6 +116,25 @@ class PayrollRunTest extends TestCase
             'version_id' => $versionId, 'lower_taxable_minor' => 0, 'upper_taxable_minor' => null,
             'rate_bps' => 500,
         ]);
+    }
+
+    public function test_selected_payroll_run_uses_filament_table_with_integer_rupiah(): void
+    {
+        $run = PayrollRun::query()->create([
+            'period_start' => '2026-10-01', 'status' => 'DRAFT', 'created_by' => $this->manager->id,
+        ]);
+        PayrollItem::query()->create([
+            'run_id' => $run->id, 'user_id' => $this->employee->id,
+            'snapshot' => [
+                'gross_pay_minor' => 10000000, 'bpjs_employee_total_minor' => 0,
+                'pph21_minor' => 250000, 'take_home_minor' => 9750000,
+                'components' => [['name' => 'Gaji pokok', 'amount_minor' => 10000000]],
+            ],
+        ]);
+
+        Livewire::test(PayrollRuns::class)->call('selectRun', $run->id)
+            ->assertSee($this->employee->name)
+            ->assertSee('Rp 10.000.000')->assertSee('Rp 250.000')->assertSee('Rp 9.750.000');
     }
 
     public function test_run_approval_payment_slips_and_journals_are_idempotent_and_private(): void
@@ -810,6 +854,75 @@ class PayrollRunTest extends TestCase
         $this->assertSame(1, DB::table('payroll_prior_withholdings')->count());
     }
 
+    public function test_prior_withholding_form_validates_months_integer_amounts_and_shows_saved_actor(): void
+    {
+        $finance = User::factory()->role(Role::FINANCE)->create();
+        $this->actingAs($finance);
+        $valid = [
+            'user_id' => $this->employee->id, 'year' => 2026, 'months' => '1,12',
+            'gross_minor' => 20000000, 'jht_jp_minor' => 100000,
+            'amount_minor' => 250000, 'reason' => 'Data dari sistem lama',
+        ];
+
+        foreach (['0', '13', '1,1'] as $months) {
+            Livewire::test(PayrollPriorWithholding::class)
+                ->set('input', [...$valid, 'months' => $months])
+                ->call('save')->assertHasErrors(['input.months']);
+        }
+        foreach (['-1', '2.5'] as $amount) {
+            Livewire::test(PayrollPriorWithholding::class)
+                ->set('input', [...$valid, 'amount_minor' => $amount])
+                ->call('save')->assertHasErrors(['input.amount_minor']);
+        }
+        Livewire::test(PayrollPriorWithholding::class)
+            ->set('input', [...$valid, 'reason' => ''])
+            ->call('save')->assertHasErrors(['input.reason']);
+        $notOnPayroll = User::factory()->role(Role::STAFF)->create();
+        Livewire::test(PayrollPriorWithholding::class)
+            ->set('input', [...$valid, 'user_id' => $notOnPayroll->id])
+            ->call('save')->assertHasErrors(['input.user_id']);
+        $this->assertSame(0, PayrollPriorWithholdingRecord::query()->count());
+
+        Livewire::test(PayrollPriorWithholding::class)
+            ->set('input', $valid)->call('save')->assertHasNoErrors()
+            ->assertSee($this->employee->name)->assertSee($finance->name)
+            ->assertSee('Rp 250.000')->assertSee('Data dari sistem lama');
+        $record = PayrollPriorWithholdingRecord::query()->firstOrFail();
+        $this->assertSame([1, 12], $record->months);
+        $this->assertSame($finance->id, $record->created_by);
+    }
+
+    public function test_prior_withholding_rejects_administrator_and_other_roles_with_403(): void
+    {
+        foreach ([Role::ADMINISTRATOR, Role::BARISTA, Role::RIDER, Role::STAFF, Role::CONTENT_CREATOR] as $role) {
+            $this->actingAs(User::factory()->role($role)->create());
+            $this->get(PayrollPriorWithholding::getUrl())->assertForbidden();
+            $this->actingAs($this->manager);
+            $page = Livewire::test(PayrollPriorWithholding::class);
+            $this->actingAs(User::factory()->role($role)->create());
+            $page->call('save')->assertForbidden();
+        }
+        $this->assertSame(0, PayrollPriorWithholdingRecord::query()->count());
+    }
+
+    public function test_prior_employer_december_withholding_reconciles_without_counting_december_twice(): void
+    {
+        $this->employee->update(['joined_at' => '2026-12-01']);
+        PayrollPriorWithholdingRecord::query()->create([
+            'user_id' => $this->employee->id, 'year' => 2026, 'months' => [12],
+            'gross_minor' => 5000000, 'jht_jp_minor' => 0, 'amount_minor' => 100000,
+            'reason' => 'PPh Desember dari tempat kerja sebelumnya', 'created_by' => $this->manager->id,
+        ]);
+
+        $snapshot = app(PayrollRunService::class)->create('2026-12', $this->manager)
+            ->items()->firstOrFail()->snapshot;
+        $this->assertSame(1, $snapshot['working_months']);
+        $this->assertSame(14500000, $snapshot['annual_taxable_minor']);
+        $this->assertSame(725000, $snapshot['annual_tax_minor']);
+        $this->assertSame(100000, $snapshot['prior_withheld_minor']);
+        $this->assertSame(625000, $snapshot['pph21_minor']);
+    }
+
     public function test_manual_legacy_history_covers_missing_month_without_guessing_gross(): void
     {
         $this->employee->update(['joined_at' => '2026-10-01']);
@@ -870,5 +983,220 @@ class PayrollRunTest extends TestCase
         $page = Livewire::test(PayrollRuns::class)->set('selectedRunId', $run->id);
         $this->actingAs(User::factory()->role(Role::FINANCE)->create());
         $page->call('markPaid')->assertForbidden();
+    }
+
+    public function test_current_month_accounting_cycle_reconciles_ledger_trial_balance_and_management_profit(): void
+    {
+        config(['outbox.publish_mode' => 'queue']);
+        $this->travelTo(Carbon::parse('2026-10-19 10:00:00'));
+        $finance = User::factory()->role(Role::FINANCE)->create();
+        PermissionMatrix::forget();
+        PermissionMatrix::set(Role::FINANCE, PanelModule::PURCHASE_ORDERS, ['view', 'edit']);
+        $barista = User::factory()->role(Role::BARISTA)->create();
+        $cash = CashAccount::query()->where('name', 'Kas Kecil Kantor')->firstOrFail();
+        $bank = CashAccount::query()->where('name', 'Bank')->firstOrFail();
+        $accounts = Account::query()->get()->keyBy('code');
+        $opening = app(JournalService::class)->postOpening('2026-10-01', [
+            ['account_id' => $accounts['1-1100']->id, 'debit_minor' => 1000000, 'credit_minor' => 0],
+            ['account_id' => $accounts['3-1200']->id, 'debit_minor' => 0, 'credit_minor' => 1000000],
+        ]);
+        $this->assertSame('OPENING', $opening->purpose);
+
+        $kitchen = CentralKitchen::query()->create([
+            'name' => 'Dapur Siklus', 'address' => 'Jl. Uji', 'open_at' => '05:00',
+            'close_at' => '20:00', 'is_active' => true,
+        ]);
+        $cart = Cart::query()->create(['code' => 'E2E-048', 'status' => 'active', 'kitchen_id' => $kitchen->id]);
+        $directCart = Cart::query()->create(['code' => 'E2E-048-D', 'status' => 'active', 'kitchen_id' => $kitchen->id]);
+        $location = Location::query()->create(['name' => 'Lokasi E2E', 'lat' => -6.18, 'lng' => 106.88]);
+        $product = Product::query()->create([
+            'code' => 'E2E-048-P', 'name' => 'Kopi E2E', 'unit' => 'cup',
+            'is_sellable' => true, 'sort_order' => 1, 'is_active' => true,
+        ]);
+        ProductPriceVersion::query()->create([
+            'product_id' => $product->id, 'cost_price_minor' => 8000,
+            'sell_price_minor' => 20000, 'effective_from' => today()->subDay(),
+        ]);
+        StaffAssignment::query()->create([
+            'source' => 'hand_to_cart', 'user_id' => $this->employee->id,
+            'cart_id' => $cart->id, 'location_id' => $location->id,
+            'operating_date' => today()->toDateString(), 'assigned_by' => $barista->id,
+            'kitchen_id' => $kitchen->id,
+        ]);
+        $attendance = app(AttendanceService::class);
+        $attendance->clockIn($barista);
+        $attendance->openStaffWindow($barista);
+        $attendance->clockIn($this->employee);
+        foreach ([[$cart, 10], [$directCart, 2]] as [$stockCart, $qty]) {
+            app(StockLedgerService::class)->post(StockLedgerService::CART, $stockCart->id,
+                $product->id, MovementType::ALLOCATION_IN, $qty, $barista->id, $kitchen->id);
+        }
+        $closingBody = [
+            'lines' => [['product_id' => $product->id, 'qty_remaining' => 4, 'qty_wasted' => 0]],
+            'qris' => 40000, 'transfer' => 20000, 'gps_lat' => -6.18, 'gps_lng' => 106.88,
+        ];
+        $closingKey = (string) Str::uuid();
+        $this->actingAs($this->employee, 'sanctum')->withHeader('Idempotency-Key', $closingKey)
+            ->postJson('/api/v1/me/closing', $closingBody)->assertCreated()
+            ->assertJsonPath('data.total_minor', 120000);
+        $this->actingAs($this->employee, 'sanctum')->withHeader('Idempotency-Key', $closingKey)
+            ->postJson('/api/v1/me/closing', $closingBody)->assertCreated()
+            ->assertHeader('Idempotency-Replayed', 'true');
+        $settlementId = $this->actingAs($finance, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', [
+                'cart_id' => $cart->id, 'cash' => 60000, 'qris' => 40000, 'transfer' => 20000,
+            ])->assertCreated()->json('data.id');
+        $this->actingAs($finance, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson("/api/v1/settlements/{$settlementId}/approve", [
+                'lines' => [['product_id' => $product->id, 'qty_returned' => 4, 'qty_rejected' => 0]],
+            ])->assertOk();
+        $settlementRevenue = JournalEntry::query()->where('source_type', 'settlement')
+            ->where('source_id', $settlementId)->where('purpose', 'SETTLEMENT')->sole();
+        $entryLines = static fn (JournalEntry $entry): array => $entry->lines()->with('account')->get()
+            ->mapWithKeys(fn ($line): array => [$line->account->code => [(int) $line->debit_minor, (int) $line->credit_minor]])->all();
+        $this->assertSame(['1-1200', '1-1400', '4-1100'],
+            $settlementRevenue->lines()->with('account')->get()->pluck('account.code')->sort()->values()->all());
+        $this->assertSame([
+            '1-1200' => [60000, 0], '1-1400' => [60000, 0], '4-1100' => [0, 120000],
+        ], $entryLines($settlementRevenue));
+        $this->assertSame('2026-10-19', $settlementRevenue->entry_date->toDateString());
+        $this->assertSame(48000, (int) JournalLine::query()->whereHas('entry', fn ($query) => $query
+            ->where('source_type', 'settlement')->where('purpose', 'SETTLEMENT_COGS'))
+            ->where('account_id', $accounts['5-1100']->id)->sum('debit_minor'));
+
+        $supplier = Supplier::query()->create(['code' => 'E2E-048-S', 'name' => 'Supplier E2E', 'is_active' => true]);
+        $material = RawMaterial::query()->create(['code' => 'E2E-048-M', 'name' => 'Bahan E2E',
+            'unit' => 'g', 'is_active' => true, 'sort_order' => 1]);
+        $purchase = app(PurchaseOrderService::class);
+        foreach (['DIRECT', 'CREDIT'] as $method) {
+            $po = $purchase->create($supplier->id, $kitchen->id,
+                [['raw_material_id' => $material->id, 'qty_ordered' => 10, 'unit_cost_minor' => 2500]], $finance);
+            $po = $purchase->markOrdered($po, $finance);
+            $po = $purchase->receive($po, [], $finance, $method, $method === 'DIRECT' ? $cash->id : null);
+            $receipt = $po->receiptJournal()->firstOrFail();
+            $this->assertSame(25000, (int) $receipt->lines()->sum('debit_minor'));
+            $this->assertSame([
+                '1-1700' => [25000, 0], $method === 'DIRECT' ? '1-1100' : '2-1400' => [0, 25000],
+            ], $entryLines($receipt));
+            $this->assertSame($po->received_at->toDateString(), $receipt->entry_date->toDateString());
+            if ($method === 'CREDIT') {
+                $payment = ['uuid' => (string) Str::uuid(), 'paid_on' => today()->toDateString(),
+                    'cash_account_id' => $cash->id, 'amount_minor' => 25000];
+                $this->assertTrue(PermissionMatrix::can($finance, PanelModule::PURCHASE_ORDERS, 'edit'));
+                $paid = $purchase->payDebt($po, $finance, $payment);
+                $this->assertSame($paid->id, $purchase->payDebt($po, $finance, $payment)->id);
+                $this->assertSame(0, $po->unpaidMinor());
+                $this->assertSame(['2-1400' => [25000, 0], '1-1100' => [0, 25000]],
+                    $entryLines($paid->journal()->firstOrFail()));
+            }
+        }
+        $cashService = app(CashTransactionService::class);
+        foreach (['Listrik', 'Pendapatan Lain-lain'] as $category) {
+            $input = ['uuid' => (string) Str::uuid(), 'date' => today()->toDateString(),
+                'cash_category_id' => CashCategory::query()->where('name', $category)->firstOrFail()->id,
+                'cash_account_id' => $bank->id, 'amount_minor' => 125000,
+                'description' => 'Siklus akuntansi E2E'];
+            $tx = $cashService->record($finance, $input);
+            $this->assertSame($tx->id, $cashService->record($finance, $input)->id);
+            $this->assertSame($category === 'Listrik'
+                ? ['6-1400' => [125000, 0], '1-1300' => [0, 125000]]
+                : ['1-1300' => [125000, 0], '4-1300' => [0, 125000]],
+                $entryLines(JournalEntry::query()->where('source_type', 'cash_transaction')
+                    ->where('source_id', $tx->id)->sole()));
+        }
+        $direct = app(DirectSaleService::class)->record($finance, $directCart->id,
+            [['product_id' => $product->id, 'qty' => 1]], 'transfer');
+        $this->assertSame(2, JournalEntry::query()->where('source_type', 'direct_sale')
+            ->where('source_id', $direct->id)->count());
+        $this->assertSame(['1-1300' => [20000, 0], '4-1200' => [0, 20000]],
+            $entryLines(JournalEntry::query()->where('source_type', 'direct_sale')
+                ->where('source_id', $direct->id)->where('purpose', 'DIRECT_SALE')->sole()));
+        $this->assertSame(['5-1100' => [8000, 0], '1-1600' => [0, 8000]],
+            $entryLines(JournalEntry::query()->where('source_type', 'direct_sale')
+                ->where('source_id', $direct->id)->where('purpose', 'DIRECT_SALE_COGS')->sole()));
+
+        $payroll = app(PayrollRunService::class);
+        $run = $payroll->create('2026-10', $this->manager);
+        $payroll->approve($run, $this->manager);
+        $payroll->markPaid($run, $this->manager, today()->toDateString(), $bank->account_id);
+        $this->assertSame('PAID', $run->fresh()->status);
+        $this->assertSame(2, JournalEntry::query()->where('source_type', 'payroll_run')->count());
+        $accrual = JournalEntry::query()->where('source_type', 'payroll_run')->where('purpose', 'PAYROLL_ACCRUAL')->sole();
+        $payment = JournalEntry::query()->where('source_type', 'payroll_run')->where('purpose', 'PAYROLL_PAYMENT')->sole();
+        $this->assertSame('2026-10-31', $accrual->entry_date->toDateString());
+        $this->assertSame('2026-10-19', $payment->entry_date->toDateString());
+        $this->assertSame(10000000, $entryLines($accrual)['6-1200'][0]);
+        $this->assertArrayHasKey('2-1100', $entryLines($accrual));
+        $this->assertArrayHasKey('2-1300', $entryLines($accrual));
+        $this->assertArrayHasKey('1-1300', $entryLines($payment));
+
+        $manual = app(JournalService::class)->post([
+            'entry_date' => today()->toDateString(), 'description' => 'Koreksi sementara',
+            'source_type' => 'manual', 'source_id' => 48048, 'purpose' => 'MANUAL',
+        ], [
+            ['account_id' => $accounts['1-1100']->id, 'debit_minor' => 500, 'credit_minor' => 0],
+            ['account_id' => $accounts['3-1200']->id, 'debit_minor' => 0, 'credit_minor' => 500],
+        ]);
+        $reversal = app(JournalService::class)->reverse($manual, 'Koreksi tidak diperlukan');
+        $this->assertSame('REVERSAL', $reversal->purpose);
+        try {
+            app(JournalService::class)->reverse($manual, 'Coba lagi');
+            $this->fail('Jurnal bisa dibalik dua kali.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('journal', $exception->errors());
+        }
+
+        $this->actingAs($this->manager);
+        $ledger = Livewire::test(GeneralLedger::class)->instance();
+        foreach (['1-1100', '1-1200', '1-1300', '2-1400', '4-1100', '4-1200', '5-1100', '6-1200'] as $code) {
+            $account = $accounts[$code];
+            $rows = $ledger->ledgerRows($account);
+            $debit = (int) JournalLine::query()->where('account_id', $account->id)->sum('debit_minor');
+            $credit = (int) JournalLine::query()->where('account_id', $account->id)->sum('credit_minor');
+            $expected = $account->normal_balance === 'DEBIT' ? $debit - $credit : $credit - $debit;
+            $this->assertSame($expected, (int) $rows->getCollection()->last()->running_minor, $code);
+        }
+        foreach (JournalEntry::query()->with('lines')->get() as $entry) {
+            $this->assertSame((int) $entry->lines->sum('debit_minor'),
+                (int) $entry->lines->sum('credit_minor'), $entry->number);
+        }
+        $report = app(ManagementReportService::class)->build(today()->startOfMonth(), today()->endOfMonth());
+        $trial = $report['sections']['neraca_saldo']['rows'];
+        $total = $trial[array_key_last($trial)];
+        $this->assertSame($total[2], $total[3]);
+        $this->assertSame($report['summary']['net_profit_minor'],
+            $report['sections']['laba_rugi']['rows'][array_key_last($report['sections']['laba_rugi']['rows'])][3]);
+        $profitRows = Account::query()->whereIn('type', ['REVENUE', 'COGS', 'EXPENSE'])->get()->map(function (Account $account): array {
+            $debit = (int) JournalLine::query()->where('account_id', $account->id)->sum('debit_minor');
+            $credit = (int) JournalLine::query()->where('account_id', $account->id)->sum('credit_minor');
+
+            return [$account->code, $credit - $debit];
+        });
+        $profit = $profitRows->sum(fn (array $row): int => $row[1]);
+        $this->assertSame($profit, $report['summary']['net_profit_minor']);
+
+        app(AccountingPeriodService::class)->setStatus(2026, 10, 'CLOSED', $this->manager);
+        $before = JournalEntry::query()->count();
+        try {
+            app(JournalService::class)->post(['entry_date' => today()->toDateString(),
+                'description' => 'Tidak boleh', 'source_type' => 'manual', 'source_id' => 48049,
+                'purpose' => 'MANUAL'], [
+                    ['account_id' => $accounts['1-1100']->id, 'debit_minor' => 1, 'credit_minor' => 0],
+                    ['account_id' => $accounts['3-1200']->id, 'debit_minor' => 0, 'credit_minor' => 1],
+                ]);
+            $this->fail('Posting manual di periode tertutup diterima.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('entry_date', $exception->errors());
+        }
+        $next = $purchase->create($supplier->id, $kitchen->id,
+            [['raw_material_id' => $material->id, 'qty_ordered' => 1, 'unit_cost_minor' => 1]], $finance);
+        $next = $purchase->markOrdered($next, $finance);
+        try {
+            $purchase->receive($next, [], $finance);
+            $this->fail('Penerimaan PO di periode tertutup diterima.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('entry_date', $exception->errors());
+        }
+        $this->assertSame($before, JournalEntry::query()->count());
     }
 }

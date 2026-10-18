@@ -125,6 +125,20 @@ class AccountingPanelTest extends TestCase
         $this->assertFalse(AccountResource::canCreate());
     }
 
+    public function test_ledger_table_renders_selected_account_and_integer_running_balance(): void
+    {
+        $this->actingAs(User::factory()->role(Role::FINANCE)->create());
+        $cash = Account::query()->where('code', '1-1100')->firstOrFail();
+        $equity = Account::query()->where('code', '3-1200')->firstOrFail();
+        $entry = app(JournalService::class)->postOpening('2026-10-01', [
+            ['account_id' => $cash->id, 'debit_minor' => 125000, 'credit_minor' => 0],
+            ['account_id' => $equity->id, 'debit_minor' => 0, 'credit_minor' => 125000],
+        ]);
+
+        Livewire::test(GeneralLedger::class)->set('accountId', $cash->id)
+            ->assertSee($entry->number)->assertSee('Rp 125.000');
+    }
+
     public function test_wrong_role_gets_403_on_accounting_pages(): void
     {
         foreach ([Role::BARISTA, Role::RIDER, Role::STAFF, Role::CONTENT_CREATOR] as $role) {

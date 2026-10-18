@@ -165,7 +165,7 @@ class PayrollCalculator
         $withheld = 0;
         $manualMonths = $prior?->months ?? [];
         foreach ($manualMonths as $month) {
-            if (isset($months[$month]) || ! is_int($month) || $month < 1 || $month > 11) {
+            if (isset($months[$month]) || ! is_int($month) || $month < 1 || $month > 12) {
                 throw new DomainException('Bulan PPh manual bentrok dengan riwayat payroll.');
             }
         }
@@ -187,7 +187,9 @@ class PayrollCalculator
             $contribution = self::add($contribution, $prior->jht_jp_minor);
             $withheld = self::add($withheld, $prior->amount_minor);
         }
-        $workingMonths = 1 + count($months) + count($manualMonths);
+        // A prior employer may have withheld PPh in December too. Its income joins this
+        // month's annual reconciliation, but December still counts as one worked month.
+        $workingMonths = count(array_unique([12, ...array_keys($months), ...$manualMonths]));
         if ($workingMonths > 12) {
             throw new DomainException('Jumlah bulan kerja payroll lebih dari satu tahun.');
         }
