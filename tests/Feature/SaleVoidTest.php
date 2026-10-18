@@ -130,6 +130,7 @@ class SaleVoidTest extends TestCase
             ->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson('/api/v1/sales', [
                 'uuid' => (string) Str::uuid(),
+                'cart_id' => $this->cart->id,
                 'lines' => [['product_id' => $this->coffee->id, 'qty' => $qty]],
             ]);
 

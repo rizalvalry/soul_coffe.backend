@@ -134,6 +134,7 @@ class SettlementTest extends TestCase
             staff: $this->staff,
             lines: [['product_id' => $this->coffee->id, 'qty' => $qty]],
             uuid: (string) Str::uuid(),
+            submittedCartId: $this->cart->id,
         );
     }
 
@@ -1027,6 +1028,7 @@ class SettlementTest extends TestCase
             staff: $this->staff,
             lines: [['product_id' => $this->coffee->id, 'qty' => 1], ['product_id' => $other->id, 'qty' => 1]],
             uuid: (string) Str::uuid(),
+            submittedCartId: $this->cart->id,
         );
         $this->assertSame(1, $this->cartStock());
         $this->assertSame(0, app(StockLedgerService::class)->stockFor(StockLedgerService::CART, $this->cart->id, $other->id));

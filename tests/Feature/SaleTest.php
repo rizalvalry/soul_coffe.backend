@@ -160,6 +160,7 @@ class SaleTest extends TestCase
             ->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson('/api/v1/sales', array_merge([
                 'uuid' => (string) Str::uuid(),
+                'cart_id' => $this->cart->id,
                 'lines' => $lines,
             ], $extra));
     }
@@ -437,6 +438,7 @@ class SaleTest extends TestCase
 
         $payload = [
             'uuid' => (string) Str::uuid(),
+            'cart_id' => $this->cart->id,
             'lines' => [['product_id' => $this->coffee->id, 'qty' => 2]],
         ];
 
@@ -505,7 +507,7 @@ class SaleTest extends TestCase
 
         try {
             $today = Carbon::today()->toDateString();
-            $payload = ['uuid' => (string) Str::uuid(), 'lines' => [['product_id' => $this->coffee->id, 'qty' => 1]]];
+            $payload = ['uuid' => (string) Str::uuid(), 'cart_id' => $this->cart->id, 'lines' => [['product_id' => $this->coffee->id, 'qty' => 1]]];
             $key = $payload['uuid'];
             $this->actingAs($this->staff, 'sanctum')->withHeader('Idempotency-Key', $key)
                 ->postJson('/api/v1/sales', $payload)
@@ -545,7 +547,7 @@ class SaleTest extends TestCase
     {
         $this->clockIn();
         $this->stockCart($this->coffee, 10);
-        $payload = ['uuid' => (string) Str::uuid(), 'lines' => [['product_id' => $this->coffee->id, 'qty' => 1]]];
+        $payload = ['uuid' => (string) Str::uuid(), 'cart_id' => $this->cart->id, 'lines' => [['product_id' => $this->coffee->id, 'qty' => 1]]];
         $first = $this->actingAs($this->staff, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson('/api/v1/sales', $payload)->assertCreated();
         Carbon::setTestNow(now()->addDay());
@@ -566,7 +568,7 @@ class SaleTest extends TestCase
     {
         $this->clockIn();
         $this->stockCart($this->coffee, 10);
-        $payload = ['uuid' => (string) Str::uuid(), 'lines' => [['product_id' => $this->coffee->id, 'qty' => 1]]];
+        $payload = ['uuid' => (string) Str::uuid(), 'cart_id' => $this->cart->id, 'lines' => [['product_id' => $this->coffee->id, 'qty' => 1]]];
         $this->actingAs($this->staff, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson('/api/v1/sales', $payload)->assertCreated();
 
@@ -606,10 +608,76 @@ class SaleTest extends TestCase
         $this->clockIn();
         StaffAssignment::query()->delete();
 
-        $this->sell([['product_id' => $this->coffee->id, 'qty' => 1]])
+        $this->sell([['product_id' => $this->coffee->id, 'qty' => 1]], ['cart_id' => null])
             ->assertForbidden()
             ->assertJsonPath('code', 'NO_CART_TODAY')
             ->assertJsonPath('message', 'Produksi belum kasih stok ke gerobak kamu hari ini. Minta Produksi Add Stock dulu ya.');
+    }
+
+    public function test_offline_sale_from_previous_cart_is_rejected_without_stock_movement(): void
+    {
+        $this->clockIn();
+        $this->stockCart($this->coffee, 5);
+        $oldCartId = $this->cart->id;
+        $newCart = Cart::create([
+            'code' => '0019',
+            'status' => 'active',
+            'kitchen_id' => $this->kitchen->id,
+        ]);
+        StaffAssignment::query()->where('user_id', $this->staff->id)
+            ->whereDate('operating_date', today()->toDateString())
+            ->update(['superseded_at' => now()]);
+        StaffAssignment::create([
+            'source' => 'hand_to_cart',
+            'user_id' => $this->staff->id,
+            'cart_id' => $newCart->id,
+            'location_id' => $this->location->id,
+            'operating_date' => today()->toDateString(),
+            'assigned_by' => $this->barista->id,
+            'kitchen_id' => $this->kitchen->id,
+        ]);
+
+        $this->sell([['product_id' => $this->coffee->id, 'qty' => 1]], ['cart_id' => $oldCartId])
+            ->assertStatus(422)->assertJsonPath('code', 'CART_CHANGED');
+        $this->assertDatabaseCount('sales', 0);
+        $this->assertSame(5, $this->cartStock($this->coffee));
+        $this->assertSame(0, app(StockLedgerService::class)->stockFor(
+            StockLedgerService::CART, $newCart->id, $this->coffee->id,
+        ));
+    }
+
+    public function test_displaced_rider_without_replacement_cart_gets_cart_changed_for_old_sale(): void
+    {
+        $this->clockIn();
+        $this->stockCart($this->coffee, 5);
+        StaffAssignment::query()->where('user_id', $this->staff->id)
+            ->update(['superseded_at' => now()]);
+
+        $this->sell([['product_id' => $this->coffee->id, 'qty' => 1]])
+            ->assertStatus(422)->assertJsonPath('code', 'CART_CHANGED');
+        $this->assertDatabaseCount('sales', 0);
+        $this->assertSame(5, $this->cartStock($this->coffee));
+    }
+
+    public function test_new_sale_without_origin_cart_is_rejected_but_accepted_uuid_can_replay(): void
+    {
+        $this->clockIn();
+        $this->stockCart($this->coffee, 5);
+        $uuid = (string) Str::uuid();
+        $payload = ['uuid' => $uuid, 'lines' => [['product_id' => $this->coffee->id, 'qty' => 1]]];
+        $this->actingAs($this->staff, 'sanctum')->withHeader('Idempotency-Key', $uuid)
+            ->postJson('/api/v1/sales', $payload)
+            ->assertStatus(422)->assertJsonPath('code', 'CART_CHANGED');
+        $this->assertDatabaseCount('sales', 0);
+
+        $saleId = $this->actingAs($this->staff, 'sanctum')->withHeader('Idempotency-Key', $uuid)
+            ->postJson('/api/v1/sales', $payload + ['cart_id' => $this->cart->id])
+            ->assertCreated()->json('data.id');
+        $this->actingAs($this->staff, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/sales', $payload)
+            ->assertCreated()->assertJsonPath('data.id', $saleId);
+        $this->assertDatabaseCount('sales', 1);
+        $this->assertSame(4, $this->cartStock($this->coffee));
     }
 
     /**

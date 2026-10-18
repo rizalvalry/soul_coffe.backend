@@ -153,6 +153,9 @@ class CentralStockTest extends TestCase
         $this->assertSame(['user.'.$this->staff->id], $event->payload_json['channels']);
         $this->assertSame($this->cart->id, $event->payload_json['cart_id']);
         $this->assertNotNull($event->published_at, 'Outbox delivery follows the transaction commit.');
+        $stockEvent = OutboxEvent::query()->where('name', 'CartStockHandedOver')->sole();
+        $this->assertContains('user.'.$this->staff->id, $stockEvent->payload_json['channels']);
+        $this->assertNotContains('cart.'.$this->cart->id, $stockEvent->payload_json['channels']);
     }
 
     public function test_me_has_no_cart_before_handover_and_after_operating_day_changes(): void
@@ -312,7 +315,16 @@ class CentralStockTest extends TestCase
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('audit-preserving plan');
         (require database_path('migrations/2026_10_18_120000_add_staff_assignment_provenance.php'))
-            ->assertRollbackSafe();
+            ->down();
+    }
+
+    public function test_rollback_refuses_a_null_assignment_location(): void
+    {
+        StaffAssignment::query()->where('cart_id', $this->cart->id)->update(['location_id' => null]);
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('audit-preserving plan');
+        (require database_path('migrations/2026_10_18_120000_add_staff_assignment_provenance.php'))
+            ->down();
     }
 
     public function test_handing_over_more_than_the_showcase_holds_is_refused_and_moves_nothing(): void
@@ -405,6 +417,9 @@ class CentralStockTest extends TestCase
 
         $this->assertSame($kitchenAfterHandover + 8, $this->kitchenStock());
         $this->assertSame($cartAfterHandover - 8, $this->cartStock());
+        $closeEvent = OutboxEvent::query()->where('name', 'CartClosedOut')->sole();
+        $this->assertContains('user.'.$this->staff->id, $closeEvent->payload_json['channels']);
+        $this->assertNotContains('cart.'.$this->cart->id, $closeEvent->payload_json['channels']);
     }
 
     public function test_rejected_cups_leave_the_cart_without_returning_to_the_showcase(): void

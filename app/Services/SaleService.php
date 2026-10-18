@@ -27,8 +27,9 @@ use RuntimeException;
  *    sale from someone who never absen would put revenue against a person the attendance sheet
  *    says was not working — two reports contradicting each other about the same morning.
  *
- * 2. **A cart, from today's roster.** The cups come out of a specific cart's stock, so there has
- *    to be one. StaffAssignment is where "which cart today" already lives.
+ * 2. **A cart, from today's Add Stock.** The cups leave a specific cart. A delayed phone
+ *    request must name the cart it recorded against, and the server checks that it is still
+ *    the Rider's active assignment before touching stock.
  *
  * 3. **Stock must cover the sale.** The ledger is append-only (R6) and stock is SUM(qty_delta),
  *    so an oversell would leave the cart permanently negative and quietly poison every total
@@ -67,6 +68,7 @@ class SaleService
         ?string $note = null,
         ?string $deviceId = null,
         ?string $idempotencyKey = null,
+        ?int $submittedCartId = null,
     ): Sale {
         if ($staff->role !== Role::STAFF) {
             throw new RuntimeException('Hanya rider yang mencatat penjualan gerobak.');
@@ -95,10 +97,23 @@ class SaleService
             ->first();
 
         if (! $assignment || ! $assignment->cart) {
+            if ($submittedCartId !== null) {
+                throw new HttpResponseException(response()->json([
+                    'code' => 'CART_CHANGED',
+                    'message' => 'Gerobak kamu sudah berubah. Cek transaksi ini bareng Administrator ya.',
+                ], 422));
+            }
             throw new HttpResponseException(response()->json([
                 'code' => 'NO_CART_TODAY',
                 'message' => 'Produksi belum kasih stok ke gerobak kamu hari ini. Minta Produksi Add Stock dulu ya.',
             ], 403));
+        }
+
+        if ($submittedCartId !== (int) $assignment->cart_id) {
+            throw new HttpResponseException(response()->json([
+                'code' => 'CART_CHANGED',
+                'message' => 'Gerobak kamu sudah berubah. Cek transaksi ini bareng Administrator ya.',
+            ], 422));
         }
 
         $merged = $this->mergeLines($lines);
@@ -116,9 +131,9 @@ class SaleService
                 ->lockForUpdate()->first();
             if (! $stillAssigned) {
                 throw new HttpResponseException(response()->json([
-                    'code' => 'NO_CART_TODAY',
-                    'message' => 'Produksi belum kasih stok ke gerobak kamu hari ini. Minta Produksi Add Stock dulu ya.',
-                ], 403));
+                    'code' => 'CART_CHANGED',
+                    'message' => 'Gerobak kamu sudah berubah. Cek transaksi ini bareng Administrator ya.',
+                ], 422));
             }
 
             // A replay of the same tap returns the sale that already exists rather than selling

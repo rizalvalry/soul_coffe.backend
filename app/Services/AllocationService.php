@@ -263,7 +263,7 @@ class AllocationService
                         array_sum(array_column($lineRows, 'qty_issued')),
                         $location->name,
                     ),
-                    channels: ["user.{$allocation->staff_id}", "cart.{$allocation->cart_id}", "kitchen.{$kitchenId}"],
+                    channels: ["user.{$allocation->staff_id}", "kitchen.{$kitchenId}"],
                     notifyUserIds: [$allocation->staff_id],
                 );
             } else {

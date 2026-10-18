@@ -219,7 +219,7 @@ class CentralStockService
                     $barista->name,
                     number_format((int) $allowance->amount_minor, 0, ',', '.'),
                 ),
-                ['cart.'.$cart->id, 'user.'.$staff->id, 'kitchen.'.$kitchenId, 'role.ADMINISTRATOR'],
+                ['user.'.$staff->id, 'kitchen.'.$kitchenId, 'role.ADMINISTRATOR'],
                 array_merge([$staff->id], $this->kitchenWatcherIds($kitchenId)),
             );
 
@@ -315,6 +315,7 @@ class CentralStockService
                 'rejected' => $rejected,
             ]);
 
+            $cartStaffIds = $this->cartStaffIds($cart, Carbon::today());
             $this->events->publish(
                 'CartClosedOut',
                 'Tutup gerobak',
@@ -324,8 +325,9 @@ class CentralStockService
                     array_sum($returned),
                     array_sum($rejected),
                 ),
-                ['cart.'.$cart->id, 'kitchen.'.$kitchenId, 'role.ADMINISTRATOR', 'role.FINANCE', 'role.MANAGEMENT'],
-                array_merge($this->cartStaffIds($cart, Carbon::today()), $this->kitchenWatcherIds($kitchenId)),
+                array_merge(array_map(fn (int $id): string => 'user.'.$id, $cartStaffIds),
+                    ['kitchen.'.$kitchenId, 'role.ADMINISTRATOR', 'role.FINANCE', 'role.MANAGEMENT']),
+                array_merge($cartStaffIds, $this->kitchenWatcherIds($kitchenId)),
             );
         });
     }

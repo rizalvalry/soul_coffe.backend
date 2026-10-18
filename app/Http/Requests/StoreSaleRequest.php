@@ -9,7 +9,8 @@ use Illuminate\Validation\Rule;
  * `POST /sales` — one transaction from a cart.
  *
  * Kept to the fields a street vendor can actually fill: which cups, how many, and how it was
- * paid. Everything else the row needs (cart, location, price, time) is derived server-side,
+ * paid. The cart ID is captured by the app from today's assignment; the server still verifies
+ * it against the current assignment and derives location, price, and time itself.
  * because asking someone with a queue in front of them to type a price is how a POS goes unused.
  *
  * GPS is nullable and `gps_unavailable` exists for the same reason it does on refill requests
@@ -25,6 +26,9 @@ class StoreSaleRequest extends FormRequest
     {
         return [
             'uuid' => ['required', 'uuid'],
+            // Kept optional at validation so a previously accepted UUID can still be replayed
+            // by an older client. SaleService requires it before creating a new sale.
+            'cart_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
 
             'lines' => ['required', 'array', 'min:1', 'max:50'],
             'lines.*.product_id' => ['required', 'integer', 'exists:products,id'],
@@ -49,6 +53,8 @@ class StoreSaleRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'cart_id.integer' => 'Gerobak asal transaksi ini nggak valid. Cek lagi ya.',
+            'cart_id.min' => 'Gerobak asal transaksi ini nggak valid. Cek lagi ya.',
             'lines.required' => 'Pilih dulu cups yang terjual.',
             'lines.min' => 'Pilih dulu cups yang terjual.',
         ];

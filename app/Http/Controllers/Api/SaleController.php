@@ -67,6 +67,7 @@ class SaleController extends Controller implements HasMiddleware
                 staff: $request->user(),
                 lines: $request->validated('lines'),
                 uuid: $request->validated('uuid'),
+                submittedCartId: $request->validated('cart_id'),
                 gps: [
                     'lat' => $request->validated('gps_lat'),
                     'lng' => $request->validated('gps_lng'),
