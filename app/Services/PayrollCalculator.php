@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\PayrollComponentEntry;
+use App\Models\PayrollPriorWithholding;
 use App\Models\User;
 use DateTimeImmutable;
 use DomainException;
@@ -85,6 +86,7 @@ class PayrollCalculator
             }
             $components[] = [
                 'entry_id' => $entry->id, 'name' => $type->name, 'kind' => $type->kind,
+                'code' => $type->code, 'account_id' => $type->account_id,
                 'taxable' => $type->taxable, 'amount_minor' => $amount,
             ];
         }
@@ -147,6 +149,79 @@ class PayrollCalculator
             'pph21_minor' => $pph21, 'take_home_minor' => $takeHome,
             'december_annual_reconciliation_required' => $start->format('m') === '12',
         ];
+    }
+
+    /** @param array<int, array<string, mixed>> $months Approved Jan-Nov snapshots keyed by month. */
+    public function reconcileDecember(User $user, array $december, array $months, ?PayrollPriorWithholding $prior = null): array
+    {
+        $year = (int) substr($december['period'], 0, 4);
+        $joined = $user->joined_at;
+        $firstMonth = $joined && (int) $joined->format('Y') === $year ? (int) $joined->format('n') : 1;
+        if ($joined && (int) $joined->format('Y') > $year) {
+            throw new DomainException('Tanggal masuk karyawan lebih baru dari periode payroll.');
+        }
+        $gross = $december['taxable_gross_minor'];
+        $contribution = self::add($december['bpjs_employee_minor']['jht'], $december['bpjs_employee_minor']['jp']);
+        $withheld = 0;
+        $manualMonths = $prior?->months ?? [];
+        foreach ($manualMonths as $month) {
+            if (isset($months[$month]) || ! is_int($month) || $month < 1 || $month > 11) {
+                throw new DomainException('Bulan PPh manual bentrok dengan riwayat payroll.');
+            }
+        }
+        for ($month = 1; $month <= 11; $month++) {
+            if (! isset($months[$month])) {
+                if ($month < $firstMonth || in_array($month, $manualMonths, true)) {
+                    continue;
+                }
+                throw new DomainException('Riwayat payroll Jan–Nov belum lengkap untuk '.$user->name.' (bulan '.$month.').');
+            }
+            $snapshot = $months[$month];
+            $gross = self::add($gross, (int) $snapshot['taxable_gross_minor']);
+            $contribution = self::add($contribution,
+                self::add((int) $snapshot['bpjs_employee_minor']['jht'], (int) $snapshot['bpjs_employee_minor']['jp']));
+            $withheld = self::add($withheld, (int) $snapshot['pph21_minor']);
+        }
+        if ($prior) {
+            $gross = self::add($gross, $prior->gross_minor);
+            $contribution = self::add($contribution, $prior->jht_jp_minor);
+            $withheld = self::add($withheld, $prior->amount_minor);
+        }
+        $workingMonths = 1 + count($months) + count($manualMonths);
+        if ($workingMonths > 12) {
+            throw new DomainException('Jumlah bulan kerja payroll lebih dari satu tahun.');
+        }
+        $jobExpenseCap = intdiv(6000000 * $workingMonths, 12);
+        $jobExpense = min(self::percent($gross, 500), $jobExpenseCap);
+        $taxable = max(0, $gross - $jobExpense - $contribution - $december['ptkp_annual_minor']);
+        $version = DB::table('payroll_annual_tax_versions')->where('effective_from', '<=', $year.'-12-01')
+            ->orderByDesc('effective_from')->first();
+        if (! $version || $version->verified_at === null) {
+            throw new DomainException('Tarif Pasal 17 untuk Desember belum diverifikasi.');
+        }
+        $brackets = DB::table('payroll_annual_tax_brackets')->where('version_id', $version->id)
+            ->orderBy('lower_taxable_minor')->get();
+        $annualTax = 0;
+        foreach ($brackets as $bracket) {
+            $lower = (int) $bracket->lower_taxable_minor;
+            $upper = $bracket->upper_taxable_minor === null ? $taxable : min($taxable, (int) $bracket->upper_taxable_minor);
+            $start = $lower === 0 ? 0 : $lower - 1;
+            if ($upper > $start) {
+                $annualTax = self::add($annualTax, self::percent($upper - $start, (int) $bracket->rate_bps));
+            }
+        }
+        $pph21 = $annualTax - $withheld;
+        $december['pph21_minor'] = $pph21;
+        $december['take_home_minor'] = $december['gross_pay_minor'] - $december['manual_deductions_minor']
+            - $december['bpjs_employee_total_minor'] - $pph21;
+        $december['annual_taxable_minor'] = $taxable;
+        $december['annual_tax_minor'] = $annualTax;
+        $december['annual_tax_version_id'] = $version->id;
+        $december['prior_withheld_minor'] = $withheld;
+        $december['working_months'] = $workingMonths;
+        $december['december_annual_reconciliation_required'] = false;
+
+        return $december;
     }
 
     private static function percent(int $amount, int $basisPoints): int

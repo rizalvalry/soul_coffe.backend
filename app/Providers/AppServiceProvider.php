@@ -24,7 +24,7 @@ class AppServiceProvider extends ServiceProvider
     {
         // These gates are deliberately outside the panel matrix: Administrator has no bypass.
         Gate::define('view-management-reports', fn (User $user): bool => $user->role === Role::MANAGEMENT);
-        Gate::define('manage-payroll', fn (User $user): bool => $user->role === Role::MANAGEMENT);
+        Gate::define('manage-payroll', fn (User $user): bool => $user->is_active && $user->role === Role::MANAGEMENT);
         Gate::define('manage-accounting-periods', fn (User $user): bool => $user->role === Role::MANAGEMENT);
     }
 }

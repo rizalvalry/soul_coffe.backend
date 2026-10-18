@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\LocationPingController;
 use App\Http\Controllers\Api\LoginPinController;
 use App\Http\Controllers\Api\MeController;
 use App\Http\Controllers\Api\MediaController;
+use App\Http\Controllers\Api\MyPayrollSlipsController;
 use App\Http\Controllers\Api\NewsController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PinResetRequestController;
@@ -62,6 +63,8 @@ Route::post('auth/pin-reset-requests', [PinResetRequestController::class, 'store
 Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('auth/logout', [AuthController::class, 'logout']);
     Route::get('me', [MeController::class, 'show']);
+    Route::get('payroll/my-slips', [MyPayrollSlipsController::class, 'index']);
+    Route::get('payroll/my-slips/{item}', [MyPayrollSlipsController::class, 'download'])->name('payroll.my-slips.download');
 
     // The optional PIN sign-in credential. Setting it re-checks the account password — see
     // LoginPinController for why a valid token alone is not enough to mint one.
