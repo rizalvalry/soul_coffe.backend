@@ -62,12 +62,12 @@ class StoreShowcaseHandoverRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'staff_id.exists' => 'Staff tidak ditemukan atau bukan role staff',
-            'lines.required' => 'Pilih minimal satu produk',
-            'lines.min' => 'Pilih minimal satu produk',
-            'lines.*.qty.min' => 'Jumlah cups harus lebih dari 0',
-            'lines.*.qty.max' => 'Jumlah cups per produk melebihi batas',
-            'allowance_amount.min' => 'Uang harian tidak boleh negatif',
+            'staff_id.exists' => 'Rider tujuan tidak ditemukan ya.',
+            'lines.required' => 'Pilih minimal satu produk dulu ya.',
+            'lines.min' => 'Pilih minimal satu produk dulu ya.',
+            'lines.*.qty.min' => 'Jumlah cups harus lebih dari 0 ya.',
+            'lines.*.qty.max' => 'Jumlah cups per produk melewati batas ya.',
+            'allowance_amount.min' => 'Uang harian tidak boleh negatif ya.',
         ];
     }
 

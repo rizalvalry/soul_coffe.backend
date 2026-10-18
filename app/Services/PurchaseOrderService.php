@@ -127,7 +127,7 @@ class PurchaseOrderService
             }
 
             if (! $locked->status->isOrdered()) {
-                throw new RuntimeException('Tandai purchase order ini sebagai dipesan terlebih dahulu.');
+                throw new RuntimeException('Tandai purchase order ini sudah dipesan dulu ya.');
             }
 
             foreach ($locked->lines as $line) {
@@ -213,7 +213,7 @@ class PurchaseOrderService
     private function assertMayOperate(User $actor): void
     {
         if (! in_array($actor->role, [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT], true)) {
-            throw new RuntimeException('Hanya Administrator atau Finance yang dapat mengelola purchase order.');
+            throw new RuntimeException('Cuma Administrator, Finance, atau Management yang bisa kelola purchase order.');
         }
     }
 }

@@ -38,6 +38,7 @@ class ProductResource extends JsonResource
             'unit' => $product->unit,
             'is_sellable' => $product->is_sellable,
             'sort_order' => $product->sort_order,
+            'has_active_recipe' => $product->has_active_recipe ?? $product->hasActiveRecipe(),
         ];
 
         $user = $request->user();

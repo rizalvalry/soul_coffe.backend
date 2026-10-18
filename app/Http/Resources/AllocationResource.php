@@ -29,6 +29,7 @@ class AllocationResource extends JsonResource
             'location_id' => $this->location_id,
             'location_name' => $this->whenLoaded('location', fn () => $this->location?->name),
             'status' => $this->status?->value,
+            'flow_label' => 'Alokasi (Cadangan)',
             'is_correction' => $this->is_correction,
             'correction_reason' => $this->correction_reason,
             'over_target_pct' => $this->over_target_pct,

@@ -7,7 +7,9 @@ use App\Models\PayrollComponentEntry;
 use App\Models\PayrollComponentType;
 use App\Models\User;
 use App\Services\Menu\MenuLabels;
+use App\Services\PayrollCalculator;
 use BackedEnum;
+use DomainException;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Support\Icons\Heroicon;
@@ -47,6 +49,12 @@ class PayrollConfiguration extends Page
 
     public array $entry = [];
 
+    public array $preview = [];
+
+    public ?array $previewResult = null;
+
+    public ?string $previewError = null;
+
     public static function canAccess(): bool
     {
         return Gate::allows('manage-payroll');
@@ -70,6 +78,24 @@ class PayrollConfiguration extends Page
         $this->incentive = ['effective_from' => '', 'amount_per_cup_minor' => 0, 'target_cups' => 0, 'bonus_minor' => 0, 'source_note' => ''];
         $this->component = ['code' => '', 'name' => '', 'kind' => '', 'taxable' => false, 'effective_from' => '', 'source_note' => ''];
         $this->entry = ['user_id' => '', 'component_type_id' => '', 'period_start' => '', 'request_key' => (string) Str::uuid(), 'amount_minor' => '', 'note' => ''];
+        $this->preview = ['user_id' => '', 'period' => now()->format('Y-m')];
+    }
+
+    public function previewPayroll(PayrollCalculator $calculator): void
+    {
+        Gate::authorize('manage-payroll');
+        $data = $this->validate([
+            'preview.user_id' => ['required', 'integer', 'exists:users,id'],
+            'preview.period' => ['required', 'date_format:Y-m'],
+        ])['preview'];
+
+        $this->previewResult = null;
+        $this->previewError = null;
+        try {
+            $this->previewResult = $calculator->calculate(User::query()->findOrFail($data['user_id']), $data['period']);
+        } catch (DomainException $e) {
+            $this->previewError = $e->getMessage();
+        }
     }
 
     public function saveBpjs(): void
@@ -101,7 +127,7 @@ class PayrollConfiguration extends Page
             'ptkp.source_note' => ['required', 'string', 'min:3', 'max:2000'],
         ])['ptkp'];
         if (DB::table('ptkp_rates')->where('status', $data['status'])->where('effective_from', $data['effective_from'])->exists()) {
-            throw ValidationException::withMessages(['ptkp.effective_from' => 'Versi untuk status dan tanggal ini sudah ada.']);
+            throw ValidationException::withMessages(['ptkp.effective_from' => 'Versi untuk status dan tanggal ini sudah ada ya.']);
         }
         $this->append('ptkp_rates', $data);
         $this->success();

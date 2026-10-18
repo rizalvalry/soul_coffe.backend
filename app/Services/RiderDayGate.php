@@ -18,7 +18,7 @@ class RiderDayGate
         if (! $this->attendance->isStaffWindowOpen($date)) {
             throw new HttpResponseException(response()->json([
                 'code' => 'DAY_NOT_OPEN',
-                'message' => 'Produksi belum membuka absen hari ini. Fitur transaksi belum bisa dipakai.',
+                'message' => 'Produksi belum buka absen hari ini, jadi transaksi belum bisa jalan dulu ya.',
             ], 422));
         }
 

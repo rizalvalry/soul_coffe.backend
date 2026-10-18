@@ -4,6 +4,7 @@ namespace App\Filament\Resources\PurchaseOrders\Tables;
 
 use App\Enums\PanelModule;
 use App\Enums\PurchaseOrderStatus;
+use App\Enums\Role;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderLine;
 use App\Services\Access\PermissionMatrix;
@@ -49,12 +50,9 @@ class PurchaseOrdersTable
                     ->label('Bahan Baku')
                     ->wrap()
                     ->state(fn (PurchaseOrder $record): string => $record->lines
-                        ->map(fn (PurchaseOrderLine $line): string => sprintf(
-                            '%s %dx@Rp%s',
-                            $line->rawMaterial?->name ?? '-',
-                            $line->qty_ordered,
-                            number_format($line->unit_cost_minor, 0, ',', '.'),
-                        ))
+                        ->map(fn (PurchaseOrderLine $line): string => in_array(Auth::user()?->role, [Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR], true)
+                            ? sprintf('%s %dx@Rp%s', $line->rawMaterial?->name ?? '-', $line->qty_ordered, number_format($line->unit_cost_minor, 0, ',', '.'))
+                            : sprintf('%s %dx', $line->rawMaterial?->name ?? '-', $line->qty_ordered))
                         ->implode(', ')),
 
                 TextColumn::make('status')
@@ -193,6 +191,7 @@ class PurchaseOrdersTable
 
     private static function mayOperate(): bool
     {
-        return PermissionMatrix::can(Auth::user(), PanelModule::PURCHASE_ORDERS, 'edit');
+        return in_array(Auth::user()?->role, [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT], true)
+            && PermissionMatrix::can(Auth::user(), PanelModule::PURCHASE_ORDERS, 'edit');
     }
 }

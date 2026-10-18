@@ -27,6 +27,11 @@ Schedule::command('soul:carry-forward-staff-assignments')
     ->dailyAt('00:00')
     ->withoutOverlapping();
 
+Schedule::command('refills:expire-stale')
+    ->hourly()
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // The GPS trail is the one table that grows with time rather than with business activity, so its
 // retention window is enforced rather than hoped for. Runs at 03:10, well away from the midnight
 // batch, because a delete over a large range holds locks that the 00:00 writers would queue on.

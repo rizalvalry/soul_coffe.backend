@@ -49,10 +49,10 @@ class StoreAllocationRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'lines.required' => 'Pilih minimal satu produk',
-            'lines.min' => 'Pilih minimal satu produk',
-            'lines.*.qty_issued.min' => 'Jumlah harus lebih dari 0',
-            'correction_reason.min' => 'Alasan koreksi wajib diisi (min. 10 karakter)',
+            'lines.required' => 'Pilih minimal satu produk dulu ya.',
+            'lines.min' => 'Pilih minimal satu produk dulu ya.',
+            'lines.*.qty_issued.min' => 'Jumlah harus lebih dari 0 ya.',
+            'correction_reason.min' => 'Alasan koreksi perlu minimal 10 karakter ya.',
         ];
     }
 
@@ -72,7 +72,7 @@ class StoreAllocationRequest extends FormRequest
             if (! $assigned) {
                 $validator->errors()->add(
                     'staff_id',
-                    'Rider tidak bertugas di gerobak ini pada tanggal tersebut.',
+                    'Rider belum bertugas di gerobak ini pada tanggal itu ya.',
                 );
             }
         });

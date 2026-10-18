@@ -6,6 +6,7 @@ use App\Enums\MovementType;
 use App\Models\Cart;
 use App\Models\Product;
 use App\Models\User;
+use App\Services\AttendanceService;
 use App\Services\StockLedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -35,6 +36,10 @@ class AllocationTest extends TestCase
         $this->staff = User::query()->where('phone_e164', '081100000005')->firstOrFail();
         $this->cart = Cart::query()->where('code', '0018')->firstOrFail();
         $this->product = Product::query()->where('name', 'Soul Coffee')->firstOrFail();
+        $attendance = app(AttendanceService::class);
+        $attendance->clockIn($this->barista);
+        $attendance->openStaffWindow($this->barista);
+        $attendance->clockIn($this->staff);
     }
 
     /**
