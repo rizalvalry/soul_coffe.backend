@@ -7,7 +7,9 @@ use App\Enums\Role;
 use App\Models\AuditLog;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
+use App\Models\RiderClosing;
 use App\Models\StaffAssignment;
+use App\Models\StockLedger;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -128,6 +130,10 @@ class CentralStockService
             // Cart sales and refill submissions lock this row before checking the
             // active assignment. Whichever operation gets it first completes first.
             Cart::query()->whereKey($cart->id)->lockForUpdate()->firstOrFail();
+            if (RiderClosing::query()->where('cart_id', $cart->id)
+                ->whereDate('operating_date', $date->toDateString())->exists()) {
+                throw new RuntimeException('Gerobak sudah Closing. Add Stock untuk hari ini tidak bisa ditambah lagi ya.');
+            }
             // Sufficiency is checked against LOCKED rows, in product order, so two baristas
             // handing out the same product at the same moment cannot both pass the check and
             // drive the showcase negative (the same guard AllocationService uses).
@@ -249,10 +255,6 @@ class CentralStockService
         $returned = $this->normalizeQuantities($returnedByProductId, allowEmpty: true);
         $rejected = $this->normalizeQuantities($rejectedByProductId, allowEmpty: true);
 
-        if ($returned === [] && $rejected === []) {
-            throw new RuntimeException('Tidak ada cups yang dilaporkan.');
-        }
-
         $kitchenId = $cart->kitchen_id ?? $barista->kitchen_id;
 
         if (! $kitchenId) {
@@ -260,16 +262,32 @@ class CentralStockService
         }
 
         DB::transaction(function () use ($barista, $cart, $returned, $rejected, $kitchenId): void {
-            $productIds = array_unique([...array_keys($returned), ...array_keys($rejected)]);
+            Cart::query()->whereKey($cart->id)->lockForUpdate()->firstOrFail();
+            $closing = RiderClosing::query()->with('lines')->where('cart_id', $cart->id)
+                ->whereDate('operating_date', today()->toDateString())->first();
+            if ($returned === [] && $rejected === [] && ! $closing) {
+                throw new RuntimeException('Tidak ada cups yang dilaporkan.');
+            }
+            $productIds = array_unique([
+                ...array_keys($returned), ...array_keys($rejected),
+                ...($closing?->lines->pluck('product_id')->all() ?? []),
+            ]);
             $locked = $this->ledger->lockAndProject(StockLedgerService::CART, $cart->id, $productIds);
 
-            // A cart cannot give back more cups than it holds. Without this the ledger would go
-            // negative and "stock" would stop meaning anything for that cart.
+            // A physical count may differ in either direction. Adjust to the count, record
+            // the evidence, and keep the ledger nonnegative before moving counted cups.
             foreach ($productIds as $productId) {
                 $moving = ($returned[$productId] ?? 0) + ($rejected[$productId] ?? 0);
                 $available = $locked[$productId] ?? 0;
 
-                if ($moving > $available) {
+                if ($closing && $moving !== $available) {
+                    $this->ledger->post(
+                        StockLedgerService::CART, $cart->id, $productId,
+                        MovementType::ADJUSTMENT, $moving - $available,
+                        $barista->id, $kitchenId, 'cart_closeout_count_adjustment', $cart->id,
+                        note: 'Saldo disesuaikan ke hitungan fisik Tutup Gerobak; selisih ditandai.'
+                    );
+                } elseif ($moving > $available) {
                     throw new RuntimeException(
                         "Jumlah sisa + reject untuk produk #{$productId} ({$moving}) melebihi stok gerobak ({$available})."
                     );
@@ -306,6 +324,48 @@ class CentralStockService
                     $kitchenId,
                     'cart_closeout_reject',
                     $cart->id,
+                );
+            }
+
+            $varianceFlagged = false;
+            if ($closing) {
+                foreach ($productIds as $productId) {
+                    $line = $closing->lines->firstWhere('product_id', $productId);
+                    $prior = (int) StockLedger::query()->where('location_type', StockLedgerService::CART)
+                        ->where('location_id', $cart->id)->whereDate('created_at', today()->toDateString())
+                        ->where('ref_type', 'cart_closeout_return')->where('product_id', $productId)
+                        ->sum('qty_delta');
+                    $priorRejected = (int) StockLedger::query()->where('location_type', StockLedgerService::CART)
+                        ->where('location_id', $cart->id)->whereDate('created_at', today()->toDateString())
+                        ->where('ref_type', 'cart_closeout_reject')->where('product_id', $productId)
+                        ->sum('qty_delta');
+                    $counted = -$prior - $priorRejected;
+                    $variance = $counted - (int) ($line?->qty_remaining ?? 0);
+                    if ($variance === 0) {
+                        continue;
+                    }
+                    DB::table('cart_closeout_variances')->insert([
+                        'cart_id' => $cart->id, 'rider_closing_id' => $closing->id,
+                        'product_id' => $productId, 'actor_id' => $barista->id,
+                        'operating_date' => today()->toDateString(),
+                        'qty_closing_remaining' => $line?->qty_remaining ?? 0,
+                        'qty_counted' => $counted, 'variance_qty' => $variance,
+                        'created_at' => now(),
+                    ]);
+                    $varianceFlagged = true;
+                }
+            }
+
+            if ($varianceFlagged) {
+                $recipients = User::query()->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE])
+                    ->where('is_active', true)->pluck('id')->all();
+                $this->events->publish(
+                    'CartCloseOutVarianceFlagged',
+                    'Selisih Tutup Gerobak',
+                    "Hitungan sisa gerobak {$cart->code} beda dari Closing Rider. Cek di antrean setoran ya.",
+                    ['role.ADMINISTRATOR', 'role.FINANCE'],
+                    $recipients,
+                    context: ['cart_id' => $cart->id, 'operating_date' => today()->toDateString(), 'source_id' => $closing->id],
                 );
             }
 

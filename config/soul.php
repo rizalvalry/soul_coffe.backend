@@ -6,6 +6,8 @@
  * rather than disabling a guard.
  */
 return [
+    // Historical sales-only operating days can still be reconciled. Current days require Closing.
+    'closing_started_on' => '2026-10-18',
 
     // E6: evidence photo must be captured within this many minutes of submit.
     'evidence_max_age_minutes' => (int) env('SOUL_EVIDENCE_MAX_AGE_MINUTES', 15),

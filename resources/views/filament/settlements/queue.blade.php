@@ -25,6 +25,13 @@
                         @endif
                     </td>
                     <td class="p-3">
+                        <div>{{ $row['closing_status'] }}</div>
+                        @if ($row['carry_warning'])
+                            <span class="rounded-full bg-amber-100 px-2 py-1 text-amber-800">Sisa kemarin</span>
+                        @endif
+                        @if ($row['closeout_variance_count'] > 0)
+                            <span class="rounded-full bg-red-100 px-2 py-1 text-red-800">Selisih Tutup Gerobak</span>
+                        @endif
                         @if ($row['settlement_status'] === 'VARIANCE_FLAGGED')
                             <span class="rounded-full bg-red-100 px-2 py-1 font-semibold text-red-800">VARIANCE_FLAGGED</span>
                         @else

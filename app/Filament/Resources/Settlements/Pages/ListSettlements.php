@@ -67,7 +67,8 @@ class ListSettlements extends ListRecords
                 ->visible(fn (): bool => PermissionMatrix::can(Auth::user(), PanelModule::SETTLEMENTS, 'create'))
                 ->schema([
                     Select::make('cart_id')->label('Gerobak')->required()
-                        ->options(fn (): array => Cart::query()->whereIn('id', array_column($this->queue(), 'cart_id'))
+                        ->options(fn (): array => Cart::query()->whereIn('id', collect($this->queue())
+                            ->filter(fn (array $row): bool => ! $row['closing_required'] || $row['closing_id'] !== null)->pluck('cart_id')->all())
                             ->orderBy('code')->pluck('code', 'id')->all()),
                     TextInput::make('cash')->label('Tunai dihitung (Rp)')->integer()->minValue(0)->maxValue(1000000000000)->required(),
                     TextInput::make('qris')->label('QRIS diterima (Rp)')->integer()->minValue(0)->maxValue(1000000000000)->required(),

@@ -30,8 +30,8 @@
 
                 @if ($rows === [])
                     <div class="bsi-empty">
-                        <p class="bsi-empty__title">Belum ada transaksi hari ini</p>
-                        <p>Baris di sini terisi sendiri begitu rider mencatat penjualan dari gerobaknya.</p>
+                        <p class="bsi-empty__title">Belum ada Closing hari ini</p>
+                        <p>Hasil penjualan muncul setelah Rider mengisi sisa cups saat Closing.</p>
                     </div>
                 @else
                     <div class="bsi-scroll">

@@ -209,7 +209,7 @@
         <div class="bsi-sheet">
             <div class="bsi-sheet__head">
                 <div class="bsi-sheet__head-left">
-                    <span class="bsi-kicker">Keramaian per area per jam — dalam cups</span>
+                    <span class="bsi-kicker">Keramaian per area per jam — {{ $grid['basis'] === 'activity_signals' ? 'sinyal refill & lokasi' : 'cups' }}</span>
                     <h2 class="bsi-title">Kapan area mana yang ramai</h2>
                 </div>
                 @if ($grid['peak']['area'])
@@ -221,8 +221,8 @@
 
             @if ($grid['areas'] === [])
                 <div class="bsi-empty">
-                    <p class="bsi-empty__title">Belum ada transaksi pada rentang ini</p>
-                    <p>Grid ini terisi sendiri begitu staff mulai mencatat penjualan dari gerobak.</p>
+                    <p class="bsi-empty__title">Belum ada aktivitas pada rentang ini</p>
+                    <p>Grid ini terisi dari refill dan ping lokasi Rider.</p>
                 </div>
             @else
                 <div class="bsi-scroll">
@@ -274,10 +274,12 @@
                 <div class="bsi-note">
                     <span class="bsi-kicker">Untuk apa grid ini</span>
                     <p>
-                        Angka di sini adalah <strong>cups per area per jam</strong> menurut jam server,
-                        bukan jam perangkat — jadi jam pada dua gerobak berbeda benar-benar bisa
-                        dibandingkan. Ini bahan mentah untuk memindahkan gerobak ke jam dan area yang
-                        memang ramai.
+                        @if ($grid['basis'] === 'activity_signals')
+                            Angka ini jumlah sinyal refill dan ping lokasi per area per jam, bukan cups terjual.
+                            Pakai sebagai perkiraan jam ramai, lalu cek kondisi lapangan ya.
+                        @else
+                            Angka ini cups per area per jam menurut waktu transaksi yang tercatat.
+                        @endif
                     </p>
                 </div>
             @endif

@@ -10,6 +10,7 @@ use App\Http\Requests\StoreShowcaseHandoverRequest;
 use App\Http\Resources\DailyCartAllowanceResource;
 use App\Http\Resources\StockRowResource;
 use App\Models\Cart;
+use App\Models\RiderClosing;
 use App\Models\StaffAssignment;
 use App\Models\User;
 use App\Services\AllocationService;
@@ -166,6 +167,25 @@ class ShowcaseStockController extends Controller implements HasMiddleware
                 ),
             ],
         ]);
+    }
+
+    public function closeOutDraft(Cart $cart): JsonResponse
+    {
+        $closing = RiderClosing::query()->with('lines')->where('cart_id', $cart->id)
+            ->whereDate('operating_date', today()->toDateString())->first();
+        $liveStock = $this->allocations->stockRows(StockLedgerService::CART, $cart->id);
+        $liveByProduct = collect($liveStock)->keyBy('product_id');
+
+        return response()->json(['data' => [
+            'cart_id' => $cart->id,
+            'closing_id' => $closing?->id,
+            'lines' => $closing?->lines->map(fn ($line): array => [
+                'product_id' => $line->product_id,
+                'qty_remaining' => $line->qty_remaining,
+                'qty_wasted' => $line->qty_wasted,
+                'qty_to_return' => min($line->qty_remaining, (int) ($liveByProduct->get($line->product_id)['qty'] ?? 0)),
+            ])->values()->all() ?? [],
+        ]]);
     }
 
     /** The pre-filled money field, fetched on its own when the form opens. */

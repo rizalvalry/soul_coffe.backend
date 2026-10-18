@@ -2,6 +2,7 @@
 
 namespace App\Services\Reporting;
 
+use App\Models\RiderClosing;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -33,6 +34,28 @@ class SalesActivityService
     public function perCart(?Carbon $date = null): array
     {
         $date = ($date ?? Carbon::today())->toDateString();
+        if ($this->usesClosing($date)) {
+            $closings = RiderClosing::query()->with(['cart:id,code', 'rider:id,name', 'lines'])
+                ->whereDate('operating_date', $date)->get();
+            $locations = DB::table('staff_assignments')
+                ->leftJoin('locations', 'locations.id', '=', 'staff_assignments.location_id')
+                ->whereDate('staff_assignments.operating_date', $date)
+                ->whereIn('staff_assignments.cart_id', $closings->pluck('cart_id'))
+                ->orderBy('staff_assignments.id')
+                ->get(['staff_assignments.cart_id', 'locations.name'])->keyBy('cart_id');
+
+            return $closings->map(fn (RiderClosing $closing): array => [
+                'cart_code' => $closing->cart?->code,
+                'staff_id' => $closing->rider_id,
+                'staff_name' => $closing->rider?->name,
+                'area' => $locations->get($closing->cart_id)?->name,
+                'transactions' => 1,
+                'cups' => (int) $closing->lines->sum('qty_sold'),
+                'revenue' => $closing->total_minor,
+                'flagged' => (int) $closing->lines->contains(fn ($line): bool => $line->qty_carry > 0),
+                'last_sale_at' => $closing->closed_at,
+            ])->sortByDesc('cups')->values()->all();
+        }
 
         return DB::table('sales')
             ->join('carts', 'carts.id', '=', 'sales.cart_id')
@@ -82,9 +105,10 @@ class SalesActivityService
         $end = ($date ?? Carbon::today())->startOfDay();
         $start = $end->copy()->subDays(max(0, $days - 1));
 
-        $rows = DB::table('sales')
+        $legacyRows = DB::table('sales')
             ->leftJoin('locations', 'locations.id', '=', 'sales.location_id')
             ->whereBetween('sales.operating_date', [$start->toDateString(), $end->toDateString()])
+            ->whereDate('sales.operating_date', '<', (string) config('soul.closing_started_on', '2026-10-18'))
             ->whereNull('sales.voided_at')
             ->groupBy('area', 'hour')
             ->orderBy('area')
@@ -94,6 +118,39 @@ class SalesActivityService
                 DB::raw('HOUR(sales.occurred_at) as hour'),
                 DB::raw('COALESCE(SUM(sales.total_qty), 0) as cups'),
             ]);
+        $rows = collect($legacyRows);
+        $modernStart = max($start->toDateString(), (string) config('soul.closing_started_on', '2026-10-18'));
+        if ($modernStart <= $end->toDateString()) {
+            // These are activity signals, not inferred sales. No per-transaction time exists
+            // after Closing, so the heat grid counts refill and location evidence by hour.
+            $pings = DB::table('staff_location_pings')
+                ->leftJoin('locations', 'locations.id', '=', 'staff_location_pings.location_id')
+                ->whereBetween('staff_location_pings.operating_date', [$modernStart, $end->toDateString()])
+                ->groupBy('area', 'hour')->get([
+                    DB::raw("COALESCE(locations.name, 'Tanpa lokasi') AS area"),
+                    DB::raw('HOUR(staff_location_pings.recorded_at) AS hour'),
+                    DB::raw('COUNT(*) AS cups'),
+                ]);
+            $rows = $rows->concat($pings);
+            $assignmentAreas = DB::table('staff_assignments')
+                ->leftJoin('locations', 'locations.id', '=', 'staff_assignments.location_id')
+                ->whereBetween('staff_assignments.operating_date', [$modernStart, $end->toDateString()])
+                ->orderBy('staff_assignments.id')
+                ->get(['staff_assignments.cart_id', 'staff_assignments.operating_date', 'locations.name'])
+                ->keyBy(fn ($row): string => $row->cart_id.'|'.$row->operating_date);
+            $refills = DB::table('refill_requests')
+                ->whereBetween('operating_date', [$modernStart, $end->toDateString()])
+                ->whereNotNull('submitted_at')->get(['cart_id', 'operating_date', 'submitted_at']);
+            $rows = $rows->concat($refills->map(function ($refill) use ($assignmentAreas): object {
+                $location = $assignmentAreas->get($refill->cart_id.'|'.$refill->operating_date);
+
+                return (object) [
+                    'area' => $location?->name ?? 'Tanpa lokasi',
+                    'hour' => Carbon::parse($refill->submitted_at)->hour,
+                    'cups' => 1,
+                ];
+            }));
+        }
 
         $areas = [];
         $hours = [];
@@ -109,12 +166,12 @@ class SalesActivityService
 
             $areas[$area] = true;
             $hours[$hour] = true;
-            $cells[$area.'|'.$hour] = $cups;
+            $cells[$area.'|'.$hour] = ($cells[$area.'|'.$hour] ?? 0) + $cups;
             $areaTotals[$area] = ($areaTotals[$area] ?? 0) + $cups;
             $hourTotals[$hour] = ($hourTotals[$hour] ?? 0) + $cups;
 
-            if ($cups > $peak['cups']) {
-                $peak = ['area' => $area, 'hour' => $hour, 'cups' => $cups];
+            if ($cells[$area.'|'.$hour] > $peak['cups']) {
+                $peak = ['area' => $area, 'hour' => $hour, 'cups' => $cells[$area.'|'.$hour]];
             }
         }
 
@@ -124,6 +181,7 @@ class SalesActivityService
         sort($hourList);
 
         return [
+            'basis' => $modernStart <= $end->toDateString() ? 'activity_signals' : 'sales',
             'areas' => $areaNames,
             'hours' => $hourList,
             'cells' => $cells,
@@ -184,6 +242,17 @@ class SalesActivityService
     public function dayTotals(?Carbon $date = null): array
     {
         $date = ($date ?? Carbon::today())->toDateString();
+        if ($this->usesClosing($date)) {
+            $closings = RiderClosing::query()->with('lines')->whereDate('operating_date', $date)->get();
+
+            return [
+                'transactions' => $closings->count(),
+                'cups' => (int) $closings->sum(fn (RiderClosing $closing): int => $closing->lines->sum('qty_sold')),
+                'revenue' => (int) $closings->sum('total_minor'),
+                'flagged' => $closings->filter(fn (RiderClosing $closing): bool => $closing->lines->contains(fn ($line): bool => $line->qty_carry > 0))->count(),
+                'carts' => $closings->pluck('cart_id')->unique()->count(),
+            ];
+        }
 
         $row = DB::table('sales')
             ->whereDate('operating_date', $date)
@@ -203,5 +272,10 @@ class SalesActivityService
             'flagged' => (int) ($row->flagged ?? 0),
             'carts' => (int) ($row->carts ?? 0),
         ];
+    }
+
+    private function usesClosing(string $date): bool
+    {
+        return $date >= (string) config('soul.closing_started_on', '2026-10-18');
     }
 }

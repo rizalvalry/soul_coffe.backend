@@ -42,6 +42,7 @@ class SettlementPanelTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config(['soul.closing_started_on' => today()->addDay()->toDateString()]);
 
         PermissionMatrix::forget();
 

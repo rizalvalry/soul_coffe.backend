@@ -49,6 +49,8 @@ class ActivityAndSalesPanelTest extends TestCase
     {
         parent::setUp();
 
+        config(['soul.closing_started_on' => today()->addDay()->toDateString()]);
+
         PermissionMatrix::forget();
 
         $kitchen = CentralKitchen::create([
@@ -359,7 +361,7 @@ class ActivityAndSalesPanelTest extends TestCase
         Livewire::actingAs($this->admin)
             ->test(CartSalesTodayWidget::class)
             ->assertSuccessful()
-            ->assertSee('Belum ada transaksi hari ini');
+            ->assertSee('Belum ada Closing hari ini');
     }
 
     public function test_a_role_without_the_dashboard_module_does_not_get_the_widget(): void

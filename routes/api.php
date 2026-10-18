@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\PinResetRequestController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\RefillRequestController;
 use App\Http\Controllers\Api\RefillTransitionController;
+use App\Http\Controllers\Api\RiderClosingController;
 use App\Http\Controllers\Api\SaleController;
 use App\Http\Controllers\Api\SettlementController;
 use App\Http\Controllers\Api\ShowcaseStockController;
@@ -153,6 +154,7 @@ Route::middleware(['auth:sanctum', RecoverOutboxAfterResponse::class])->group(fu
     // Every active staff member, not only those already rostered — the Add Stock form exists
     // for the case where nobody has been assigned yet.
     Route::get('showcase/staff', [ShowcaseStockController::class, 'staff']);
+    Route::get('showcase/close-out/draft/{cart}', [ShowcaseStockController::class, 'closeOutDraft']);
 
     Route::middleware('idempotent:require')->group(function (): void {
         Route::post('showcase/brew', [ShowcaseStockController::class, 'brew']);
@@ -170,6 +172,12 @@ Route::middleware(['auth:sanctum', RecoverOutboxAfterResponse::class])->group(fu
     // No idempotency key: voiding is naturally idempotent by its own guard (SaleService refuses a
     // sale that is already voided), and a retried void request should simply see the same result.
     Route::post('sales/{sale}/void', [SaleController::class, 'void']);
+
+    Route::get('me/closing/draft', [RiderClosingController::class, 'draft']);
+    Route::post('me/closing', [RiderClosingController::class, 'store'])
+        ->middleware('idempotent:require');
+    Route::post('closings/{closing}/corrections', [RiderClosingController::class, 'correct'])
+        ->middleware('idempotent:require');
 
     // ── Aktivitas: where the phone is ──────────────────────────────────────
     // Batched, staff-only, and never a precondition for anything else (E10). See

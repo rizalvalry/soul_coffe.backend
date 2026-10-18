@@ -11,6 +11,7 @@ use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\JournalEntry;
 use App\Models\Product;
+use App\Models\RiderClosing;
 use App\Models\Sale;
 use App\Models\Settlement;
 use App\Models\SettlementLine;
@@ -53,6 +54,11 @@ use RuntimeException;
  */
 class SettlementService
 {
+    public function requiresClosing(Carbon $date): bool
+    {
+        return $date->toDateString() >= (string) config('soul.closing_started_on', '2026-10-18');
+    }
+
     public function __construct(
         private readonly StockLedgerService $ledger,
         private readonly EventPublisher $events,
@@ -89,6 +95,12 @@ class SettlementService
             ->whereDate('operating_date', $date->toDateString())
             ->get()
             ->keyBy('cart_id');
+        $closings = RiderClosing::query()->with('lines')
+            ->whereDate('operating_date', $date->toDateString())->get()->keyBy('cart_id');
+        $closeoutVarianceCounts = DB::table('cart_closeout_variances')
+            ->where('operating_date', $date->toDateString())
+            ->selectRaw('cart_id, COUNT(*) AS flagged')->groupBy('cart_id')
+            ->pluck('flagged', 'cart_id');
         $saleStaffIds = Sale::query()
             ->whereDate('operating_date', $date->toDateString())
             ->whereNull('voided_at')
@@ -104,7 +116,7 @@ class SettlementService
         // that cart; it must not manufacture a Finance queue item on its own.
         $assignments = $assignmentRows
             ->filter(fn (StaffAssignment $row): bool => $row->source === 'hand_to_cart'
-                || $sales->has($row->cart_id) || $settlements->has($row->cart_id))
+                || $sales->has($row->cart_id) || $settlements->has($row->cart_id) || $closings->has($row->cart_id))
             ->sortBy(fn (StaffAssignment $row): array => [$row->source === 'hand_to_cart' ? 1 : 0, $row->id])
             ->keyBy('cart_id')
             ->values();
@@ -132,9 +144,10 @@ class SettlementService
             ->all();
 
         return $assignments
-            ->map(function (StaffAssignment $assignment) use ($sales, $settlements, $saleStaffIds, $saleStaffNames, $remaining, $lastPings): array {
+            ->map(function (StaffAssignment $assignment) use ($date, $sales, $settlements, $closings, $closeoutVarianceCounts, $saleStaffIds, $saleStaffNames, $remaining, $lastPings): array {
                 $sale = $sales->get($assignment->cart_id);
                 $settlement = $settlements->get($assignment->cart_id);
+                $closing = $closings->get($assignment->cart_id);
                 $ping = $lastPings->get($assignment->user_id);
                 $kitchen = $assignment->kitchen ?? $assignment->cart?->kitchen;
                 $arrivedAt = $this->isInsideKitchen($ping, $kitchen) ? $ping->recorded_at->toIso8601String() : null;
@@ -149,18 +162,24 @@ class SettlementService
                         ->map(fn ($id): string => $saleStaffNames->get($id) ?? 'Rider #'.$id)->all(),
                     'area' => $assignment->location?->name,
                     'transactions' => (int) ($sale->trx ?? 0),
-                    'cups_sold' => (int) ($sale->cups ?? 0),
-                    'expected_total' => (int) ($sale->revenue ?? 0),
-                    'expected_total_minor' => (int) ($sale->revenue ?? 0),
-                    'expected_cash_minor' => (int) ($sale->cash ?? 0),
-                    'expected_qris_minor' => (int) ($sale->qris ?? 0),
-                    'expected_transfer_minor' => (int) ($sale->transfer ?? 0),
+                    'closing_status' => $closing ? 'Sudah closing' : ($this->requiresClosing($date) ? 'Menunggu closing Rider' : 'Legacy'),
+                    'closing_id' => $closing?->id,
+                    'closing_required' => $this->requiresClosing($date),
+                    'carry_warning' => (bool) $closing?->lines->contains(fn ($line): bool => $line->qty_carry > 0),
+                    'closeout_variance_count' => (int) ($closeoutVarianceCounts[$assignment->cart_id] ?? 0),
+                    'cups_sold' => (int) ($closing?->lines->sum('qty_sold') ?? $sale->cups ?? 0),
+                    'expected_total' => (int) ($closing?->total_minor ?? $sale->revenue ?? 0),
+                    'expected_total_minor' => (int) ($closing?->total_minor ?? $sale->revenue ?? 0),
+                    'expected_cash_minor' => (int) ($closing?->cash_minor ?? $sale->cash ?? 0),
+                    'expected_qris_minor' => (int) ($closing?->qris_minor ?? $sale->qris ?? 0),
+                    'expected_transfer_minor' => (int) ($closing?->transfer_minor ?? $sale->transfer ?? 0),
                     'arrived_at' => $arrivedAt,
                     'cash_minor' => $settlement?->cash_minor,
                     'qris_minor' => $settlement?->qris_minor,
                     'transfer_minor' => $settlement?->transfer_minor,
                     'variance_minor' => $settlement?->variance_minor,
-                    'cups_remaining' => $remaining[$assignment->cart_id] ?? 0,
+                    'cups_remaining' => (int) ($closing?->lines->sum('qty_remaining') ?? $remaining[$assignment->cart_id] ?? 0),
+                    'cups_live_remaining' => $remaining[$assignment->cart_id] ?? 0,
                     'settlement_id' => $settlement?->id,
                     'settlement_status' => $settlement?->status,
                     'snapshot_expected_total_minor' => $settlement?->expected_total_minor,
@@ -181,6 +200,11 @@ class SettlementService
     public function draft(Cart $cart, ?Carbon $date = null): array
     {
         $date = ($date ?? Carbon::today())->startOfDay();
+        $closing = RiderClosing::query()->with('lines')->where('cart_id', $cart->id)
+            ->whereDate('operating_date', $date->toDateString())->first();
+        if (! $closing && $this->requiresClosing($date)) {
+            throw new RuntimeException('Menunggu closing Rider dulu ya, setoran belum bisa dibuka.');
+        }
 
         $assignment = StaffAssignment::query()
             ->with(['user:id,name', 'location:id,name'])
@@ -208,23 +232,21 @@ class SettlementService
             ->pluck('staff_id')
             ->all();
 
-        $expectations = Sale::query()
-            ->where('cart_id', $cart->id)
-            ->whereDate('operating_date', $date->toDateString())
-            ->whereNull('voided_at')
-            ->selectRaw("COALESCE(SUM(total_amount_minor),0) as total, COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total_amount_minor ELSE 0 END),0) as cash, COALESCE(SUM(CASE WHEN payment_method = 'qris' THEN total_amount_minor ELSE 0 END),0) as qris, COALESCE(SUM(CASE WHEN payment_method = 'transfer' THEN total_amount_minor ELSE 0 END),0) as transfer")
-            ->first();
-
-        $sold = DB::table('sale_lines')
-            ->join('sales', 'sales.id', '=', 'sale_lines.sale_id')
-            ->where('sales.cart_id', $cart->id)
-            ->whereDate('sales.operating_date', $date->toDateString())
-            ->whereNull('sales.voided_at')
-            ->groupBy('sale_lines.product_id')
-            ->selectRaw('sale_lines.product_id as product_id, SUM(sale_lines.qty) as qty')
-            ->pluck('qty', 'product_id')
-            ->map(fn ($qty): int => (int) $qty)
-            ->all();
+        $closingLines = $closing?->lines->keyBy('product_id') ?? collect();
+        $legacyExpectations = null;
+        $legacySold = [];
+        if (! $closing) {
+            $legacyExpectations = Sale::query()
+                ->where('cart_id', $cart->id)->whereDate('operating_date', $date->toDateString())
+                ->whereNull('voided_at')
+                ->selectRaw("COALESCE(SUM(total_amount_minor),0) as total, COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total_amount_minor ELSE 0 END),0) as cash, COALESCE(SUM(CASE WHEN payment_method = 'qris' THEN total_amount_minor ELSE 0 END),0) as qris, COALESCE(SUM(CASE WHEN payment_method = 'transfer' THEN total_amount_minor ELSE 0 END),0) as transfer")
+                ->first();
+            $legacySold = DB::table('sale_lines')->join('sales', 'sales.id', '=', 'sale_lines.sale_id')
+                ->where('sales.cart_id', $cart->id)->whereDate('sales.operating_date', $date->toDateString())
+                ->whereNull('sales.voided_at')->groupBy('sale_lines.product_id')
+                ->selectRaw('sale_lines.product_id, SUM(sale_lines.qty) AS qty')
+                ->pluck('qty', 'product_id')->map(fn ($qty): int => (int) $qty)->all();
+        }
 
         // Everything that ARRIVED on the cart today: the morning hand-over plus any refills.
         // Positive movements only — a sale is negative and would otherwise cancel out the issue.
@@ -245,7 +267,7 @@ class SettlementService
 
         $remaining = $this->ledger->stockMap(StockLedgerService::CART, $cart->id);
 
-        $productIds = array_unique([...array_keys($issued), ...array_keys($sold), ...array_keys($remaining)]);
+        $productIds = array_unique([...array_keys($issued), ...$closingLines->keys()->all(), ...array_keys($legacySold), ...array_keys($remaining)]);
 
         $products = Product::query()
             ->whereIn('id', $productIds)
@@ -260,17 +282,23 @@ class SettlementService
             'staff_name' => $assignment?->user?->name,
             'sale_staff_ids' => $saleStaffIds,
             'area' => $assignment?->location?->name,
-            'expected_total' => (int) $expectations->total,
-            'expected_total_minor' => (int) $expectations->total,
-            'expected_cash_minor' => (int) $expectations->cash,
-            'expected_qris_minor' => (int) $expectations->qris,
-            'expected_transfer_minor' => (int) $expectations->transfer,
+            'closing_id' => $closing?->id,
+            'closing_status' => $closing ? 'Sudah closing' : 'Legacy',
+            'carry_warning' => $closing?->lines->contains(fn ($line): bool => $line->qty_carry > 0) ?? false,
+            'expected_total' => $closing?->total_minor ?? (int) $legacyExpectations?->total,
+            'expected_total_minor' => $closing?->total_minor ?? (int) $legacyExpectations?->total,
+            'expected_cash_minor' => $closing?->cash_minor ?? (int) $legacyExpectations?->cash,
+            'expected_qris_minor' => $closing?->qris_minor ?? (int) $legacyExpectations?->qris,
+            'expected_transfer_minor' => $closing?->transfer_minor ?? (int) $legacyExpectations?->transfer,
             'lines' => $products->map(fn (Product $product): array => [
                 'product_id' => $product->id,
                 'product_name' => $product->name,
                 'unit' => $product->unit,
-                'qty_issued' => $issued[$product->id] ?? 0,
-                'qty_sold' => $sold[$product->id] ?? 0,
+                'qty_issued' => $closing ? ($closingLines->get($product->id)?->qty_in ?? 0) + ($closingLines->get($product->id)?->qty_carry ?? 0) : ($issued[$product->id] ?? 0),
+                'qty_carry' => $closingLines->get($product->id)?->qty_carry ?? 0,
+                'qty_sold' => $closingLines->get($product->id)?->qty_sold ?? $legacySold[$product->id] ?? 0,
+                'qty_closing_remaining' => $closingLines->get($product->id)?->qty_remaining ?? $remaining[$product->id] ?? 0,
+                'qty_wasted' => $closingLines->get($product->id)?->qty_wasted ?? 0,
                 // Live, not a snapshot: this is what is physically on the cart right now, which
                 // is the only number the disposition at approval can be measured against.
                 'qty_remaining' => max(0, $remaining[$product->id] ?? 0),
@@ -298,6 +326,10 @@ class SettlementService
 
         return DB::transaction(function () use ($cart, $finance, $money, $varianceReason, $date): Settlement {
             Cart::query()->whereKey($cart->id)->lockForUpdate()->firstOrFail();
+            if ($this->requiresClosing($date) && ! RiderClosing::query()->where('cart_id', $cart->id)
+                ->whereDate('operating_date', $date->toDateString())->exists()) {
+                throw new RuntimeException('Menunggu closing Rider dulu ya, setoran belum bisa dicatat.');
+            }
             $existing = Settlement::query()
                 ->where('cart_id', $cart->id)
                 ->whereDate('operating_date', $date->toDateString())
@@ -316,9 +348,13 @@ class SettlementService
             $expected = (int) $draft['expected_total'];
             $variance = $declared - $expected;
 
-            $cogs = (int) DB::table('sale_lines')->join('sales', 'sales.id', '=', 'sale_lines.sale_id')
+            $closingCogs = RiderClosing::query()->where('cart_id', $cart->id)
+                ->whereDate('operating_date', $date->toDateString())->value('cogs_minor');
+            $cogs = $closingCogs !== null ? (int) $closingCogs : (int) DB::table('sale_lines')
+                ->join('sales', 'sales.id', '=', 'sale_lines.sale_id')
                 ->where('sales.cart_id', $cart->id)->whereDate('sales.operating_date', $date->toDateString())
-                ->whereNull('sales.voided_at')->selectRaw('COALESCE(SUM(sale_lines.qty * sale_lines.unit_cost_minor),0) as total')->value('total');
+                ->whereNull('sales.voided_at')
+                ->selectRaw('COALESCE(SUM(sale_lines.qty * sale_lines.unit_cost_minor),0) AS total')->value('total');
             $values = [
                 'operating_date' => $date->toDateString(),
                 'cart_id' => $cart->id,
@@ -366,8 +402,9 @@ class SettlementService
                     'qty_issued' => $line['qty_issued'],
                     'qty_sold' => $line['qty_sold'],
                     'qty_remaining' => $line['qty_remaining'],
-                    'qty_wasted' => 0,
-                    'variance_qty' => $line['qty_issued'] - ($line['qty_sold'] + $line['qty_remaining']),
+                    'qty_wasted' => $line['qty_wasted'],
+                    'variance_qty' => $line['qty_issued'] - ($line['qty_sold'] + $line['qty_wasted']
+                        + ($draft['closing_id'] ? $line['qty_closing_remaining'] : $line['qty_remaining'])),
                 ]);
             }
 
@@ -484,6 +521,9 @@ class SettlementService
             if ($locked->reconciled_at !== null || ! in_array($locked->status, ['SUBMITTED', 'VARIANCE_FLAGGED'], true)) {
                 throw new RuntimeException('Setoran ini sudah disetujui.');
             }
+            if ($locked->expected_stale) {
+                throw new RuntimeException('Closing Rider berubah. Catat ulang setoran sebelum approve ya.');
+            }
 
             $cart = Cart::query()->findOrFail($locked->cart_id);
             $kitchenId = $cart->kitchen_id;
@@ -579,7 +619,7 @@ class SettlementService
                         $line->qty_sold = (int) ($liveLine['qty_sold'] ?? 0);
                         $line->variance_qty = $line->qty_issued - $line->qty_sold - (int) ($liveLine['qty_remaining'] ?? 0);
                     }
-                    $line->qty_wasted = $qty['rejected'];
+                    $line->qty_wasted += $qty['rejected'];
                     $line->qty_remaining = $qty['returned'];
                     $line->save();
                 }

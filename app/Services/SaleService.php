@@ -7,6 +7,7 @@ use App\Enums\Role;
 use App\Models\AuditLog;
 use App\Models\Cart;
 use App\Models\Product;
+use App\Models\RiderClosing;
 use App\Models\Sale;
 use App\Models\SaleLine;
 use App\Models\Settlement;
@@ -126,6 +127,13 @@ class SaleService
             // First database read in this transaction is a current locking read. A plain UUID
             // lookup before this lock would pin an old REPEATABLE READ stock snapshot.
             $cart = Cart::query()->whereKey($assignment->cart_id)->lockForUpdate()->firstOrFail();
+            if (RiderClosing::query()->where('cart_id', $cart->id)
+                ->whereDate('operating_date', $date->toDateString())->exists()) {
+                throw new HttpResponseException(response()->json([
+                    'code' => 'CLOSING_DONE',
+                    'message' => 'Closing hari ini sudah masuk. Penjualan baru tidak bisa ditambah ya.',
+                ], 409));
+            }
             $stillAssigned = StaffAssignment::query()->whereKey($assignment->id)
                 ->where('source', 'hand_to_cart')->whereNull('superseded_at')
                 ->lockForUpdate()->first();
@@ -364,6 +372,11 @@ class SaleService
             $this->assertMayVoid($locked, $actor);
 
             Cart::query()->whereKey($locked->cart_id)->lockForUpdate()->firstOrFail();
+
+            if (RiderClosing::query()->where('cart_id', $locked->cart_id)
+                ->whereDate('operating_date', $locked->operating_date)->exists()) {
+                throw new RuntimeException('Gerobak sudah Closing. Koreksi angkanya lewat Closing Finance ya.');
+            }
 
             $alreadySettled = Settlement::query()
                 ->where('cart_id', $locked->cart_id)

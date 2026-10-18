@@ -48,6 +48,7 @@ class SalesActivityServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config(['soul.closing_started_on' => today()->addDay()->toDateString()]);
 
         $kitchen = CentralKitchen::create([
             'name' => 'Dapur Uji', 'address' => 'Jl. Uji 1',

@@ -66,6 +66,8 @@ class SettlementTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // These regression cases exercise historical sales-only operating days.
+        config(['soul.closing_started_on' => today()->addDay()->toDateString()]);
         config(['outbox.publish_mode' => 'queue']);
 
         $this->seed(AccountSeeder::class);
