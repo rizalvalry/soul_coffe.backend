@@ -122,16 +122,16 @@ class RoleAccessMatrixPanelTest extends TestCase
 
         Livewire::test(RoleAccessMatrix::class)
             ->set('role', Role::BARISTA->value)
-            ->set('grants.'.PanelModule::STAFF_ASSIGNMENTS->value.'.view', true)
-            ->set('grants.'.PanelModule::STAFF_ASSIGNMENTS->value.'.edit', true)
+            ->set('grants.'.PanelModule::CARTS->value.'.view', true)
+            ->set('grants.'.PanelModule::CARTS->value.'.edit', true)
             ->call('save')
             ->assertHasNoErrors();
 
         PermissionMatrix::forget();
 
-        $this->assertSame(['view', 'edit'], PermissionMatrix::abilitiesFor(Role::BARISTA, PanelModule::STAFF_ASSIGNMENTS));
+        $this->assertSame(['view', 'edit'], PermissionMatrix::abilitiesFor(Role::BARISTA, PanelModule::CARTS));
         // The role that was on screen is the only one touched.
-        $this->assertSame([], PermissionMatrix::abilitiesFor(Role::RIDER, PanelModule::STAFF_ASSIGNMENTS));
+        $this->assertSame([], PermissionMatrix::abilitiesFor(Role::RIDER, PanelModule::CARTS));
         $this->assertSame($admin->id, RolePermission::query()->first()->updated_by);
     }
 
@@ -157,18 +157,18 @@ class RoleAccessMatrixPanelTest extends TestCase
     {
         $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create());
 
-        PermissionMatrix::set(Role::FINANCE, PanelModule::STAFF_ASSIGNMENTS, ['view', 'edit']);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::CARTS, ['view', 'edit']);
         PermissionMatrix::forget();
 
         Livewire::test(RoleAccessMatrix::class)
             ->set('role', Role::FINANCE->value)
-            ->set('grants.'.PanelModule::STAFF_ASSIGNMENTS->value.'.view', false)
-            ->set('grants.'.PanelModule::STAFF_ASSIGNMENTS->value.'.edit', false)
+            ->set('grants.'.PanelModule::CARTS->value.'.view', false)
+            ->set('grants.'.PanelModule::CARTS->value.'.edit', false)
             ->call('save');
 
         PermissionMatrix::forget();
 
-        $this->assertSame([], PermissionMatrix::abilitiesFor(Role::FINANCE, PanelModule::STAFF_ASSIGNMENTS));
+        $this->assertSame([], PermissionMatrix::abilitiesFor(Role::FINANCE, PanelModule::CARTS));
     }
 
     /**

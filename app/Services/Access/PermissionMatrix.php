@@ -72,8 +72,8 @@ class PermissionMatrix
         $roles = $role === Role::MANAGEMENT ? [Role::FINANCE, Role::MANAGEMENT] : [$role];
 
         foreach ($roles as $inheritedRole) {
-            foreach (static::load()[$inheritedRole->value] ?? [] as $abilities) {
-                if ($abilities !== []) {
+            foreach (static::load()[$inheritedRole->value] ?? [] as $module => $abilities) {
+                if (PanelModule::tryFrom($module) !== null && $abilities !== []) {
                     return true;
                 }
             }
@@ -116,7 +116,12 @@ class PermissionMatrix
 
         $out = [];
         foreach ($rows as $row) {
-            $out[$row->role->value][$row->module->value] = $row->abilities;
+            // Retired module rows stay in the database for rollback, but grant no panel access.
+            if (PanelModule::tryFrom($row->module) === null) {
+                continue;
+            }
+
+            $out[$row->role->value][$row->module] = $row->abilities;
         }
 
         return static::$cache = $out;

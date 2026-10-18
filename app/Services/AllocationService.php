@@ -181,7 +181,7 @@ class AllocationService
                 ->whereNull('superseded_at')
                 ->exists();
             if (! $stillAssigned) {
-                abort(409, 'Penugasan Rider untuk Coffee Bike ini sudah berubah. Coba cek lagi ya.');
+                abort(409, 'Rider untuk Coffee Bike ini sudah berubah. Coba cek lagi ya.');
             }
 
             $allocation = DailyAllocation::query()->create([

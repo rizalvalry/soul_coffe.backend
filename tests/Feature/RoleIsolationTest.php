@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AppNotification;
 use App\Models\Cart;
+use App\Models\Location;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -38,7 +39,7 @@ class RoleIsolationTest extends TestCase
             'operating_date' => now()->toDateString(),
             'cart_id' => $cart->id,
             'staff_id' => $staff->id,
-            'location_id' => $staff->staffAssignments()->first()->location_id,
+            'location_id' => Location::query()->firstOrFail()->id,
             'lines' => [['product_id' => 1, 'qty_issued' => 1]],
         ], ['Idempotency-Key' => 'role-isolation-store']);
 

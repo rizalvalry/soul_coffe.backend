@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Enums\PanelModule;
 use App\Enums\Role;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -25,7 +24,6 @@ class RolePermission extends Model
     {
         return [
             'role' => Role::class,
-            'module' => PanelModule::class,
             'abilities' => 'array',
         ];
     }

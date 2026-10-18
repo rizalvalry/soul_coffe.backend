@@ -71,12 +71,12 @@ class PermissionMatrixTest extends TestCase
     {
         $finance = User::factory()->role(Role::FINANCE)->create();
 
-        PermissionMatrix::set(Role::FINANCE, PanelModule::STAFF_ASSIGNMENTS, ['view', 'edit']);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::CARTS, ['view', 'edit']);
         PermissionMatrix::forget();
 
-        $this->assertTrue(PermissionMatrix::can($finance, PanelModule::STAFF_ASSIGNMENTS, 'view'));
-        $this->assertTrue(PermissionMatrix::can($finance, PanelModule::STAFF_ASSIGNMENTS, 'edit'));
-        $this->assertFalse(PermissionMatrix::can($finance, PanelModule::STAFF_ASSIGNMENTS, 'delete'));
+        $this->assertTrue(PermissionMatrix::can($finance, PanelModule::CARTS, 'view'));
+        $this->assertTrue(PermissionMatrix::can($finance, PanelModule::CARTS, 'edit'));
+        $this->assertFalse(PermissionMatrix::can($finance, PanelModule::CARTS, 'delete'));
         // A grant on one module says nothing about another.
         $this->assertFalse(PermissionMatrix::can($finance, PanelModule::USERS, 'view'));
     }
@@ -111,7 +111,7 @@ class PermissionMatrixTest extends TestCase
 
     public function test_a_guest_is_refused(): void
     {
-        $this->assertFalse(PermissionMatrix::can(null, PanelModule::STAFF_ASSIGNMENTS, 'view'));
+        $this->assertFalse(PermissionMatrix::can(null, PanelModule::CARTS, 'view'));
     }
 
     public function test_has_any_module_reflects_whether_a_role_was_given_anything(): void
@@ -141,8 +141,23 @@ class PermissionMatrixTest extends TestCase
         // The rest of the panel is untouched by that default — `users` above all, since that is
         // where roles and passwords are changed.
         $this->assertFalse(PermissionMatrix::can($finance, PanelModule::USERS, 'view'));
-        $this->assertFalse(PermissionMatrix::can($finance, PanelModule::STAFF_ASSIGNMENTS, 'view'));
+        $this->assertFalse(PermissionMatrix::can($finance, PanelModule::CARTS, 'view'));
         $this->assertFalse(PermissionMatrix::can($finance, PanelModule::PRODUCTS, 'view'));
         $this->assertFalse(PermissionMatrix::can($finance, PanelModule::AUDIT_LOGS, 'view'));
+    }
+
+    public function test_retired_assignment_grants_are_preserved_but_cannot_open_the_panel(): void
+    {
+        RolePermission::query()->create([
+            'role' => Role::CONTENT_CREATOR->value,
+            'module' => 'staff_assignments',
+            'abilities' => ['view', 'edit'],
+        ]);
+
+        PermissionMatrix::forget();
+
+        $this->assertNull(PanelModule::tryFrom('staff_assignments'));
+        $this->assertFalse(PermissionMatrix::hasAnyModule(Role::CONTENT_CREATOR));
+        $this->assertDatabaseHas('role_permissions', ['module' => 'staff_assignments']);
     }
 }

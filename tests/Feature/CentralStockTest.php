@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\Role;
 use App\Models\Cart;
 use App\Models\DailyCartAllowance;
+use App\Models\Location;
 use App\Models\Media;
 use App\Models\OutboxEvent;
 use App\Models\Product;
@@ -56,6 +57,15 @@ class CentralStockTest extends TestCase
         $attendance->clockIn($this->barista);
         $attendance->openStaffWindow($this->barista);
         $attendance->clockIn($this->staff);
+        StaffAssignment::query()->create([
+            'user_id' => $this->staff->id,
+            'cart_id' => $this->cart->id,
+            'location_id' => Location::query()->firstOrFail()->id,
+            'operating_date' => today(),
+            'assigned_by' => User::query()->where('role', Role::ADMINISTRATOR)->firstOrFail()->id,
+            'kitchen_id' => $this->cart->kitchen_id,
+            'source' => 'hand_to_cart',
+        ]);
     }
 
     private function kitchenStock(): int
