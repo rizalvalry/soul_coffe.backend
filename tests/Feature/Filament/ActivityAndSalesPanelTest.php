@@ -25,7 +25,7 @@ use Livewire\Livewire;
 use Tests\TestCase;
 
 /**
- * The two new panel screens: "Penjualan Gerobak" and "Aktivitas Staff".
+ * The two new panel screens: "Penjualan Coffee Bike" and "Aktivitas Staff".
  *
  * Two things here are worth more than the render assertions. First, that the sales list refuses
  * to create, edit or delete — a panel that can rewrite a transaction would put a second hand on
@@ -48,6 +48,8 @@ class ActivityAndSalesPanelTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        config(['soul.closing_started_on' => today()->addDay()->toDateString()]);
 
         PermissionMatrix::forget();
 
@@ -123,7 +125,7 @@ class ActivityAndSalesPanelTest extends TestCase
         ]);
     }
 
-    // ── Penjualan Gerobak ────────────────────────────────────────────────
+    // ── Penjualan Coffee Bike ────────────────────────────────────────────────
 
     public function test_an_administrator_sees_todays_transactions(): void
     {
@@ -132,6 +134,7 @@ class ActivityAndSalesPanelTest extends TestCase
         $this->actingAs($this->admin)
             ->get(SaleResource::getUrl())
             ->assertSuccessful()
+            ->assertSee('Penjualan Coffee Bike')
             ->assertSee('0018')
             ->assertSee('Rider Uji Satu');
     }
@@ -359,7 +362,7 @@ class ActivityAndSalesPanelTest extends TestCase
         Livewire::actingAs($this->admin)
             ->test(CartSalesTodayWidget::class)
             ->assertSuccessful()
-            ->assertSee('Belum ada transaksi hari ini');
+            ->assertSee('Belum ada Closing hari ini');
     }
 
     public function test_a_role_without_the_dashboard_module_does_not_get_the_widget(): void

@@ -1,5 +1,5 @@
 {{--
-    Penjualan per gerobak hari ini — the dashboard list.
+    Penjualan per Coffee Bike hari ini — the dashboard list.
 
     Styled with the `bsi-` layout classes in soul-teal-layout.css, wrapped in Filament's own widget
     card so it sits with the charts above it instead of floating.
@@ -30,8 +30,8 @@
 
                 @if ($rows === [])
                     <div class="bsi-empty">
-                        <p class="bsi-empty__title">Belum ada transaksi hari ini</p>
-                        <p>Baris di sini terisi sendiri begitu rider mencatat penjualan dari Coffee Bike-nya.</p>
+                        <p class="bsi-empty__title">Belum ada Closing hari ini</p>
+                        <p>Hasil penjualan muncul setelah Rider mengisi sisa cups saat Closing.</p>
                     </div>
                 @else
                     <div class="bsi-scroll">

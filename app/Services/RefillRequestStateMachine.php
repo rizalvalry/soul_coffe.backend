@@ -14,6 +14,7 @@ use App\Models\Product;
 use App\Models\RefillRequest;
 use App\Models\RefillRequestLine;
 use App\Models\RefillStatusHistory;
+use App\Models\RiderClosing;
 use App\Models\StaffAssignment;
 use App\Models\User;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -652,11 +653,16 @@ class RefillRequestStateMachine
     ): array {
         $this->expireBeforeWrite($refill);
         $delivered = DB::transaction(function () use ($refill, $rider, $data, $signatureFile): RefillRequest {
+            Cart::query()->whereKey($refill->cart_id)->lockForUpdate()->firstOrFail();
             $locked = RefillRequest::query()->whereKey($refill->id)->lockForUpdate()->firstOrFail();
             $this->assertCurrentOperatingDate($locked);
 
             if ($locked->status !== RefillStatus::PICKED_UP) {
                 abort(409, 'Request tidak dalam status sedang dikirim.');
+            }
+            if (RiderClosing::query()->where('cart_id', $locked->cart_id)
+                ->whereDate('operating_date', $locked->operating_date->toDateString())->exists()) {
+                abort(409, 'Coffee Bike sudah Closing. Refill ini perlu dicek Produksi dulu ya.');
             }
 
             if ($locked->rider_id !== $rider->id) {
@@ -829,6 +835,7 @@ class RefillRequestStateMachine
     public function postLedger(RefillRequest $refill, int $actorId): void
     {
         DB::transaction(function () use ($refill, $actorId): void {
+            Cart::query()->whereKey($refill->cart_id)->lockForUpdate()->firstOrFail();
             $locked = RefillRequest::query()->whereKey($refill->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->status === RefillStatus::CLOSED) {

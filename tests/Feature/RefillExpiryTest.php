@@ -52,6 +52,7 @@ class RefillExpiryTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config(['soul.closing_started_on' => today()->addDay()->toDateString()]);
         Carbon::setTestNow('2026-10-18 12:00:00');
         $this->kitchen = CentralKitchen::create([
             'name' => 'Dapur Uji', 'address' => 'Jl. Uji', 'open_at' => '00:00:00',

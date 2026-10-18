@@ -45,7 +45,7 @@ use Tests\TestCase;
  * The two tests that carry the weight: Finance is never asked to retype a number the system
  * already holds (the draft computes issued, sold, remaining and expected), and approving a
  * deposit settles the leftover cups against LIVE cart stock rather than a snapshot — which is
- * what stops this flow and the barista's "Tutup Gerobak" from both writing off the same cups.
+ * what stops this flow and the barista's "Tutup Coffee Bike" from both writing off the same cups.
  */
 class SettlementTest extends TestCase
 {
@@ -66,6 +66,8 @@ class SettlementTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // These regression cases exercise historical sales-only operating days.
+        config(['soul.closing_started_on' => today()->addDay()->toDateString()]);
         config(['outbox.publish_mode' => 'queue']);
 
         $this->seed(AccountSeeder::class);
@@ -525,7 +527,7 @@ class SettlementTest extends TestCase
                     && $excludeUserId === null
                     && $data['type'] === 'SettlementVarianceFlagged'
                     && $data['status'] === 'VARIANCE_FLAGGED'
-                    && $title !== '' && str_contains($body, 'Gerobak 0018');
+                    && $title !== '' && str_contains($body, 'Coffee Bike 0018');
             });
 
         $this->asFinance()
@@ -704,7 +706,7 @@ class SettlementTest extends TestCase
     }
 
     /**
-     * The overlap with the barista's "Tutup Gerobak", which is the failure this design exists to
+     * The overlap with the barista's "Tutup Coffee Bike", which is the failure this design exists to
      * avoid: two flows writing off the same cups and driving the ledger negative.
      */
     public function test_cups_already_closed_out_by_the_barista_cannot_be_settled_again(): void

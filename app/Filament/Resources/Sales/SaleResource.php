@@ -18,7 +18,7 @@ use Illuminate\Database\Eloquent\Model;
 use UnitEnum;
 
 /**
- * "Penjualan Gerobak" — every transaction a rider recorded, per cart and per area.
+ * "Penjualan Coffee Bike" — every transaction a rider recorded, per cart and per area.
  *
  * No free-form create, edit or delete (see the three refusals at the bottom) — a sale moved real
  * cups through the append-only ledger, and editing the row directly would leave the ledger saying
@@ -40,11 +40,11 @@ class SaleResource extends Resource
 
     protected static string|UnitEnum|null $navigationGroup = 'Operasional';
 
-    protected static ?string $navigationLabel = 'Penjualan Gerobak';
+    protected static ?string $navigationLabel = 'Penjualan Coffee Bike';
 
     protected static ?string $modelLabel = 'Penjualan';
 
-    protected static ?string $pluralModelLabel = 'Penjualan Gerobak';
+    protected static ?string $pluralModelLabel = 'Penjualan Coffee Bike';
 
     protected static ?int $navigationSort = 4;
 

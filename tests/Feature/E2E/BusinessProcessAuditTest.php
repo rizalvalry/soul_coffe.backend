@@ -85,6 +85,7 @@ class BusinessProcessAuditTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config(['soul.closing_started_on' => today()->addDay()->toDateString()]);
         Carbon::setTestNow('2026-10-18 10:00:00');
         PermissionMatrix::forget();
         $this->seed(AccountSeeder::class);

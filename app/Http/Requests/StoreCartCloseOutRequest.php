@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\RiderClosing;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -31,7 +32,7 @@ class StoreCartCloseOutRequest extends FormRequest
 
             // Both optional individually — a day with nothing rejected is the good day, and a
             // day where everything left is rejected is a bad one, and both must be expressible.
-            // `withValidator` below enforces that at least one carries something.
+            // A zero physical count is valid after Rider Closing and is flagged against it.
             'returned' => ['nullable', 'array'],
             'returned.*.product_id' => ['required_with:returned', 'integer', Rule::exists('products', 'id')],
             'returned.*.qty' => ['required_with:returned', 'integer', 'min:1'],
@@ -56,11 +57,13 @@ class StoreCartCloseOutRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
-            if ($this->quantities('returned') === [] && $this->quantities('rejected') === []) {
-                $validator->errors()->add(
-                    'returned',
-                    'Isi minimal satu: cups yang masuk showcase atau cups yang reject.',
-                );
+            if ($this->quantities('returned') !== [] || $this->quantities('rejected') !== []) {
+                return;
+            }
+            $hasClosing = RiderClosing::query()->where('cart_id', (int) $this->input('cart_id'))
+                ->whereDate('operating_date', today()->toDateString())->exists();
+            if (! $hasClosing) {
+                $validator->errors()->add('returned', 'Isi minimal satu: cups yang masuk showcase atau cups yang reject.');
             }
         });
     }

@@ -7,6 +7,7 @@ use App\Enums\Role;
 use App\Models\AuditLog;
 use App\Models\Cart;
 use App\Models\Product;
+use App\Models\RiderClosing;
 use App\Models\Sale;
 use App\Models\SaleLine;
 use App\Models\Settlement;
@@ -71,7 +72,7 @@ class SaleService
         ?int $submittedCartId = null,
     ): Sale {
         if ($staff->role !== Role::STAFF) {
-            throw new RuntimeException('Hanya rider yang mencatat penjualan gerobak.');
+            throw new RuntimeException('Hanya rider yang mencatat penjualan Coffee Bike.');
         }
 
         $date = Carbon::today();
@@ -100,19 +101,19 @@ class SaleService
             if ($submittedCartId !== null) {
                 throw new HttpResponseException(response()->json([
                     'code' => 'CART_CHANGED',
-                    'message' => 'Gerobak kamu sudah berubah. Cek transaksi ini bareng Administrator ya.',
+                    'message' => 'Coffee Bike kamu sudah berubah. Cek transaksi ini bareng Administrator ya.',
                 ], 422));
             }
             throw new HttpResponseException(response()->json([
                 'code' => 'NO_CART_TODAY',
-                'message' => 'Produksi belum kasih stok ke gerobak kamu hari ini. Minta Produksi Add Stock dulu ya.',
+                'message' => 'Produksi belum kasih stok ke Coffee Bike kamu hari ini. Minta Produksi Add Stock dulu ya.',
             ], 403));
         }
 
         if ($submittedCartId !== null && $submittedCartId !== (int) $assignment->cart_id) {
             throw new HttpResponseException(response()->json([
                 'code' => 'CART_CHANGED',
-                'message' => 'Gerobak kamu sudah berubah. Cek transaksi ini bareng Administrator ya.',
+                'message' => 'Coffee Bike kamu sudah berubah. Cek transaksi ini bareng Administrator ya.',
             ], 422));
         }
 
@@ -126,13 +127,20 @@ class SaleService
             // First database read in this transaction is a current locking read. A plain UUID
             // lookup before this lock would pin an old REPEATABLE READ stock snapshot.
             $cart = Cart::query()->whereKey($assignment->cart_id)->lockForUpdate()->firstOrFail();
+            if (RiderClosing::query()->where('cart_id', $cart->id)
+                ->whereDate('operating_date', $date->toDateString())->exists()) {
+                throw new HttpResponseException(response()->json([
+                    'code' => 'CLOSING_DONE',
+                    'message' => 'Closing hari ini sudah masuk. Penjualan baru tidak bisa ditambah ya.',
+                ], 409));
+            }
             $stillAssigned = StaffAssignment::query()->whereKey($assignment->id)
                 ->where('source', 'hand_to_cart')->whereNull('superseded_at')
                 ->lockForUpdate()->first();
             if (! $stillAssigned) {
                 throw new HttpResponseException(response()->json([
                     'code' => 'CART_CHANGED',
-                    'message' => 'Gerobak kamu sudah berubah. Cek transaksi ini bareng Administrator ya.',
+                    'message' => 'Coffee Bike kamu sudah berubah. Cek transaksi ini bareng Administrator ya.',
                 ], 422));
             }
 
@@ -192,7 +200,7 @@ class SaleService
 
                 if ($qty > $onHand && ! $reconciled) {
                     throw new RuntimeException(sprintf(
-                        'Stok gerobak untuk %s hanya %d %s.',
+                        'Stok Coffee Bike untuk %s hanya %d %s.',
                         $product->name,
                         $onHand,
                         $product->unit,
@@ -301,7 +309,7 @@ class SaleService
             $this->events->publish(
                 type: 'SaleRecorded',
                 title: 'Penjualan tercatat',
-                body: sprintf('Penjualan di gerobak %s tercatat.', $cart->code),
+                body: sprintf('Penjualan di Coffee Bike %s tercatat.', $cart->code),
                 channels: ['role.FINANCE', 'role.MANAGEMENT'],
                 context: [
                     'cart_id' => $sale->cart_id,
@@ -365,6 +373,11 @@ class SaleService
 
             Cart::query()->whereKey($locked->cart_id)->lockForUpdate()->firstOrFail();
 
+            if (RiderClosing::query()->where('cart_id', $locked->cart_id)
+                ->whereDate('operating_date', $locked->operating_date)->exists()) {
+                throw new RuntimeException('Coffee Bike sudah Closing. Koreksi angkanya lewat Closing Finance ya.');
+            }
+
             $alreadySettled = Settlement::query()
                 ->where('cart_id', $locked->cart_id)
                 ->whereDate('operating_date', $locked->operating_date)
@@ -373,7 +386,7 @@ class SaleService
 
             if ($alreadySettled) {
                 throw new RuntimeException(
-                    'Setoran gerobak ini untuk tanggal tersebut sudah direkonsiliasi. Gunakan Stock Opname untuk koreksi, bukan pembatalan transaksi.'
+                    'Setoran Coffee Bike ini untuk tanggal tersebut sudah direkonsiliasi. Gunakan Stock Opname untuk koreksi, bukan pembatalan transaksi.'
                 );
             }
 
@@ -446,7 +459,7 @@ class SaleService
             'SaleVoided',
             'Transaksi dibatalkan',
             sprintf(
-                '%s membatalkan transaksi %d cups di gerobak %s. Alasan: %s',
+                '%s membatalkan transaksi %d cups di Coffee Bike %s. Alasan: %s',
                 $actor->name,
                 $sale->total_qty,
                 $sale->cart?->code,
@@ -482,7 +495,7 @@ class SaleService
             'SaleFlaggedSuspect',
             'Transaksi perlu ditinjau',
             sprintf(
-                '%s (gerobak %s) mencatat %d cups dalam satu transaksi — di atas batas %d.',
+                '%s (Coffee Bike %s) mencatat %d cups dalam satu transaksi — di atas batas %d.',
                 $staff->name,
                 $cartCode,
                 $totalQty,

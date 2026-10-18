@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\SettlementResource;
 use App\Models\Cart;
+use App\Models\RiderClosing;
 use App\Models\Settlement;
 use App\Services\SettlementService;
 use Illuminate\Http\JsonResponse;
@@ -53,6 +54,10 @@ class SettlementController extends Controller implements HasMiddleware
     /** Everything the deposit form should already know for one cart. */
     public function draft(Request $request, Cart $cart): JsonResponse
     {
+        if (! $this->hasClosing($cart, $this->date($request))) {
+            return $this->closingRequired();
+        }
+
         return response()->json([
             'data' => $this->settlements->draft($cart, $this->date($request)),
         ]);
@@ -82,6 +87,9 @@ class SettlementController extends Controller implements HasMiddleware
         ]);
 
         $cart = Cart::query()->findOrFail($data['cart_id']);
+        if (! $this->hasClosing($cart, $this->date($request))) {
+            return $this->closingRequired();
+        }
 
         try {
             $settlement = $this->settlements->record(
@@ -139,5 +147,23 @@ class SettlementController extends Controller implements HasMiddleware
         } catch (\Throwable) {
             return Carbon::today();
         }
+    }
+
+    private function hasClosing(Cart $cart, Carbon $date): bool
+    {
+        if (! $this->settlements->requiresClosing($date)) {
+            return true;
+        }
+
+        return RiderClosing::query()->where('cart_id', $cart->id)
+            ->whereDate('operating_date', $date->toDateString())->exists();
+    }
+
+    private function closingRequired(): JsonResponse
+    {
+        return response()->json([
+            'code' => 'CLOSING_REQUIRED',
+            'message' => 'Menunggu closing Rider dulu ya, setoran belum bisa dibuka.',
+        ], 409);
     }
 }
