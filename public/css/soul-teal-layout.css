@@ -539,6 +539,17 @@
   font-family: var(--bsi-font-mono);
   font-size: 11px;
   color: var(--bsi-ink);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.bsi-commission-intro {
+  margin: 0 0 16px;
+}
+
+.bsi-commission-actions {
+  margin: 16px 0 24px;
 }
 
 .bsi-grid .bsi-num--quiet {

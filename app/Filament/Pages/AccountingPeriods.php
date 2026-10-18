@@ -19,6 +19,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use UnitEnum;
@@ -79,7 +80,7 @@ class AccountingPeriods extends Page implements HasTable
         abort_unless(self::canAccess(), 403);
 
         return $table->query(AccountingPeriod::query()->with('closedBy'))
-            ->defaultSort('year', 'desc')
+            ->defaultSort(fn (Builder $query): Builder => $query->orderByDesc('year')->orderByDesc('month'))
             ->columns([
                 TextColumn::make('period')->label('Periode')
                     ->getStateUsing(fn (AccountingPeriod $record): string => sprintf('%04d-%02d', $record->year, $record->month)),

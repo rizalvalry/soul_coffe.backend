@@ -1211,14 +1211,17 @@ class PayrollRunTest extends TestCase
 
         $payroll = app(PayrollRunService::class);
         $run = $payroll->create('2026-10', $this->manager);
+        // T-045 permits approval only after the payroll month ends.
+        $this->travelTo(Carbon::parse('2026-11-01 10:00:00'));
         $payroll->approve($run, $this->manager);
         $payroll->markPaid($run, $this->manager, today()->toDateString(), $bank->account_id);
+        $this->travelTo(Carbon::parse('2026-10-19 10:00:00'));
         $this->assertSame('PAID', $run->fresh()->status);
         $this->assertSame(2, JournalEntry::query()->where('source_type', 'payroll_run')->count());
         $accrual = JournalEntry::query()->where('source_type', 'payroll_run')->where('purpose', 'PAYROLL_ACCRUAL')->sole();
         $payment = JournalEntry::query()->where('source_type', 'payroll_run')->where('purpose', 'PAYROLL_PAYMENT')->sole();
         $this->assertSame('2026-10-31', $accrual->entry_date->toDateString());
-        $this->assertSame('2026-10-19', $payment->entry_date->toDateString());
+        $this->assertSame('2026-11-01', $payment->entry_date->toDateString());
         $this->assertSame(10000000, $entryLines($accrual)['6-1200'][0]);
         $this->assertArrayHasKey('2-1100', $entryLines($accrual));
         $this->assertArrayHasKey('2-1300', $entryLines($accrual));

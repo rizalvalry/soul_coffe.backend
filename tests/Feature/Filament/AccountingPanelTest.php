@@ -139,6 +139,16 @@ class AccountingPanelTest extends TestCase
             ->assertSee($entry->number)->assertSee('Rp 125.000');
     }
 
+    public function test_period_history_orders_months_newest_first_within_a_year(): void
+    {
+        $this->actingAs(User::factory()->role(Role::MANAGEMENT)->create());
+        foreach ([1, 12, 11] as $month) {
+            AccountingPeriod::query()->create(['year' => 2026, 'month' => $month, 'status' => 'OPEN']);
+        }
+
+        Livewire::test(AccountingPeriods::class)->assertSeeInOrder(['2026-12', '2026-11', '2026-01']);
+    }
+
     public function test_wrong_role_gets_403_on_accounting_pages(): void
     {
         foreach ([Role::BARISTA, Role::RIDER, Role::STAFF, Role::CONTENT_CREATOR] as $role) {

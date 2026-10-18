@@ -9,8 +9,14 @@ use App\Models\User;
 use App\Services\Access\PermissionMatrix;
 use App\Services\RiderCommissionService;
 use BackedEnum;
+use Filament\Forms\Components\CheckboxList;
+use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -77,6 +83,50 @@ class TargetCommission extends Page
         $this->effectiveFrom = today()->toDateString();
         $this->tiers = [['min_cups' => '100', 'amount_per_cup_minor' => '1000']];
         $this->requestKey = (string) Str::uuid();
+    }
+
+    public function periodForm(Schema $schema): Schema
+    {
+        return $schema->components([
+            TextInput::make('period')->label('Periode')->type('month')->live()->required(),
+        ]);
+    }
+
+    public function riderForm(Schema $schema): Schema
+    {
+        $riders = fn (): array => collect($this->riders())->mapWithKeys(
+            fn (User $rider): array => [$rider->id => $rider->name],
+        )->all();
+
+        return $schema->components([
+            DatePicker::make('effectiveFrom')->label('Berlaku mulai')->required(),
+            Select::make('selectedRiderId')->label('Rider yang mau diatur')->options($riders)->searchable(),
+        ])->columns(['default' => 1, 'md' => 2]);
+    }
+
+    public function tierForm(Schema $schema): Schema
+    {
+        $riders = fn (): array => collect($this->riders())->mapWithKeys(
+            fn (User $rider): array => [$rider->id => $rider->name],
+        )->all();
+
+        return $schema->components([
+            CheckboxList::make('targetRiderIds')->label('Terapkan tier ke Rider')->options($riders)
+                ->columns(['default' => 1, 'md' => 3])->columnSpanFull(),
+            Repeater::make('tiers')->label('Tier komisi')->schema([
+                TextInput::make('min_cups')->label('Mulai cup')->numeric()->minValue(1)->required(),
+                TextInput::make('amount_per_cup_minor')->label('Rp per cup')->numeric()->minValue(0)->required(),
+            ])->columns(['default' => 1, 'md' => 2])->minItems(1)->addActionLabel('Tambah tier')
+                ->reorderable(false)->columnSpanFull(),
+        ]);
+    }
+
+    public function copyForm(Schema $schema): Schema
+    {
+        return $schema->components([
+            Select::make('sourceRiderId')->label('Salin tier dari Rider lain')
+                ->options(fn (): array => collect($this->riders())->pluck('name', 'id')->all())->searchable(),
+        ]);
     }
 
     public function riders(): array
