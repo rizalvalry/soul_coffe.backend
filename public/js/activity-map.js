@@ -178,7 +178,7 @@ window.activityMap = function (isToday) {
                 : '—';
 
             const rows = [
-                ['Gerobak', person.cart_code],
+                ['Coffee Bike', person.cart_code],
                 ['Area', person.area],
                 ['Lapor', reported],
                 ['Transaksi', person.transactions + ' · ' + person.cups + ' cups'],

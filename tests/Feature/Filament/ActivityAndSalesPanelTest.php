@@ -348,7 +348,7 @@ class ActivityAndSalesPanelTest extends TestCase
         Livewire::actingAs($this->admin)
             ->test(CartSalesTodayWidget::class)
             ->assertSuccessful()
-            ->assertSee('Penjualan gerobak')
+            ->assertSee('Penjualan Coffee Bike')
             ->assertSee('0018')
             ->assertSee('Pulomas')
             ->assertSee('Rider Uji Satu');

@@ -37,7 +37,7 @@
                     <select id="bsi-opname-kind" class="bsi-select" wire:model.live="locationKind">
                         <option value="">— pilih —</option>
                         <option value="kitchen">Dapur Pusat</option>
-                        <option value="cart">Gerobak</option>
+                        <option value="cart">Coffee Bike</option>
                     </select>
                 </div>
 
@@ -53,9 +53,9 @@
                     </div>
                 @elseif ($this->locationKind === 'cart')
                     <div class="bsi-field">
-                        <label class="bsi-label" for="bsi-opname-location">Gerobak</label>
+                        <label class="bsi-label" for="bsi-opname-location">Coffee Bike</label>
                         <select id="bsi-opname-location" class="bsi-select" wire:model.live="locationId">
-                            <option value="">— pilih gerobak —</option>
+                            <option value="">— pilih Coffee Bike —</option>
                             @foreach ($this->cartOptions() as $option)
                                 <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
                             @endforeach
@@ -138,7 +138,7 @@
                         rows="2"
                         maxlength="500"
                         wire:model="reason"
-                        placeholder="Mis. hitungan rutin akhir pekan, dugaan kekurangan di gerobak 0018, serah terima antar petugas Produksi"
+                        placeholder="Mis. hitungan rutin akhir pekan, dugaan kekurangan di Coffee Bike 0018, serah terima antar petugas Produksi"
                     ></textarea>
                 </div>
 

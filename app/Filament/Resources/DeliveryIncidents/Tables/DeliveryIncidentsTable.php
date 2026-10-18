@@ -59,7 +59,7 @@ class DeliveryIncidentsTable
                 TextColumn::make('refillRequest.code')
                     ->label('Request')
                     ->searchable()
-                    ->description(fn (DeliveryIncident $record): string => 'Gerobak '.($record->refillRequest?->cart?->code ?? '-')),
+                    ->description(fn (DeliveryIncident $record): string => 'Coffee Bike '.($record->refillRequest?->cart?->code ?? '-')),
 
                 TextColumn::make('rider.name')
                     ->label('Runner')

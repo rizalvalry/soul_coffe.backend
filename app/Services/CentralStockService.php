@@ -110,7 +110,7 @@ class CentralStockService
         $this->assertBarista($barista);
 
         if ($staff->role !== Role::STAFF) {
-            throw new RuntimeException('Penerima gerobak harus rider.');
+            throw new RuntimeException('Penerima Coffee Bike harus rider.');
         }
 
         $rows = $this->normalizeQuantities($qtyByProductId);
@@ -119,7 +119,7 @@ class CentralStockService
         $kitchenId = $cart->kitchen_id ?? $barista->kitchen_id;
 
         if (! $kitchenId) {
-            throw new RuntimeException('Gerobak ini belum terhubung ke dapur pusat.');
+            throw new RuntimeException('Coffee Bike ini belum terhubung ke dapur pusat.');
         }
 
         return DB::transaction(function () use (
@@ -156,8 +156,8 @@ class CentralStockService
             if ($assignment->wasRecentlyCreated) {
                 $this->events->publish(
                     'CartAssignmentChanged',
-                    'Gerobak kamu siap',
-                    "Gerobak {$cart->code} sudah dapat stok. Yuk, mulai jualan!",
+                    'Coffee Bike kamu siap',
+                    "Coffee Bike {$cart->code} sudah dapat stok. Yuk, mulai jualan!",
                     ['user.'.$staff->id],
                     [$staff->id],
                     context: ['cart_id' => $cart->id, 'operating_date' => $date->toDateString()],
@@ -169,8 +169,8 @@ class CentralStockService
                 }
                 $this->events->publish(
                     'CartAssignmentChanged',
-                    'Gerobak diperbarui',
-                    'Gerobak kamu berubah hari ini. Cek lagi sebelum lanjut ya.',
+                    'Coffee Bike diperbarui',
+                    'Coffee Bike kamu berubah hari ini. Cek lagi sebelum lanjut ya.',
                     ['user.'.$displacedStaffId],
                     [$displacedStaffId],
                     context: ['cart_id' => null, 'operating_date' => $date->toDateString()],
@@ -211,9 +211,9 @@ class CentralStockService
             // is loaded and how much operational money was recorded against it today.
             $this->events->publish(
                 'CartStockHandedOver',
-                'Stok gerobak diterima',
+                'Stok Coffee Bike diterima',
                 sprintf(
-                    'Gerobak %s: %d cups dari %s. Uang operasional Rp %s.',
+                    'Coffee Bike %s: %d cups dari %s. Uang operasional Rp %s.',
                     $cart->code,
                     array_sum($rows),
                     $barista->name,

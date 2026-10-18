@@ -22,11 +22,11 @@ class DailyTargetForm
                 // cart_id and location_id are both nullable in the schema: a target may be
                 // pinned to a cart, to a selling point, or to both.
                 Select::make('cart_id')
-                    ->label('Gerobak')
+                    ->label('Coffee Bike')
                     ->relationship('cart', 'code')
                     ->searchable()
                     ->preload()
-                    ->placeholder('Semua gerobak'),
+                    ->placeholder('Semua Coffee Bike'),
 
                 Select::make('location_id')
                     ->label('Lokasi')

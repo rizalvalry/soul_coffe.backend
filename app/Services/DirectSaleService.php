@@ -63,7 +63,7 @@ class DirectSaleService
         $cart = Cart::query()->find($cartId);
 
         if (! $cart || $cart->status !== 'active') {
-            throw new RuntimeException('Gerobak tidak ditemukan atau sedang tidak aktif.');
+            throw new RuntimeException('Coffee Bike tidak ditemukan atau sedang tidak aktif.');
         }
 
         return DB::transaction(function () use ($actor, $cart, $merged, $paymentMethod, $note): DirectSale {
@@ -92,7 +92,7 @@ class DirectSaleService
 
                 if ($qty > $onHand) {
                     throw new RuntimeException(sprintf(
-                        'Stok gerobak untuk %s hanya %d %s.',
+                        'Stok Coffee Bike untuk %s hanya %d %s.',
                         $product->name,
                         $onHand,
                         $product->unit,
@@ -217,7 +217,7 @@ class DirectSaleService
 
             if ($alreadySettled) {
                 throw new RuntimeException(
-                    'Setoran gerobak ini untuk tanggal tersebut sudah direkonsiliasi. Gunakan Stock Opname untuk koreksi, bukan pembatalan transaksi.'
+                    'Setoran Coffee Bike ini untuk tanggal tersebut sudah direkonsiliasi. Gunakan Stock Opname untuk koreksi, bukan pembatalan transaksi.'
                 );
             }
 

@@ -74,7 +74,7 @@ class StoreAllocationRequest extends FormRequest
             if (! $assigned) {
                 $validator->errors()->add(
                     'staff_id',
-                    'Rider belum bertugas di gerobak ini pada tanggal itu ya.',
+                    'Rider belum bertugas di Coffee Bike ini pada tanggal itu ya.',
                 );
             }
         });

@@ -179,14 +179,15 @@ class CentralStockTest extends TestCase
     public function test_sale_and_refill_without_todays_cart_return_stable_code_and_friendly_copy(): void
     {
         $this->clearAssignmentsKeepingLocation();
-        $message = 'Produksi belum kasih stok ke gerobak kamu hari ini. Minta Produksi Add Stock dulu ya.';
+        $saleMessage = 'Produksi belum kasih stok ke gerobak kamu hari ini. Minta Produksi Add Stock dulu ya.';
+        $refillMessage = 'Produksi belum kasih stok ke Coffee Bike kamu hari ini. Minta Produksi Add Stock dulu ya.';
         $this->actingAs($this->staff, 'sanctum')
             ->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson('/api/v1/sales', [
                 'uuid' => (string) Str::uuid(),
                 'lines' => [['product_id' => $this->product->id, 'qty' => 1]],
             ])
-            ->assertForbidden()->assertJsonPath('code', 'NO_CART_TODAY')->assertJsonPath('message', $message);
+            ->assertForbidden()->assertJsonPath('code', 'NO_CART_TODAY')->assertJsonPath('message', $saleMessage);
 
         $media = Media::query()->create([
             'kind' => 'evidence', 'path' => 'evidence/test.jpg', 'mime' => 'image/jpeg',
@@ -199,7 +200,7 @@ class CentralStockTest extends TestCase
                 'evidence_media_id' => $media->id,
                 'lines' => [['product_id' => $this->product->id, 'qty_requested' => 1]],
             ])
-            ->assertForbidden()->assertJsonPath('code', 'NO_CART_TODAY')->assertJsonPath('message', $message);
+            ->assertForbidden()->assertJsonPath('code', 'NO_CART_TODAY')->assertJsonPath('message', $refillMessage);
     }
 
     public function test_a_second_handover_to_the_same_cart_reuses_the_same_assignment(): void

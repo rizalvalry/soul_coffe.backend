@@ -52,7 +52,7 @@ class StoreRefillRequestRequest extends FormRequest
             'lines.min' => 'Pilih minimal satu produk',
             'lines.*.qty_requested.min' => "Jumlah harus antara 1 dan {$maxQty} cups",
             'lines.*.qty_requested.max' => "Jumlah harus antara 1 dan {$maxQty} cups",
-            'cart_id.exists' => 'Gerobak tidak ditemukan.',
+            'cart_id.exists' => 'Coffee Bike tidak ditemukan.',
             'evidence_media_id.exists' => 'Foto bukti tidak ditemukan atau tidak valid.',
         ];
     }

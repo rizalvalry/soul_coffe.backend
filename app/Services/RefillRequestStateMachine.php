@@ -91,7 +91,7 @@ class RefillRequestStateMachine
         if (! $assignment) {
             throw new HttpResponseException(response()->json([
                 'code' => 'NO_CART_TODAY',
-                'message' => 'Produksi belum kasih stok ke gerobak kamu hari ini. Minta Produksi Add Stock dulu ya.',
+                'message' => 'Produksi belum kasih stok ke Coffee Bike kamu hari ini. Minta Produksi Add Stock dulu ya.',
             ], 403));
         }
 
@@ -126,7 +126,7 @@ class RefillRequestStateMachine
             if (! $stillAssigned) {
                 throw new HttpResponseException(response()->json([
                     'code' => 'NO_CART_TODAY',
-                    'message' => 'Produksi belum kasih stok ke gerobak kamu hari ini. Minta Produksi Add Stock dulu ya.',
+                    'message' => 'Produksi belum kasih stok ke Coffee Bike kamu hari ini. Minta Produksi Add Stock dulu ya.',
                 ], 403));
             }
             $evidence = Media::query()
@@ -192,7 +192,7 @@ class RefillRequestStateMachine
 
                     if (str_contains($e->getMessage(), 'active_cart_id')) {
                         // R2's actual enforcement mechanism.
-                        abort(409, 'Masih ada request yang belum selesai untuk gerobak ini.');
+                        abort(409, 'Masih ada request yang belum selesai untuk Coffee Bike ini.');
                     }
 
                     // Anything else unique-violating here is the `code` column —
@@ -216,7 +216,7 @@ class RefillRequestStateMachine
             $this->events->publish(
                 'RefillRequestSubmitted',
                 'Request refill baru',
-                "{$refill->code} · Gerobak {$refill->cart->code} · {$totalQty} cups",
+                "{$refill->code} · Coffee Bike {$refill->cart->code} · {$totalQty} cups",
                 ['refill.'.$refill->id, 'user.'.$staff->id, 'role.FINANCE', 'role.MANAGEMENT', 'kitchen.'.$kitchenId],
                 array_merge($this->userIdsWithRole(Role::FINANCE), [$staff->id]),
                 $refill->id,
@@ -311,7 +311,7 @@ class RefillRequestStateMachine
             $this->events->publish(
                 'RefillRequestApproved',
                 'Permintaan disetujui Finance',
-                "{$locked->code} · Gerobak {$locked->cart->code}",
+                "{$locked->code} · Coffee Bike {$locked->cart->code}",
                 ['refill.'.$locked->id, 'user.'.$locked->staff_id, 'kitchen.'.$locked->kitchen_id],
                 array_merge($this->userIdsWithRole(Role::BARISTA, $locked->kitchen_id), [$locked->staff_id]),
                 $locked->id,
@@ -469,7 +469,7 @@ class RefillRequestStateMachine
             $this->events->publish(
                 'RefillPreparingStarted',
                 'Produksi mulai menyiapkan',
-                "{$locked->code} · Gerobak {$locked->cart->code}",
+                "{$locked->code} · Coffee Bike {$locked->cart->code}",
                 ['refill.'.$locked->id, 'user.'.$locked->staff_id],
                 [$locked->staff_id],
                 $locked->id,
@@ -555,7 +555,7 @@ class RefillRequestStateMachine
             $this->events->publish(
                 'RefillReadyToPick',
                 'Siap diambil',
-                "{$locked->code} · Gerobak {$locked->cart->code}",
+                "{$locked->code} · Coffee Bike {$locked->cart->code}",
                 ['refill.'.$locked->id, 'user.'.$locked->staff_id, 'role.RIDER'],
                 array_merge($this->userIdsWithRole(Role::RIDER), [$locked->staff_id]),
                 $locked->id,
@@ -604,7 +604,7 @@ class RefillRequestStateMachine
             $this->events->publish(
                 'RefillPickedUp',
                 'Rider dalam perjalanan',
-                "{$fresh->code} · Gerobak {$fresh->cart->code}",
+                "{$fresh->code} · Coffee Bike {$fresh->cart->code}",
                 ['refill.'.$fresh->id, 'user.'.$fresh->staff_id, 'kitchen.'.$fresh->kitchen_id],
                 [$fresh->staff_id],
                 $fresh->id,
@@ -779,7 +779,7 @@ class RefillRequestStateMachine
             $this->events->publish(
                 'RefillDelivered',
                 'Refill terkirim',
-                "{$locked->code} · Gerobak {$locked->cart->code}",
+                "{$locked->code} · Coffee Bike {$locked->cart->code}",
                 ['refill.'.$locked->id, 'user.'.$locked->staff_id, 'kitchen.'.$locked->kitchen_id, 'role.FINANCE', 'role.MANAGEMENT'],
                 array_filter(array_merge(
                     $this->userIdsWithRole(Role::FINANCE),
@@ -873,7 +873,7 @@ class RefillRequestStateMachine
             $this->events->publish(
                 'RefillRequestClosed',
                 'Refill selesai',
-                "{$locked->code} · Gerobak {$locked->cart->code}",
+                "{$locked->code} · Coffee Bike {$locked->cart->code}",
                 ['refill.'.$locked->id, 'user.'.$locked->staff_id, 'kitchen.'.$locked->kitchen_id],
                 [$locked->staff_id],
                 $locked->id,
