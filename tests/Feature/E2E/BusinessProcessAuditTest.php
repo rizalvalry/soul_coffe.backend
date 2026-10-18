@@ -553,7 +553,7 @@ class BusinessProcessAuditTest extends TestCase
             ->set('preview.period', '2026-10')
             ->call('previewPayroll')
             ->assertHasNoErrors()
-            ->assertSee('Tarif BPJS belum diisi dan diverifikasi akuntan');
+            ->assertSee('Tarif BPJS periode ini belum diverifikasi');
         try {
             app(PayrollCalculator::class)->calculate($employee->refresh(), '2026-10');
             $this->fail('Payroll without verified rates must fail closed.');
@@ -568,13 +568,16 @@ class BusinessProcessAuditTest extends TestCase
             'health_employer_bps' => 400, 'health_employee_bps' => 100,
             'jp_wage_cap_minor' => 10000000, 'health_wage_cap_minor' => 12000000,
             'source_note' => 'Tarif sintetis terverifikasi hanya untuk tes',
+            'verified_by' => $employee->id, 'verified_at' => now(),
         ]);
         DB::table('ptkp_rates')->insert([
             'status' => 'TK/0', 'ter_category' => 'A', 'annual_amount_minor' => 54000000,
             'effective_from' => '2026-01-01', 'source_note' => 'Tarif sintetis terverifikasi hanya untuk tes',
+            'verified_by' => $employee->id, 'verified_at' => now(),
         ]);
         DB::table('payroll_ter_versions')->insert([
             'category' => 'A', 'effective_from' => '2026-01-01', 'published_at' => now(),
+            'verified_by' => $employee->id, 'verified_at' => now(),
         ]);
         DB::table('pph21_ter_brackets')->insert([
             'category' => 'A', 'lower_gross_minor' => 0, 'upper_gross_minor' => null,

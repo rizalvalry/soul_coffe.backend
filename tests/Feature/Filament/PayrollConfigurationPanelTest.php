@@ -5,6 +5,7 @@ namespace Tests\Feature\Filament;
 use App\Enums\Role;
 use App\Filament\Pages\PayrollConfiguration;
 use App\Models\User;
+use Database\Seeders\AccountSeeder;
 use Database\Seeders\PayrollConfigurationSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -78,6 +79,7 @@ class PayrollConfigurationPanelTest extends TestCase
 
     public function test_management_can_add_each_regulatory_version_without_replacing_history(): void
     {
+        $this->seed(AccountSeeder::class);
         $this->seed(PayrollConfigurationSeeder::class);
         $this->actingAs(User::factory()->role(Role::MANAGEMENT)->create());
 
@@ -147,6 +149,7 @@ class PayrollConfigurationPanelTest extends TestCase
             ->set('component.name', 'Kasbon Baru')
             ->set('component.kind', 'DEDUCTION')
             ->set('component.taxable', false)
+            ->set('component.account_id', DB::table('accounts')->where('code', '1-1500')->value('id'))
             ->set('component.effective_from', '2026-10-01')
             ->set('component.source_note', 'Synthetic verified fixture')
             ->call('saveComponent')->assertHasNoErrors();

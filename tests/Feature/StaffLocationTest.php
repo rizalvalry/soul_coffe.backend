@@ -180,6 +180,38 @@ class StaffLocationTest extends TestCase
         $this->assertNotNull($queue[0]['arrived_at']);
     }
 
+    public function test_batch_returning_inside_keeps_final_position_without_an_extra_event(): void
+    {
+        $this->cart->kitchen->update(['lat' => -6.18, 'lng' => 106.88, 'geofence_m' => 100]);
+        config(['soul.location_ping_min_interval_seconds' => 45, 'soul.location_ping_min_move_m' => 25]);
+
+        $this->report([['lat' => -6.18, 'lng' => 106.88]])->assertStatus(202);
+        $this->report([
+            ['lat' => -6.17909, 'lng' => 106.88], // Outside, 101 metres from the kitchen.
+            ['lat' => -6.17911, 'lng' => 106.88], // Inside, only 2 metres from the prior ping.
+        ])->assertStatus(202)->assertJsonPath('data.recorded', 2);
+
+        $this->assertSame('-6.1791100', StaffLocationPing::query()->latest('id')->firstOrFail()->lat);
+        $this->assertSame(1, OutboxEvent::query()->where('name', 'CartArrivalChanged')->count());
+        $this->assertNotNull(app(SettlementService::class)->queue()[0]['arrived_at']);
+    }
+
+    public function test_batch_returning_outside_keeps_final_position_without_a_false_arrival(): void
+    {
+        $this->cart->kitchen->update(['lat' => -6.18, 'lng' => 106.88, 'geofence_m' => 100]);
+        config(['soul.location_ping_min_interval_seconds' => 45, 'soul.location_ping_min_move_m' => 25]);
+
+        $this->report([['lat' => -6.2, 'lng' => 106.88]])->assertStatus(202);
+        $this->report([
+            ['lat' => -6.17911, 'lng' => 106.88], // Inside the kitchen geofence.
+            ['lat' => -6.17909, 'lng' => 106.88], // Outside, only 2 metres from the prior ping.
+        ])->assertStatus(202)->assertJsonPath('data.recorded', 2);
+
+        $this->assertSame('-6.1790900', StaffLocationPing::query()->latest('id')->firstOrFail()->lat);
+        $this->assertSame(0, OutboxEvent::query()->where('name', 'CartArrivalChanged')->count());
+        $this->assertNull(app(SettlementService::class)->queue()[0]['arrived_at']);
+    }
+
     public function test_wrong_role_cannot_publish_a_kitchen_arrival(): void
     {
         $this->cart->kitchen->update(['lat' => -6.18, 'lng' => 106.88, 'geofence_m' => 100]);

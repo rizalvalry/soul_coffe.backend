@@ -111,6 +111,7 @@ class JournalResource extends Resource
             ViewAction::make(),
             Action::make('reverse')->label('Balik jurnal')->color('danger')->requiresConfirmation()
                 ->visible(fn (JournalEntry $record): bool => Auth::user()?->role === Role::MANAGEMENT
+                    && ! in_array($record->source_type, ['payroll_run', 'payroll_run_payment_retry', 'payroll_run_accrual_retry'], true)
                     && $record->reverses_entry_id === null && ! $record->reversal()->exists())
                 ->schema([Textarea::make('reason')->label('Alasan')->required()->maxLength(225)])
                 ->action(function (JournalEntry $record, array $data): void {

@@ -1,5 +1,5 @@
 <x-filament-panels::page>
-    <p>Tambah versi baru tiap ada perubahan. Akuntan perlu cek tarif BPJS, PTKP, dan TER sebelum payroll pertama ya. Semua nominal pakai rupiah bulat; tarif pakai basis poin (2% = 200).</p>
+    <p>Tambah versi baru tiap ada perubahan. Cek sumber tarif BPJS, PTKP, TER, dan Pasal 17 dengan akuntan, lalu tandai verified sebelum payroll jalan ya. Semua nominal pakai rupiah bulat; tarif pakai basis poin (2% = 200).</p>
     <p>Riwayat di halaman ini menampilkan 100 versi terbaru per bagian; versi lama tetap tersimpan.</p>
 
     <section class="rounded-xl border p-4">
@@ -57,7 +57,7 @@
                     'bonus_minor' => 'Bonus target (Rp)', 'source_note' => 'Sumber / catatan'],
             ],
             ['title' => 'Jenis Komponen Manual', 'state' => 'component', 'method' => 'saveComponent', 'table' => 'payroll_component_types',
-                'fields' => ['code' => 'Kode', 'name' => 'Nama', 'kind' => 'Jenis', 'taxable' => 'Kena pajak',
+                'fields' => ['code' => 'Kode', 'name' => 'Nama', 'kind' => 'Jenis', 'taxable' => 'Kena pajak', 'account_id' => 'Akun potongan',
                     'effective_from' => 'Berlaku mulai', 'source_note' => 'Sumber / catatan'],
                 'selects' => ['kind' => ['EARNING' => 'Tunjangan / biaya', 'DEDUCTION' => 'Potongan']],
             ],
@@ -80,6 +80,13 @@
                             </select>
                         @elseif ($field === 'taxable')
                             <input type="checkbox" wire:model="{{ $section['state'] }}.{{ $field }}">
+                        @elseif ($field === 'account_id')
+                            <select wire:model="component.account_id" class="rounded border p-2">
+                                <option value="">Pilih akun untuk potongan</option>
+                                @foreach ($this->accountOptions() as $account)
+                                    <option value="{{ $account->id }}">{{ $account->code }} · {{ $account->name }}</option>
+                                @endforeach
+                            </select>
                         @elseif ($field === 'source_note')
                             <textarea wire:model="{{ $section['state'] }}.{{ $field }}" class="rounded border p-2"></textarea>
                         @else
@@ -93,13 +100,18 @@
             </form>
             <div class="overflow-x-auto">
                 <table class="mt-4 w-full text-sm">
-                    <thead><tr>@foreach ($section['fields'] as $label)<th class="p-2 text-left">{{ $label }}</th>@endforeach</tr></thead>
+                    <thead><tr>@foreach ($section['fields'] as $label)<th class="p-2 text-left">{{ $label }}</th>@endforeach @if (in_array($section['table'], ['payroll_settings', 'ptkp_rates'])) <th>Verifikasi</th> @endif</tr></thead>
                     <tbody>
                         @foreach ($this->rows($section['table']) as $row)
                             <tr class="border-t">
                                 @foreach ($section['fields'] as $field => $label)
                                     <td class="p-2">{{ $field === 'taxable' ? ($row->$field ? 'Ya' : 'Tidak') : ($row->$field ?? '—') }}</td>
                                 @endforeach
+                                @if (in_array($section['table'], ['payroll_settings', 'ptkp_rates']))
+                                    <td class="p-2">{{ $row->verified_at ? 'Verified oleh #'.$row->verified_by.' pada '.$row->verified_at : 'Belum verified' }}
+                                        @if (! $row->verified_at)<button type="button" wire:click="verifyVersion('{{ $section['table'] }}', {{ $row->id }})" class="text-primary-600">Verifikasi</button>@endif
+                                    </td>
+                                @endif
                             </tr>
                         @endforeach
                     </tbody>
@@ -121,17 +133,52 @@
                     <button type="submit" class="rounded bg-primary-600 px-4 py-2 text-white">Terbitkan versi TER</button>
                 </form>
                 <table class="mt-3 w-full text-sm">
-                    <thead><tr><th>Kategori</th><th>Berlaku mulai</th><th>Status</th></tr></thead>
+                    <thead><tr><th>Kategori</th><th>Berlaku mulai</th><th>Status</th><th>Verifikasi</th></tr></thead>
                     <tbody>
                         @foreach ($this->terVersions() as $version)
                             <tr class="border-t"><td>{{ $version->category }}</td><td>{{ $version->effective_from }}</td>
-                                <td>{{ $version->published_at ? 'Terbit' : 'Draf' }}</td></tr>
+                                <td>{{ $version->published_at ? 'Terbit' : 'Draf' }}</td>
+                                <td>{{ $version->verified_at ? 'Verified oleh #'.$version->verified_by.' pada '.$version->verified_at : 'Belum verified' }}
+                                    @if ($version->published_at && ! $version->verified_at)<button type="button" wire:click="verifyVersion('payroll_ter_versions', {{ $version->id }})" class="text-primary-600">Verifikasi</button>@endif
+                                </td></tr>
                         @endforeach
                     </tbody>
                 </table>
             @endif
         </section>
     @endforeach
+
+    <section class="rounded-xl border p-4">
+        <h2 class="text-lg font-semibold">Tarif Pasal 17 Tahunan</h2>
+        <label>Catatan verifikasi <input type="text" wire:model="verificationNote" class="rounded border p-2"></label>
+        @error('verificationNote') <span class="text-red-600">{{ $message }}</span> @enderror
+        <form wire:submit="saveAnnualVersion" class="flex gap-3">
+            <label>Berlaku mulai <input type="date" wire:model="annualVersion.effective_from" class="rounded border p-2"></label>
+            <label>Sumber regulasi <input type="text" wire:model="annualVersion.source_note" class="rounded border p-2"></label>
+            <button type="submit">Tambah versi</button>
+        </form>
+        <form wire:submit="saveAnnualBracket" class="flex flex-wrap gap-3">
+            <label>Versi <select wire:model="annualBracket.version_id" class="rounded border p-2"><option value="">Pilih</option>
+                @foreach ($this->rows('payroll_annual_tax_versions') as $version)<option value="{{ $version->id }}">{{ $version->effective_from }}</option>@endforeach
+            </select></label>
+            <label>Dasar mulai (Rp) <input type="number" wire:model="annualBracket.lower_taxable_minor" class="rounded border p-2"></label>
+            <label>Sampai (kosong = tanpa batas) <input type="number" wire:model="annualBracket.upper_taxable_minor" class="rounded border p-2"></label>
+            <label>Tarif (bps) <input type="number" wire:model="annualBracket.rate_bps" class="rounded border p-2"></label>
+            <button type="submit">Tambah rentang</button>
+        </form>
+        @foreach ($this->rows('payroll_annual_tax_versions') as $version)
+            <p>{{ $version->effective_from }} · {{ $version->source_note }} · {{ $version->verified_at ? 'Verified oleh #'.$version->verified_by.' pada '.$version->verified_at : 'Belum verified' }}
+                @if (! $version->verified_at)<button type="button" wire:click="verifyVersion('payroll_annual_tax_versions', {{ $version->id }})">Verifikasi</button>@endif
+            </p>
+            <table class="w-full text-sm"><thead><tr><th>Dasar mulai</th><th>Dasar sampai</th><th>Tarif (bps)</th></tr></thead>
+                <tbody>@foreach ($this->annualBrackets($version->id) as $bracket)
+                    <tr><td>{{ number_format($bracket->lower_taxable_minor, 0, ',', '.') }}</td>
+                        <td>{{ $bracket->upper_taxable_minor === null ? 'Tanpa batas' : number_format($bracket->upper_taxable_minor, 0, ',', '.') }}</td>
+                        <td>{{ $bracket->rate_bps }}</td></tr>
+                @endforeach</tbody>
+            </table>
+        @endforeach
+    </section>
 
     <section class="rounded-xl border p-4">
         <h2 class="text-lg font-semibold">Komponen Karyawan per Periode</h2>
@@ -169,11 +216,15 @@
             <div class="md:col-span-3"><button type="submit" class="rounded bg-primary-600 px-4 py-2 text-white">Tambah komponen</button></div>
         </form>
         <table class="mt-4 w-full text-sm">
-            <thead><tr><th>Karyawan</th><th>Periode</th><th>Komponen</th><th>Nominal</th></tr></thead>
+            <thead><tr><th>Karyawan</th><th>Periode</th><th>Komponen</th><th>Nominal</th><th>Ubah saat DRAFT</th></tr></thead>
             <tbody>
                 @foreach ($this->entryRows() as $row)
                     <tr class="border-t"><td>{{ $row->user?->name }}</td><td>{{ $row->period_start->format('Y-m') }}</td>
-                        <td>{{ $row->type?->name }}</td><td>{{ $row->amount_minor }}</td></tr>
+                        <td>{{ $row->type?->name }}</td><td>{{ $row->amount_minor }}</td>
+                        <td><input type="number" min="1" wire:model="entryEdits.{{ $row->id }}.amount_minor" placeholder="Nominal baru" class="w-36 rounded border p-1">
+                            <input type="text" wire:model="entryEdits.{{ $row->id }}.note" placeholder="Catatan" class="w-32 rounded border p-1">
+                            <button type="button" wire:click="saveEditedEntry({{ $row->id }})">Simpan</button>
+                        </td></tr>
                 @endforeach
             </tbody>
         </table>

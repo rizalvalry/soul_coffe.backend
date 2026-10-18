@@ -5,15 +5,16 @@ namespace App\Filament\Pages;
 use App\Models\AuditLog;
 use App\Models\PayrollComponentEntry;
 use App\Models\PayrollComponentType;
+use App\Models\PayrollRun;
 use App\Models\User;
 use App\Services\Menu\MenuLabels;
-use App\Services\PayrollCalculator;
+use App\Services\PayrollRunService;
 use BackedEnum;
-use DomainException;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
@@ -49,6 +50,14 @@ class PayrollConfiguration extends Page
 
     public array $entry = [];
 
+    public array $annualVersion = [];
+
+    public array $annualBracket = [];
+
+    public array $entryEdits = [];
+
+    public string $verificationNote = '';
+
     public array $preview = [];
 
     public ?array $previewResult = null;
@@ -76,12 +85,14 @@ class PayrollConfiguration extends Page
         $this->ter = ['category' => '', 'lower_gross_minor' => 0, 'upper_gross_minor' => null, 'rate_bps' => 0, 'effective_from' => '', 'source_note' => ''];
         $this->terPublication = ['category' => '', 'effective_from' => ''];
         $this->incentive = ['effective_from' => '', 'amount_per_cup_minor' => 0, 'target_cups' => 0, 'bonus_minor' => 0, 'source_note' => ''];
-        $this->component = ['code' => '', 'name' => '', 'kind' => '', 'taxable' => false, 'effective_from' => '', 'source_note' => ''];
+        $this->component = ['code' => '', 'name' => '', 'kind' => '', 'taxable' => false, 'account_id' => '', 'effective_from' => '', 'source_note' => ''];
         $this->entry = ['user_id' => '', 'component_type_id' => '', 'period_start' => '', 'request_key' => (string) Str::uuid(), 'amount_minor' => '', 'note' => ''];
+        $this->annualVersion = ['effective_from' => '', 'source_note' => ''];
+        $this->annualBracket = ['version_id' => '', 'lower_taxable_minor' => 0, 'upper_taxable_minor' => null, 'rate_bps' => 0];
         $this->preview = ['user_id' => '', 'period' => now()->format('Y-m')];
     }
 
-    public function previewPayroll(PayrollCalculator $calculator): void
+    public function previewPayroll(PayrollRunService $payroll): void
     {
         Gate::authorize('manage-payroll');
         $data = $this->validate([
@@ -92,9 +103,9 @@ class PayrollConfiguration extends Page
         $this->previewResult = null;
         $this->previewError = null;
         try {
-            $this->previewResult = $calculator->calculate(User::query()->findOrFail($data['user_id']), $data['period']);
-        } catch (DomainException $e) {
-            $this->previewError = $e->getMessage();
+            $this->previewResult = $payroll->preview(User::query()->findOrFail($data['user_id']), $data['period']);
+        } catch (ValidationException $e) {
+            $this->previewError = collect($e->errors())->flatten()->first() ?? $e->getMessage();
         }
     }
 
@@ -195,6 +206,7 @@ class PayrollConfiguration extends Page
                 throw ValidationException::withMessages(['terPublication.effective_from' => 'Rentang TER harus berakhir tanpa batas atas.']);
             }
             DB::table('payroll_ter_versions')->where('id', $version->id)->update(['published_at' => now(), 'updated_at' => now()]);
+            DB::table('payroll_ter_versions')->where('id', $version->id)->update(['source_note' => $rows->first()->source_note]);
             $this->audit('payroll_ter_version_published', 'payroll_ter_versions', $version->id, $data);
         });
         $this->success();
@@ -222,12 +234,20 @@ class PayrollConfiguration extends Page
             'component.name' => ['required', 'string', 'max:255'],
             'component.kind' => ['required', Rule::in(['EARNING', 'DEDUCTION'])],
             'component.taxable' => ['required', 'boolean'],
+            'component.account_id' => ['nullable', 'integer', 'exists:accounts,id'],
             'component.effective_from' => ['required', 'date_format:Y-m-d'],
             'component.source_note' => ['required', 'string', 'min:3', 'max:2000'],
         ])['component'];
         if ($data['kind'] === 'DEDUCTION' && $data['taxable']) {
             throw ValidationException::withMessages(['component.taxable' => 'Potongan tidak dapat ditandai sebagai penghasilan kena pajak.']);
         }
+        if ($data['kind'] === 'DEDUCTION' && ! $data['account_id']) {
+            throw ValidationException::withMessages(['component.account_id' => 'Pilih akun untuk potongan ini ya.']);
+        }
+        if ($data['code'] === 'ADVANCE' && DB::table('accounts')->where('id', $data['account_id'])->value('code') !== '1-1500') {
+            throw ValidationException::withMessages(['component.account_id' => 'Kasbon harus masuk ke Piutang Karyawan.']);
+        }
+        $data['account_id'] = $data['account_id'] ?: null;
         if (DB::table('payroll_component_types')->where('code', $data['code'])->where('effective_from', $data['effective_from'])->exists()) {
             throw ValidationException::withMessages(['component.effective_from' => 'Versi jenis komponen untuk tanggal ini sudah ada.']);
         }
@@ -259,6 +279,7 @@ class PayrollConfiguration extends Page
             return;
         }
         $user = User::query()->findOrFail($data['user_id']);
+        $this->assertDraftPeriod($data['period_start']);
         if (! $user->employeeProfile?->payroll_active) {
             throw ValidationException::withMessages(['entry.user_id' => 'Karyawan belum aktif untuk payroll.']);
         }
@@ -273,6 +294,7 @@ class PayrollConfiguration extends Page
             throw ValidationException::withMessages(['entry.component_type_id' => 'Pilih versi komponen yang berlaku untuk periode ini.']);
         }
         DB::transaction(function () use ($data): void {
+            $this->assertDraftPeriod($data['period_start']);
             $entry = PayrollComponentEntry::query()->firstOrCreate(
                 ['request_key' => $data['request_key']],
                 [...$data, 'created_by' => Auth::id()],
@@ -296,7 +318,7 @@ class PayrollConfiguration extends Page
     {
         Gate::authorize('manage-payroll');
         if (! in_array($table, ['payroll_settings', 'ptkp_rates', 'pph21_ter_brackets',
-            'rider_incentive_rules', 'payroll_component_types'], true)) {
+            'rider_incentive_rules', 'payroll_component_types', 'payroll_annual_tax_versions'], true)) {
             return [];
         }
 
@@ -334,6 +356,143 @@ class PayrollConfiguration extends Page
         return PayrollComponentEntry::query()->with(['type', 'user'])->orderByDesc('id')->limit(100)->get()->all();
     }
 
+    public function accountOptions(): array
+    {
+        Gate::authorize('manage-payroll');
+
+        return DB::table('accounts')->where('is_active', true)->orderBy('code')->get(['id', 'code', 'name'])->all();
+    }
+
+    public function annualBrackets(int $versionId): array
+    {
+        Gate::authorize('manage-payroll');
+
+        return DB::table('payroll_annual_tax_brackets')->where('version_id', $versionId)
+            ->orderBy('lower_taxable_minor')->get()->all();
+    }
+
+    public function saveAnnualVersion(): void
+    {
+        Gate::authorize('manage-payroll');
+        $data = $this->validate([
+            'annualVersion.effective_from' => ['required', 'date_format:Y-m-d', Rule::unique('payroll_annual_tax_versions', 'effective_from')],
+            'annualVersion.source_note' => ['required', 'string', 'min:3', 'max:2000'],
+        ])['annualVersion'];
+        $this->append('payroll_annual_tax_versions', $data);
+        $this->annualVersion['effective_from'] = '';
+        $this->success();
+    }
+
+    public function saveAnnualBracket(): void
+    {
+        Gate::authorize('manage-payroll');
+        $data = $this->validate([
+            'annualBracket.version_id' => ['required', 'integer', 'exists:payroll_annual_tax_versions,id'],
+            'annualBracket.lower_taxable_minor' => ['required', 'integer', 'min:0'],
+            'annualBracket.upper_taxable_minor' => ['nullable', 'integer', 'gte:annualBracket.lower_taxable_minor'],
+            'annualBracket.rate_bps' => ['required', 'integer', 'between:0,10000'],
+        ])['annualBracket'];
+        DB::transaction(function () use ($data): void {
+            $version = DB::table('payroll_annual_tax_versions')->where('id', $data['version_id'])->lockForUpdate()->first();
+            if ($version->verified_at !== null) {
+                throw ValidationException::withMessages(['annualBracket.version_id' => 'Versi ini sudah diverifikasi. Buat versi baru ya.']);
+            }
+            $data['upper_taxable_minor'] = $data['upper_taxable_minor'] === '' ? null : $data['upper_taxable_minor'];
+            $overlap = DB::table('payroll_annual_tax_brackets')->where('version_id', $version->id)
+                ->where(fn ($query) => $query->whereNull('upper_taxable_minor')
+                    ->orWhere('upper_taxable_minor', '>=', $data['lower_taxable_minor']))
+                ->when($data['upper_taxable_minor'] !== null, fn ($query) => $query->where('lower_taxable_minor', '<=', $data['upper_taxable_minor']))
+                ->exists();
+            if ($overlap) {
+                throw ValidationException::withMessages(['annualBracket.lower_taxable_minor' => 'Rentang Pasal 17 bertumpuk.']);
+            }
+            $this->append('payroll_annual_tax_brackets', $data);
+        });
+        $this->success();
+    }
+
+    public function verifyVersion(string $table, int $id): void
+    {
+        Gate::authorize('manage-payroll');
+        if (! in_array($table, ['payroll_settings', 'ptkp_rates', 'payroll_ter_versions', 'payroll_annual_tax_versions'], true)) {
+            abort(404);
+        }
+        DB::transaction(function () use ($table, $id): void {
+            $version = DB::table($table)->where('id', $id)->lockForUpdate()->first();
+            if (! $version) {
+                abort(404);
+            }
+            if ($version->verified_at !== null) {
+                return;
+            }
+            if ($table === 'payroll_ter_versions' && $version->published_at === null) {
+                throw ValidationException::withMessages(['verificationNote' => 'Terbitkan rentang TER lengkap dulu ya.']);
+            }
+            if ($table === 'payroll_annual_tax_versions') {
+                $brackets = DB::table('payroll_annual_tax_brackets')->where('version_id', $id)->orderBy('lower_taxable_minor')->get();
+                $next = 0;
+                foreach ($brackets as $bracket) {
+                    if ($next === null || (int) $bracket->lower_taxable_minor !== $next) {
+                        throw ValidationException::withMessages(['verificationNote' => 'Rentang Pasal 17 harus lengkap tanpa celah.']);
+                    }
+                    $next = $bracket->upper_taxable_minor === null ? null : (int) $bracket->upper_taxable_minor + 1;
+                }
+                if ($brackets->isEmpty() || $next !== null) {
+                    throw ValidationException::withMessages(['verificationNote' => 'Rentang Pasal 17 harus mulai dari nol dan berakhir tanpa batas atas.']);
+                }
+            }
+            DB::table($table)->where('id', $id)->update([
+                'verified_by' => Auth::id(), 'verified_at' => now(),
+                'verification_note' => trim($this->verificationNote) ?: null, 'updated_at' => now(),
+            ]);
+            $this->audit('payroll_configuration_verified', $table, $id, ['verified' => true]);
+        });
+        $this->success();
+    }
+
+    public function updateEntry(int $id, int $amountMinor, ?string $note = null): void
+    {
+        Gate::authorize('manage-payroll');
+        if ($amountMinor < 1) {
+            throw ValidationException::withMessages(['amount' => 'Nominal harus lebih dari nol.']);
+        }
+        DB::transaction(function () use ($id, $amountMinor, $note): void {
+            $period = PayrollComponentEntry::query()->whereKey($id)->value('period_start');
+            if (! $period) {
+                abort(404);
+            }
+            $this->assertDraftPeriod($period);
+            $entry = PayrollComponentEntry::query()->whereKey($id)->lockForUpdate()->firstOrFail();
+            $before = ['amount_minor' => $entry->amount_minor, 'note' => $entry->note];
+            $entry->update(['amount_minor' => $amountMinor, 'note' => $note]);
+            $this->audit('payroll_component_entry_updated', PayrollComponentEntry::class, $id, [
+                '_payroll_ciphertext' => Crypt::encryptString(json_encode([
+                    'before' => $before,
+                    'after' => ['amount_minor' => $amountMinor, 'note' => $note],
+                ], JSON_THROW_ON_ERROR)),
+            ]);
+        });
+        $this->success();
+    }
+
+    public function saveEditedEntry(int $id): void
+    {
+        Gate::authorize('manage-payroll');
+        $data = $this->validate([
+            'entryEdits.'.$id.'.amount_minor' => ['required', 'integer', 'min:1'],
+            'entryEdits.'.$id.'.note' => ['nullable', 'string', 'max:255'],
+        ])['entryEdits'][$id];
+        $this->updateEntry($id, (int) $data['amount_minor'], $data['note'] ?? null);
+    }
+
+    private function assertDraftPeriod(string $periodStart): void
+    {
+        $run = PayrollRun::query()->whereDate('period_start', $periodStart)->lockForUpdate()->first();
+        if ($run && $run->status !== 'DRAFT') {
+            throw ValidationException::withMessages(['entry.period_start' => 'Run sudah dikunci. Komponennya tidak bisa diubah.']);
+        }
+    }
+
     private static function bpjsRateFields(): array
     {
         $fields = [];
@@ -357,7 +516,8 @@ class PayrollConfiguration extends Page
     {
         if ($subject === PayrollComponentEntry::class) {
             // Audit Trail is shared with Administrator. No employee payroll metadata belongs there.
-            $data = ['payroll_detail' => '[redacted]'];
+            $data = ['payroll_detail' => '[redacted]']
+                + (isset($data['_payroll_ciphertext']) ? ['_payroll_ciphertext' => $data['_payroll_ciphertext']] : []);
         }
         AuditLog::query()->create([
             'actor_id' => Auth::id(), 'actor_role' => Auth::user()?->role?->value,
