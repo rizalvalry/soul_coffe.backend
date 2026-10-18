@@ -26,8 +26,8 @@ class StoreSaleRequest extends FormRequest
     {
         return [
             'uuid' => ['required', 'uuid'],
-            // Kept optional at validation so a previously accepted UUID can still be replayed
-            // by an older client. SaleService requires it before creating a new sale.
+            // Older clients omit this field; new sales then use today's active cart.
+            // UUID replays return the previously accepted sale regardless of this field.
             'cart_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
 
             'lines' => ['required', 'array', 'min:1', 'max:50'],

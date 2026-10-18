@@ -27,9 +27,9 @@ use RuntimeException;
  *    sale from someone who never absen would put revenue against a person the attendance sheet
  *    says was not working — two reports contradicting each other about the same morning.
  *
- * 2. **A cart, from today's Add Stock.** The cups leave a specific cart. A delayed phone
- *    request must name the cart it recorded against, and the server checks that it is still
- *    the Rider's active assignment before touching stock.
+ * 2. **A cart, from today's Add Stock.** The cups leave a specific cart. Current clients
+ *    send the cart captured with the sale; the server checks that it is still the Rider's
+ *    active assignment. Older clients omit it and use the active cart when submitted.
  *
  * 3. **Stock must cover the sale.** The ledger is append-only (R6) and stock is SUM(qty_delta),
  *    so an oversell would leave the cart permanently negative and quietly poison every total
@@ -109,7 +109,7 @@ class SaleService
             ], 403));
         }
 
-        if ($submittedCartId !== (int) $assignment->cart_id) {
+        if ($submittedCartId !== null && $submittedCartId !== (int) $assignment->cart_id) {
             throw new HttpResponseException(response()->json([
                 'code' => 'CART_CHANGED',
                 'message' => 'Gerobak kamu sudah berubah. Cek transaksi ini bareng Administrator ya.',

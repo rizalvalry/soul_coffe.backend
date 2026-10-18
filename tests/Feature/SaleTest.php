@@ -659,25 +659,25 @@ class SaleTest extends TestCase
         $this->assertSame(5, $this->cartStock($this->coffee));
     }
 
-    public function test_new_sale_without_origin_cart_is_rejected_but_accepted_uuid_can_replay(): void
+    public function test_legacy_sale_without_origin_cart_uses_active_cart_and_can_replay(): void
     {
         $this->clockIn();
         $this->stockCart($this->coffee, 5);
         $uuid = (string) Str::uuid();
         $payload = ['uuid' => $uuid, 'lines' => [['product_id' => $this->coffee->id, 'qty' => 1]]];
-        $this->actingAs($this->staff, 'sanctum')->withHeader('Idempotency-Key', $uuid)
-            ->postJson('/api/v1/sales', $payload)
-            ->assertStatus(422)->assertJsonPath('code', 'CART_CHANGED');
-        $this->assertDatabaseCount('sales', 0);
-
         $saleId = $this->actingAs($this->staff, 'sanctum')->withHeader('Idempotency-Key', $uuid)
-            ->postJson('/api/v1/sales', $payload + ['cart_id' => $this->cart->id])
-            ->assertCreated()->json('data.id');
-        $this->actingAs($this->staff, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson('/api/v1/sales', $payload)
+            ->assertCreated()->json('data.id');
+        $this->assertDatabaseHas('sales', ['id' => $saleId, 'cart_id' => $this->cart->id]);
+        $this->actingAs($this->staff, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/sales', $payload + ['cart_id' => null])
             ->assertCreated()->assertJsonPath('data.id', $saleId);
-        $this->assertDatabaseCount('sales', 1);
-        $this->assertSame(4, $this->cartStock($this->coffee));
+
+        $secondSaleId = $this->sell([['product_id' => $this->coffee->id, 'qty' => 1]], ['cart_id' => null])
+            ->assertCreated()->json('data.id');
+        $this->assertDatabaseHas('sales', ['id' => $secondSaleId, 'cart_id' => $this->cart->id]);
+        $this->assertDatabaseCount('sales', 2);
+        $this->assertSame(3, $this->cartStock($this->coffee));
     }
 
     /**
