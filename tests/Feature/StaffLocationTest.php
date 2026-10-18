@@ -3,15 +3,21 @@
 namespace Tests\Feature;
 
 use App\Enums\Role;
+use App\Events\SoulEvent;
+use App\Models\AppNotification;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\Location;
+use App\Models\OutboxEvent;
 use App\Models\StaffAssignment;
 use App\Models\StaffLocationPing;
 use App\Models\User;
+use App\Services\SettlementService;
 use App\Services\StaffLocationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
@@ -103,6 +109,83 @@ class StaffLocationTest extends TestCase
         $this->report([['lat' => -6.1, 'lng' => 106.8]], as: $barista)->assertStatus(403);
 
         $this->assertSame(0, StaffLocationPing::query()->count());
+    }
+
+    public function test_kitchen_status_changes_publish_one_finance_and_management_event_per_transition(): void
+    {
+        $this->cart->kitchen->update(['lat' => -6.18, 'lng' => 106.88, 'geofence_m' => 100]);
+        Event::fake([SoulEvent::class]);
+
+        $this->report([['lat' => -6.18, 'lng' => 106.88]])->assertStatus(202);
+        $arrival = OutboxEvent::query()->where('name', 'CartArrivalChanged')->sole();
+        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT'], $arrival->payload_json['channels']);
+        $this->assertSame('ARRIVED', $arrival->payload_json['status']);
+        $this->assertSame($this->cart->id, $arrival->payload_json['cart_id']);
+        $this->assertSame(StaffLocationPing::query()->sole()->id, $arrival->payload_json['source_id']);
+        $this->assertSame(0, AppNotification::query()->where('type', 'CartArrivalChanged')->count());
+        Event::assertDispatchedTimes(SoulEvent::class, 1);
+
+        $this->report([['lat' => -6.18, 'lng' => 106.88]])->assertStatus(202)->assertJsonPath('data.recorded', 0);
+        $this->report([['lat' => -6.18001, 'lng' => 106.88]])->assertStatus(202);
+        $this->assertSame(1, OutboxEvent::query()->where('name', 'CartArrivalChanged')->count());
+
+        $this->report([['lat' => -6.2, 'lng' => 106.88]])->assertStatus(202);
+        $this->assertSame('DEPARTED', OutboxEvent::query()->where('name', 'CartArrivalChanged')->latest('id')->firstOrFail()->payload_json['status']);
+        $this->report([['lat' => -6.18, 'lng' => 106.88]])->assertStatus(202);
+        $this->assertSame(3, OutboxEvent::query()->where('name', 'CartArrivalChanged')->count());
+    }
+
+    public function test_kitchen_arrival_is_dispatched_only_after_the_outer_commit(): void
+    {
+        $this->cart->kitchen->update(['lat' => -6.18, 'lng' => 106.88, 'geofence_m' => 100]);
+        Event::fake([SoulEvent::class]);
+
+        DB::transaction(function (): void {
+            $this->report([['lat' => -6.18, 'lng' => 106.88]])->assertStatus(202);
+            $this->assertSame(1, OutboxEvent::query()->where('name', 'CartArrivalChanged')->count());
+            Event::assertNotDispatched(SoulEvent::class);
+        });
+
+        Event::assertDispatchedTimes(SoulEvent::class, 1);
+    }
+
+    public function test_a_small_geofence_crossing_is_kept_even_below_the_normal_movement_filter(): void
+    {
+        $this->cart->kitchen->update(['lat' => -6.18, 'lng' => 106.88, 'geofence_m' => 100]);
+        config(['soul.location_ping_min_interval_seconds' => 45, 'soul.location_ping_min_move_m' => 25]);
+
+        $this->report([['lat' => -6.17909, 'lng' => 106.88]])
+            ->assertStatus(202)->assertJsonPath('data.recorded', 1);
+        $this->assertSame(0, OutboxEvent::query()->where('name', 'CartArrivalChanged')->count());
+        $this->report([['lat' => -6.17911, 'lng' => 106.88]])
+            ->assertStatus(202)->assertJsonPath('data.recorded', 1);
+        $this->assertSame(2, StaffLocationPing::query()->count());
+        $this->assertSame('ARRIVED', OutboxEvent::query()->where('name', 'CartArrivalChanged')->sole()->payload_json['status']);
+    }
+
+    public function test_retrying_a_mixed_location_batch_does_not_repeat_arrival_events(): void
+    {
+        $this->cart->kitchen->update(['lat' => -6.18, 'lng' => 106.88, 'geofence_m' => 100]);
+        $batch = [
+            ['lat' => -6.2, 'lng' => 106.88],
+            ['lat' => -6.18, 'lng' => 106.88],
+        ];
+
+        $this->report($batch)->assertStatus(202);
+        $this->report($batch)->assertStatus(202);
+
+        $this->assertSame(1, OutboxEvent::query()->where('name', 'CartArrivalChanged')->count());
+        $queue = app(SettlementService::class)->queue();
+        $this->assertSame($this->cart->id, $queue[0]['cart_id']);
+        $this->assertNotNull($queue[0]['arrived_at']);
+    }
+
+    public function test_wrong_role_cannot_publish_a_kitchen_arrival(): void
+    {
+        $this->cart->kitchen->update(['lat' => -6.18, 'lng' => 106.88, 'geofence_m' => 100]);
+        $finance = User::factory()->role(Role::FINANCE)->create();
+        $this->report([['lat' => -6.18, 'lng' => 106.88]], as: $finance)->assertStatus(403);
+        $this->assertSame(0, OutboxEvent::query()->where('name', 'CartArrivalChanged')->count());
     }
 
     public function test_a_ping_without_coordinates_is_a_validation_error(): void
