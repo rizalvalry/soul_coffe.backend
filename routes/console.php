@@ -40,23 +40,14 @@ Schedule::command('soul:prune-location-pings')
     ->dailyAt('03:10')
     ->withoutOverlapping();
 
-/*
- * Drains whatever the inline path could not deliver.
- *
- * Realtime does NOT depend on this: EventPublisher::broadcast() pushes to Pusher inline, right
- * after the transaction commits, and only falls back to the queue when that HTTP call throws. So
- * this worker exists for the outage case — a Pusher blip, a DNS failure — not for the happy path.
- * That distinction matters on this host, which has no supervisor, no systemd, and no `crontab`
- * binary, so the single cron entry that drives the scheduler must be added through hPanel by hand
- * and may simply be absent.
- *
- * Registering the worker HERE rather than as its own cron entry means that one hPanel entry
- * covers everything — a second entry is one more thing to forget on the next host.
- *
- * `--stop-when-empty` exits as soon as the backlog clears instead of idling for a minute, and
- * `--max-time=55` guarantees the process is gone before the next minute's run, so
- * `withoutOverlapping` never has to arbitrate between two live workers.
- */
+// Recover committed rows whose queue insert failed or whose worker died before delivery.
+// The command retries at most 10 rows per minute; its row lock prevents overlapping sends.
+Schedule::command('outbox:recover')
+    ->everyMinute()
+    ->withoutOverlapping(2)
+    ->onOneServer();
+
+// One hPanel scheduler entry starts this short-lived worker each minute on shared hosting.
 Schedule::command('queue:work --stop-when-empty --max-time=55 --tries=3')
     ->everyMinute()
-    ->withoutOverlapping();
+    ->withoutOverlapping(5);

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\MovementType;
 use App\Enums\Role;
 use App\Events\SoulEvent;
+use App\Jobs\PublishOutboxEvent;
 use App\Models\AppNotification;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
@@ -21,8 +22,10 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
+use Tests\Support\FailingBroadcaster;
 use Tests\TestCase;
 
 /**
@@ -175,8 +178,26 @@ class SaleTest extends TestCase
         $this->assertSame(Carbon::today()->toDateString(), $payload['operating_date']);
         $this->assertSame($saleId, $payload['source_id']);
         $this->assertSame([], array_intersect(['total_amount_minor', 'cash', 'qris', 'transfer', 'variance'], array_keys($payload)));
-        $this->assertNotNull($event->published_at);
+        $this->assertNull($event->published_at);
+        (new PublishOutboxEvent($event->id))->handle();
+        $this->assertNotNull($event->fresh()->published_at);
         Event::assertDispatched(SoulEvent::class, fn (SoulEvent $sent): bool => $sent->payload['event_id'] === $event->event_id);
+    }
+
+    public function test_sale_request_succeeds_while_pusher_times_out_in_queued_job(): void
+    {
+        $this->clockIn();
+        $this->stockCart($this->coffee, 10);
+        Queue::fake();
+        FailingBroadcaster::activate();
+
+        $this->sell([['product_id' => $this->coffee->id, 'qty' => 1]])->assertCreated();
+
+        $row = OutboxEvent::query()->where('name', 'SaleRecorded')->sole();
+        $this->assertNull($row->published_at);
+        Queue::assertPushed(PublishOutboxEvent::class);
+        $this->expectExceptionMessage('pusher timeout');
+        (new PublishOutboxEvent($row->id))->handle();
     }
 
     public function test_rolled_back_sale_has_no_outbox_row_or_broadcast(): void

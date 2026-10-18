@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\MovementType;
 use App\Enums\Role;
 use App\Events\SoulEvent;
+use App\Jobs\PublishOutboxEvent;
 use App\Models\Account;
 use App\Models\AccountingPeriod;
 use App\Models\AppNotification;
@@ -32,8 +33,10 @@ use Database\Seeders\AccountSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Tests\Support\FailingBroadcaster;
 use Tests\TestCase;
 
 /**
@@ -176,7 +179,9 @@ class SettlementTest extends TestCase
         $this->assertSame(Carbon::today()->toDateString(), $recorded->payload_json['operating_date']);
         $this->assertSame($settlementId, $recorded->payload_json['source_id']);
         $this->assertSame([], array_intersect(['cash', 'qris', 'transfer', 'variance'], array_keys($recorded->payload_json)));
-        $this->assertNotNull($recorded->published_at);
+        $this->assertNull($recorded->published_at);
+        (new PublishOutboxEvent($recorded->id))->handle();
+        $this->assertNotNull($recorded->fresh()->published_at);
         Event::assertDispatched(SoulEvent::class, fn (SoulEvent $event): bool => $event->payload['event_id'] === $recorded->event_id);
 
         $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
@@ -189,12 +194,32 @@ class SettlementTest extends TestCase
         $this->assertSame($this->cart->id, $approved->payload_json['cart_id']);
         $this->assertSame(Carbon::today()->toDateString(), $approved->payload_json['operating_date']);
         $this->assertSame($settlementId, $approved->payload_json['source_id']);
-        $this->assertNotNull($approved->published_at);
+        $this->assertNull($approved->published_at);
+        (new PublishOutboxEvent($approved->id))->handle();
+        $this->assertNotNull($approved->fresh()->published_at);
         Event::assertDispatched(SoulEvent::class, fn (SoulEvent $event): bool => $event->payload['event_id'] === $approved->event_id);
 
         $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson("/api/v1/settlements/{$settlementId}/approve", [])->assertStatus(422);
         $this->assertSame(1, OutboxEvent::query()->where('name', 'SettlementApproved')->count());
+    }
+
+    public function test_settlement_request_succeeds_while_pusher_times_out_in_queued_job(): void
+    {
+        $this->issue(10);
+        Queue::fake();
+        FailingBroadcaster::activate();
+
+        $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', [
+                'cart_id' => $this->cart->id, 'cash' => 0, 'qris' => 0, 'transfer' => 0,
+            ])->assertCreated();
+
+        $row = OutboxEvent::query()->where('name', 'SettlementRecorded')->sole();
+        $this->assertNull($row->published_at);
+        Queue::assertPushed(PublishOutboxEvent::class);
+        $this->expectExceptionMessage('pusher timeout');
+        (new PublishOutboxEvent($row->id))->handle();
     }
 
     // ── What Finance is told before typing anything ──────────────────────
@@ -452,7 +477,9 @@ class SettlementTest extends TestCase
             $channels,
             $outbox->payload_json['channels'],
         );
-        $this->assertNotNull($outbox->published_at);
+        $this->assertNull($outbox->published_at);
+        (new PublishOutboxEvent($outbox->id))->handle();
+        $this->assertNotNull($outbox->fresh()->published_at);
         Event::assertDispatched(SoulEvent::class, fn (SoulEvent $event): bool => $event->payload['event_id'] === $outbox->event_id
             && $event->payload['status'] === 'VARIANCE_FLAGGED'
             && $event->channels === $channels);

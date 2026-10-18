@@ -38,6 +38,21 @@ php artisan reverb:start      # WebSocket server (requirement 3)
 php artisan queue:work        # outbox publishing, notifications, ledger retries
 ```
 
+On Hostinger shared hosting, create one **hPanel Cron Jobs** entry with schedule `* * * * *`
+and this command (replace the PHP binary and application path with the paths shown by hPanel):
+
+```text
+/usr/bin/php /home/<user>/domains/<domain>/public_html/artisan schedule:run >> /home/<user>/domains/<domain>/public_html/storage/logs/scheduler.log 2>&1
+```
+
+The Laravel scheduler runs `outbox:recover` and a short-lived `queue:work` every minute. Set
+`QUEUE_CONNECTION=database`; `OUTBOX_RECOVERY_AGE_MINUTES` defaults to `5`. Pusher delivery is
+queued after commit, so the HTTP request does not wait for Pusher. The scheduler retries up to
+10 unpublished rows older than the recovery age each minute; already published rows are skipped.
+This cron entry is needed because the Hostinger shell has no `crontab` binary or resident worker.
+Check and rotate `storage/logs/scheduler.log` alongside the application logs. On a VPS, the
+resident queue worker must consume the configured `QUEUE_CONNECTION` used by the publisher.
+
 ## Production deployment
 
 ### Employee roster (T-006)
@@ -145,7 +160,7 @@ demo, but requirement 3 is not met. A small VPS is the right target if realtime 
    connection who taps twice must not create two requests.
 
 9. **Events are written to `outbox_events` inside the state-change transaction** and published by
-   the queue worker, so restarting Reverb loses no notifications.
+   the queue worker after commit. The scheduler recovers unpublished rows after a worker crash.
 
 ## Sign-in credentials: password, then PIN
 
