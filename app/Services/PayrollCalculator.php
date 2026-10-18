@@ -12,6 +12,8 @@ use InvalidArgumentException;
 
 class PayrollCalculator
 {
+    public function __construct(private readonly RiderCommissionService $commissions) {}
+
     /**
      * Monthly TER estimate. December still needs the annual reconciliation in T-013.
      * All money is integer rupiah; every percentage rounds half up to one rupiah.
@@ -42,24 +44,11 @@ class PayrollCalculator
 
         $cups = 0;
         $incentive = 0;
-        // SaleService permits only STAFF to record a cart sale. The sale is the historical
-        // evidence of Rider work, even if that person's role changes before payroll runs.
-        $cups = (int) DB::table('sale_lines')
-            ->join('sales', 'sales.id', '=', 'sale_lines.sale_id')
-            ->join('products', 'products.id', '=', 'sale_lines.product_id')
-            ->where('sales.staff_id', $user->id)
-            ->where('products.unit', 'cup')
-            ->whereNull('sales.voided_at')
-            ->whereBetween('sales.operating_date', [$from, $through])
-            ->sum('sale_lines.qty');
-
-        $rule = DB::table('rider_incentive_rules')
-            ->where('effective_from', '<=', $from)->orderByDesc('effective_from')->first();
-        if ($rule) {
-            $incentive = self::multiply($cups, (int) $rule->amount_per_cup_minor);
-            if ((int) $rule->target_cups > 0 && $cups >= (int) $rule->target_cups) {
-                $incentive = self::add($incentive, (int) $rule->bonus_minor);
-            }
+        // Closing is the sole commission evidence. Historic flat rules and sale rows remain
+        // intact for audit, but cannot create a commission without a Rider Closing.
+        foreach ($this->commissions->summaries([$user->id], $from, $through)[$user->id] ?? [] as $day) {
+            $cups = self::add($cups, $day['cups_sold']);
+            $incentive = self::add($incentive, $day['commission_minor']);
         }
 
         $components = [];

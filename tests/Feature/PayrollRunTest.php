@@ -10,18 +10,23 @@ use App\Filament\Pages\PayrollRuns;
 use App\Filament\Resources\Journals\Pages\ListJournals;
 use App\Models\AccountingPeriod;
 use App\Models\AuditLog;
+use App\Models\Cart;
 use App\Models\JournalEntry;
 use App\Models\PayrollComponentEntry;
 use App\Models\PayrollPriorWithholding as PayrollPriorWithholdingRecord;
 use App\Models\PayrollRun;
+use App\Models\Product;
+use App\Models\RiderClosing;
 use App\Models\User;
 use App\Services\JournalService;
 use App\Services\PayrollCalculator;
 use App\Services\PayrollRunService;
+use App\Services\RiderCommissionService;
 use Database\Seeders\AccountSeeder;
 use Database\Seeders\PayrollConfigurationSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -45,6 +50,7 @@ class PayrollRunTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->travelTo(Carbon::parse('2027-01-01 12:00:00'));
         Storage::fake('local');
         $this->seed(AccountSeeder::class);
         $this->seed(PayrollConfigurationSeeder::class);
@@ -122,6 +128,97 @@ class PayrollRunTest extends TestCase
         $this->actingAs($this->manager);
         $this->expectException(ValidationException::class);
         $service->recalculate($run, $this->manager);
+    }
+
+    public function test_daily_commission_sums_into_payroll_slip_and_balanced_expense_journal(): void
+    {
+        app(RiderCommissionService::class)->save([$this->employee->id], '2026-10-01', [
+            ['min_cups' => 100, 'amount_per_cup_minor' => 1000],
+            ['min_cups' => 200, 'amount_per_cup_minor' => 1500],
+        ], $this->manager, (string) Str::uuid());
+        $cart = Cart::query()->create(['code' => 'PAY-COMMISSION', 'status' => 'active']);
+        $product = Product::query()->create(['code' => 'PAY-CUP', 'name' => 'Cup Payroll', 'unit' => 'cup', 'sort_order' => 1]);
+        foreach (['2026-10-10' => 100, '2026-10-11' => 200] as $date => $cups) {
+            $closing = RiderClosing::query()->create([
+                'rider_id' => $this->employee->id, 'cart_id' => $cart->id,
+                'operating_date' => $date, 'total_minor' => 0, 'cogs_minor' => 0,
+                'qris_minor' => 0, 'transfer_minor' => 0, 'cash_minor' => 0,
+                'closed_at' => $date.' 18:00:00',
+            ]);
+            $closing->lines()->create([
+                'product_id' => $product->id, 'qty_in' => $cups, 'qty_carry' => 0,
+                'qty_remaining' => 0, 'qty_wasted' => 0, 'qty_sold' => $cups,
+                'qty_sale_posted' => $cups, 'qty_waste_posted' => 0,
+                'unit_price_minor' => 0, 'unit_cost_minor' => 0, 'subtotal_minor' => 0,
+            ]);
+            app(RiderCommissionService::class)->lockForSettlement($cart->id, $date);
+        }
+        $service = app(PayrollRunService::class);
+        $run = $service->create('2026-10', $this->manager);
+        $service->approve($run, $this->manager);
+        $item = $run->fresh()->items()->firstOrFail();
+        $snapshot = $item->snapshot;
+        $this->assertSame(300, $snapshot['rider_cups']);
+        $this->assertSame(400000, $snapshot['rider_incentive_minor']);
+        $this->assertSame(10400000, $snapshot['gross_pay_minor']);
+        $this->assertStringContainsString('Komisi target harian', view('payroll.slip', [
+            'run' => $run->fresh(), 'item' => $item, 'snapshot' => $snapshot,
+        ])->render());
+        $this->assertSame('Komisi target harian', (new PayrollRunExport($run))->headings()[3]);
+        Storage::disk('local')->assertExists($item->slip_path);
+        $journalId = DB::table('journal_entries')->where('purpose', 'PAYROLL_ACCRUAL')->value('id');
+        $lines = DB::table('journal_lines')->where('entry_id', $journalId);
+        $this->assertSame((int) $lines->sum('debit_minor'), (int) $lines->sum('credit_minor'));
+        $expenseId = DB::table('accounts')->where('code', '6-1200')->value('id');
+        $this->assertSame(10400000, (int) DB::table('journal_lines')->where('entry_id', $journalId)
+            ->where('account_id', $expenseId)->sum('debit_minor'));
+    }
+
+    public function test_payroll_approval_waits_for_closing_commission_lock(): void
+    {
+        $cart = Cart::query()->create(['code' => 'PAY-OPEN', 'status' => 'active']);
+        $product = Product::query()->create(['code' => 'PAY-OPEN-CUP', 'name' => 'Cup Open', 'unit' => 'cup', 'sort_order' => 1]);
+        $closing = RiderClosing::query()->create([
+            'rider_id' => $this->employee->id, 'cart_id' => $cart->id,
+            'operating_date' => '2026-10-12', 'total_minor' => 0, 'cogs_minor' => 0,
+            'qris_minor' => 0, 'transfer_minor' => 0, 'cash_minor' => 0,
+            'closed_at' => '2026-10-12 18:00:00',
+        ]);
+        $closing->lines()->create([
+            'product_id' => $product->id, 'qty_in' => 1, 'qty_carry' => 0,
+            'qty_remaining' => 0, 'qty_wasted' => 0, 'qty_sold' => 1,
+            'qty_sale_posted' => 1, 'qty_waste_posted' => 0,
+            'unit_price_minor' => 0, 'unit_cost_minor' => 0, 'subtotal_minor' => 0,
+        ]);
+        $service = app(PayrollRunService::class);
+        $run = $service->create('2026-10', $this->manager);
+        try {
+            $service->approve($run, $this->manager);
+            $this->fail('Payroll approval must wait for setoran approval.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('run', $exception->errors());
+        }
+        $this->assertSame('DRAFT', $run->fresh()->status);
+        $this->assertSame(0, DB::table('journal_entries')->where('purpose', 'PAYROLL_ACCRUAL')->count());
+        app(RiderCommissionService::class)->lockForSettlement($cart->id, '2026-10-12');
+        $service->approve($run, $this->manager);
+        $this->assertSame('APPROVED', $run->fresh()->status);
+    }
+
+    public function test_current_month_payroll_cannot_approve_before_later_closings_exist(): void
+    {
+        $this->travelTo(Carbon::parse('2026-10-19 12:00:00'));
+        $service = app(PayrollRunService::class);
+        $run = $service->create('2026-10', $this->manager);
+        $this->assertSame(0, $run->items()->firstOrFail()->snapshot['rider_incentive_minor']);
+        try {
+            $service->approve($run, $this->manager);
+            $this->fail('An unfinished month must not lock payroll.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('run', $exception->errors());
+        }
+        $this->assertSame('DRAFT', $run->fresh()->status);
+        $this->assertSame(0, DB::table('journal_entries')->where('purpose', 'PAYROLL_ACCRUAL')->count());
     }
 
     public function test_payment_journal_balances_and_closed_period_rejects_posting(): void

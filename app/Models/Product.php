@@ -22,9 +22,10 @@ class Product extends Model
         return DB::transaction(function () use ($options): bool {
             // SaleService holds this same row lock until sale_lines are inserted.
             DB::table($this->getTable())->where('id', $this->getKey())->lockForUpdate()->first(['id']);
-            if (DB::table('sale_lines')->where('product_id', $this->getKey())->lockForUpdate()->first(['id'])) {
+            if (DB::table('sale_lines')->where('product_id', $this->getKey())->lockForUpdate()->first(['id'])
+                || DB::table('rider_closing_lines')->where('product_id', $this->getKey())->lockForUpdate()->first(['id'])) {
                 throw ValidationException::withMessages([
-                    'unit' => 'Satuan produk yang sudah pernah dijual tidak dapat diubah.',
+                    'unit' => 'Satuan produk yang sudah pernah dijual nggak bisa diubah ya.',
                 ]);
             }
 

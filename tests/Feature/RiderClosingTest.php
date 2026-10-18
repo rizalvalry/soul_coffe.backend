@@ -25,6 +25,7 @@ use App\Models\User;
 use App\Services\AttendanceService;
 use App\Services\RefillRequestStateMachine;
 use App\Services\Reporting\SalesActivityService;
+use App\Services\RiderCommissionService;
 use App\Services\StockLedgerService;
 use Database\Seeders\AccountSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -167,6 +168,10 @@ class RiderClosingTest extends TestCase
 
     public function test_invalid_quantity_roles_gate_and_correction_lock(): void
     {
+        app(RiderCommissionService::class)->save([$this->rider->id], today()->toDateString(), [
+            ['min_cups' => 5, 'amount_per_cup_minor' => 1000],
+            ['min_cups' => 6, 'amount_per_cup_minor' => 1500],
+        ], $this->finance, $this->closingKey());
         $this->issue(10, MovementType::ALLOCATION_IN);
         $this->actingAs($this->finance, 'sanctum')->getJson('/api/v1/me/closing/draft')->assertForbidden();
         $this->actingAs($this->barista, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
@@ -176,9 +181,11 @@ class RiderClosingTest extends TestCase
         $this->assertDatabaseCount('rider_closings', 0);
         $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
             ->postJson('/api/v1/me/closing', [...$this->body(3, 2), 'qris' => 20000, 'transfer' => 10000])->assertCreated();
+        $this->assertSame(5000, app(RiderCommissionService::class)->day($this->rider->id, today()->toDateString())['commission_minor']);
         $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
             ->postJson('/api/v1/me/closing', [...$this->body(2, 2), 'qris' => 20000, 'transfer' => 10000])->assertOk()
-            ->assertJsonPath('data.lines.0.qty_sold', 6);
+            ->assertJsonPath('data.lines.0.qty_sold', 6)
+            ->assertJsonPath('data.commission.commission_minor', 9000);
         $this->assertSame(6, RiderClosing::query()->firstOrFail()->lines()->firstOrFail()->qty_sold);
         $this->assertDatabaseCount('rider_closing_revisions', 2);
         $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
@@ -198,6 +205,13 @@ class RiderClosingTest extends TestCase
             ->postJson("/api/v1/settlements/{$settlementId}/approve", [
                 'lines' => [['product_id' => $this->product->id, 'qty_returned' => 2, 'qty_rejected' => 0]],
             ])->assertOk();
+        $this->assertDatabaseHas('rider_daily_commission_locks', [
+            'rider_id' => $this->rider->id, 'commission_minor' => 9000, 'cups_sold' => 6,
+        ]);
+        app(RiderCommissionService::class)->save([$this->rider->id], today()->toDateString(), [
+            ['min_cups' => 5, 'amount_per_cup_minor' => 3000],
+        ], $this->finance, $this->closingKey());
+        $this->assertSame(9000, app(RiderCommissionService::class)->day($this->rider->id, today()->toDateString())['commission_minor']);
         $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
             ->postJson('/api/v1/me/closing', [...$this->body(1, 2), 'qris' => 20000, 'transfer' => 10000])
             ->assertStatus(409)->assertJsonPath('code', 'CLOSING_LOCKED');
@@ -211,6 +225,7 @@ class RiderClosingTest extends TestCase
             ->postJson("/api/v1/closings/{$closing->id}/corrections", [...$this->body(1, 2), 'qris' => 20000, 'transfer' => 10000, 'reason' => 'Hitung ulang'])
             ->assertOk()->assertJsonPath('data.total_minor', 140000);
         $this->assertDatabaseHas('settlements', ['id' => $settlementId, 'expected_total_minor' => 140000]);
+        $this->assertSame(9000, app(RiderCommissionService::class)->day($this->rider->id, $closing->operating_date->toDateString())['commission_minor']);
         $this->assertSame(5, app(StockLedgerService::class)->stockFor(StockLedgerService::CART, $this->cart->id, $this->product->id));
         $this->assertTrue(JournalEntry::query()->where('purpose', 'SETTLEMENT_CORRECTION')->exists());
         foreach (JournalEntry::query()->whereIn('purpose', ['SETTLEMENT', 'SETTLEMENT_COGS', 'SETTLEMENT_CORRECTION', 'SETTLEMENT_COGS_CORRECTION'])->with('lines')->get() as $journal) {

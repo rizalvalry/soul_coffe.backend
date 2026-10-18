@@ -27,14 +27,8 @@ class PayrollConfigurationPanelTest extends TestCase
         $this->actingAs($manager);
         $this->get(PayrollConfiguration::getUrl())->assertSuccessful()->assertSee('Konfigurasi Payroll');
 
-        Livewire::test(PayrollConfiguration::class)
-            ->set('incentive.effective_from', '2026-10-01')
-            ->set('incentive.amount_per_cup_minor', 2000)
-            ->set('incentive.target_cups', 10)
-            ->set('incentive.bonus_minor', 5000)
-            ->set('incentive.source_note', 'Approved test policy')
-            ->call('saveIncentive')->assertHasNoErrors();
-        $this->assertSame(2, DB::table('rider_incentive_rules')->count());
+        $this->get(PayrollConfiguration::getUrl())->assertDontSee('Insentif Rider');
+        $this->assertSame(1, DB::table('rider_incentive_rules')->count());
 
         Livewire::test(PayrollConfiguration::class)
             ->set('entry.user_id', $employee->id)

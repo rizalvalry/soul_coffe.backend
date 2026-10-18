@@ -17,7 +17,7 @@ class PayrollRunExport extends DefaultValueBinder implements FromCollection, Wit
 
     public function headings(): array
     {
-        return ['Periode', 'Karyawan', 'Gaji pokok', 'Insentif Rider', 'Bruto', 'BPJS pegawai', 'BPJS perusahaan', 'PPh 21', 'Potongan manual', 'Take-home pay', 'Status run'];
+        return ['Periode', 'Karyawan', 'Gaji pokok', 'Komisi target harian', 'Bruto', 'BPJS pegawai', 'BPJS perusahaan', 'PPh 21', 'Potongan manual', 'Take-home pay', 'Status run'];
     }
 
     public function collection(): Collection
