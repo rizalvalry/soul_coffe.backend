@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\MovementType;
 use App\Enums\RefillStatus;
 use App\Enums\Role;
+use App\Models\AppNotification;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\JournalEntry;
@@ -105,6 +106,8 @@ class RiderClosingTest extends TestCase
 
     public function test_closing_uses_handover_refill_and_carry_then_posts_aggregate_ledger_once(): void
     {
+        $management = User::factory()->role(Role::MANAGEMENT)->create();
+        $administrator = User::factory()->role(Role::ADMINISTRATOR)->create();
         $this->issue(2, MovementType::ALLOCATION_IN, now()->subDay());
         $this->issue(20, MovementType::ALLOCATION_IN);
         $this->issue(5, MovementType::REFILL_IN);
@@ -124,6 +127,14 @@ class RiderClosingTest extends TestCase
         $response->assertJsonPath('data.lines.0.qty_sold', 22)
             ->assertJsonPath('data.total_minor', 440000)
             ->assertJsonPath('data.cash_minor', 320000);
+        foreach ([$this->finance, $management, $administrator] as $recipient) {
+            $this->assertTrue(AppNotification::query()->where('type', 'RiderClosingRecorded')
+                ->where('user_id', $recipient->id)->exists());
+        }
+        foreach ([$this->rider, $this->barista] as $nonRecipient) {
+            $this->assertFalse(AppNotification::query()->where('type', 'RiderClosingRecorded')
+                ->where('user_id', $nonRecipient->id)->exists());
+        }
         $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $key)
             ->postJson('/api/v1/me/closing', $this->body())->assertCreated()
             ->assertHeader('Idempotency-Replayed', 'true');

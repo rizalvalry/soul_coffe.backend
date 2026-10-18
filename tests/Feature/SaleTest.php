@@ -611,7 +611,7 @@ class SaleTest extends TestCase
         $this->sell([['product_id' => $this->coffee->id, 'qty' => 1]], ['cart_id' => null])
             ->assertForbidden()
             ->assertJsonPath('code', 'NO_CART_TODAY')
-            ->assertJsonPath('message', 'Produksi belum kasih stok ke gerobak kamu hari ini. Minta Produksi Add Stock dulu ya.');
+            ->assertJsonPath('message', 'Produksi belum kasih stok ke Coffee Bike kamu hari ini. Minta Produksi Add Stock dulu ya.');
     }
 
     public function test_offline_sale_from_previous_cart_is_rejected_without_stock_movement(): void
@@ -693,7 +693,7 @@ class SaleTest extends TestCase
 
         $this->sell([['product_id' => $this->coffee->id, 'qty' => 5]])
             ->assertStatus(422)
-            ->assertJsonPath('message', 'Stok gerobak untuk Kopi Susu hanya 3 cup.');
+            ->assertJsonPath('message', 'Stok Coffee Bike untuk Kopi Susu hanya 3 cup.');
 
         $this->assertSame(0, Sale::query()->count());
         // Nothing partial was written — the whole transaction rolled back.

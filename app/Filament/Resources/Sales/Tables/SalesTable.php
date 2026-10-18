@@ -13,6 +13,7 @@ use Filament\Actions\ViewAction;
 use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
 use Filament\Tables\Columns\IconColumn;
+use Filament\Tables\Columns\Summarizers\Sum;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Enums\FiltersLayout;
 use Filament\Tables\Filters\Filter;
@@ -61,7 +62,7 @@ class SalesTable
                     ->label('Cups')
                     ->numeric()
                     ->sortable()
-                    ->summarize(\Filament\Tables\Columns\Summarizers\Sum::make()->label('Total cups')),
+                    ->summarize(Sum::make()->label('Total cups')),
 
                 TextColumn::make('total_amount_minor')
                     ->label('Nilai')
@@ -69,7 +70,7 @@ class SalesTable
                     ->formatStateUsing(fn (int $state): string => 'Rp '.number_format($state, 0, ',', '.'))
                     ->sortable()
                     ->summarize(
-                        \Filament\Tables\Columns\Summarizers\Sum::make()
+                        Sum::make()
                             ->label('Total nilai')
                             ->formatStateUsing(fn (?int $state): string => 'Rp '.number_format((int) $state, 0, ',', '.')),
                     ),

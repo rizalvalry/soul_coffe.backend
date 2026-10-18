@@ -179,7 +179,7 @@ class CentralStockTest extends TestCase
     public function test_sale_and_refill_without_todays_cart_return_stable_code_and_friendly_copy(): void
     {
         $this->clearAssignmentsKeepingLocation();
-        $saleMessage = 'Produksi belum kasih stok ke gerobak kamu hari ini. Minta Produksi Add Stock dulu ya.';
+        $saleMessage = 'Produksi belum kasih stok ke Coffee Bike kamu hari ini. Minta Produksi Add Stock dulu ya.';
         $refillMessage = 'Produksi belum kasih stok ke Coffee Bike kamu hari ini. Minta Produksi Add Stock dulu ya.';
         $this->actingAs($this->staff, 'sanctum')
             ->withHeader('Idempotency-Key', (string) Str::uuid())
@@ -446,7 +446,7 @@ class CentralStockTest extends TestCase
         $this->service->handToCart($this->barista, $this->cart, $this->staff, [$this->product->id => 10]);
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('melebihi stok gerobak');
+        $this->expectExceptionMessage('melebihi stok Coffee Bike');
 
         $this->service->closeOutCart(
             $this->barista,
