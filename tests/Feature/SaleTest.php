@@ -88,6 +88,7 @@ class SaleTest extends TestCase
         ]);
 
         StaffAssignment::create([
+            'source' => 'hand_to_cart',
             'user_id' => $this->staff->id,
             'cart_id' => $this->cart->id,
             'location_id' => $this->location->id,
@@ -272,6 +273,30 @@ class SaleTest extends TestCase
                     'socket_id' => '123.456', 'channel_name' => 'private-role.'.$role->value,
                 ])->assertForbidden();
         }
+    }
+
+    public function test_manual_and_superseded_rider_cannot_subscribe_to_cart_channel(): void
+    {
+        config([
+            'broadcasting.default' => 'pusher',
+            'broadcasting.connections.pusher.key' => 'test-key',
+            'broadcasting.connections.pusher.secret' => 'test-secret',
+            'broadcasting.connections.pusher.app_id' => 'test-app',
+        ]);
+        require base_path('routes/channels.php');
+        $body = ['socket_id' => '123.456', 'channel_name' => 'private-cart.'.$this->cart->id];
+        $assignment = StaffAssignment::query()->where('user_id', $this->staff->id)->firstOrFail();
+        $this->actingAs($this->staff, 'sanctum')->postJson('/api/v1/broadcasting/auth', $body)->assertOk();
+        $assignment->update(['source' => 'manual']);
+        $this->actingAs($this->staff, 'sanctum')->postJson('/api/v1/broadcasting/auth', $body)->assertForbidden();
+        $assignment->update(['source' => 'hand_to_cart', 'superseded_at' => now()]);
+        $this->actingAs($this->staff, 'sanctum')->postJson('/api/v1/broadcasting/auth', $body)->assertForbidden();
+        $this->actingAs(User::factory()->role(Role::RIDER)->create(), 'sanctum')
+            ->postJson('/api/v1/broadcasting/auth', $body)->assertForbidden();
+        $assignment->update(['superseded_at' => null]);
+        $this->staff->forceFill(['role' => Role::RIDER])->save();
+        $this->actingAs($this->staff, 'sanctum')
+            ->postJson('/api/v1/broadcasting/auth', $body)->assertForbidden();
     }
 
     // ── The happy path ───────────────────────────────────────────────────────
@@ -496,6 +521,7 @@ class SaleTest extends TestCase
             $attendance->openStaffWindow($this->barista);
             $attendance->clockIn($this->staff);
             StaffAssignment::create([
+                'source' => 'hand_to_cart',
                 'user_id' => $this->staff->id,
                 'cart_id' => $this->cart->id,
                 'location_id' => $this->location->id,
@@ -581,8 +607,9 @@ class SaleTest extends TestCase
         StaffAssignment::query()->delete();
 
         $this->sell([['product_id' => $this->coffee->id, 'qty' => 1]])
-            ->assertStatus(422)
-            ->assertJsonPath('message', 'Anda belum ditugaskan ke gerobak mana pun hari ini.');
+            ->assertForbidden()
+            ->assertJsonPath('code', 'NO_CART_TODAY')
+            ->assertJsonPath('message', 'Produksi belum kasih stok ke gerobak kamu hari ini. Minta Produksi Add Stock dulu ya.');
     }
 
     /**

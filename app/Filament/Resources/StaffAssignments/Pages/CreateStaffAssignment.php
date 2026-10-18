@@ -23,6 +23,7 @@ class CreateStaffAssignment extends CreateRecord
     {
         $data['assigned_by'] = Auth::id();
         $data['kitchen_id'] = Cart::find($data['cart_id'])?->kitchen_id;
+        $data['source'] = 'manual';
 
         return $data;
     }

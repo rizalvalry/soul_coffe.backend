@@ -233,6 +233,8 @@ class StaffLocationService
             ->keyBy('user_id');
 
         $assignments = StaffAssignment::query()
+            ->where('source', 'hand_to_cart')
+            ->whereNull('superseded_at')
             ->with(['cart:id,code', 'location:id,name,lat,lng'])
             ->whereIn('user_id', $ids)
             ->whereDate('operating_date', $date->toDateString())
@@ -319,6 +321,8 @@ class StaffLocationService
     private function assignmentFor(User $staff): ?StaffAssignment
     {
         return StaffAssignment::query()
+            ->where('source', 'hand_to_cart')
+            ->whereNull('superseded_at')
             ->with(['cart:id,code,kitchen_id', 'cart.kitchen:id,lat,lng,geofence_m', 'kitchen:id,lat,lng,geofence_m'])
             ->where('user_id', $staff->id)
             ->whereDate('operating_date', Carbon::today()->toDateString())

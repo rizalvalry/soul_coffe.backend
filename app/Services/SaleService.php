@@ -13,6 +13,7 @@ use App\Models\Settlement;
 use App\Models\StaffAssignment;
 use App\Models\StockLedger;
 use App\Models\User;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -88,10 +89,16 @@ class SaleService
             ->with('cart')
             ->where('user_id', $staff->id)
             ->whereDate('operating_date', $date->toDateString())
+            ->where('source', 'hand_to_cart')
+            ->whereNull('superseded_at')
+            ->latest('id')
             ->first();
 
         if (! $assignment || ! $assignment->cart) {
-            throw new RuntimeException('Anda belum ditugaskan ke gerobak mana pun hari ini.');
+            throw new HttpResponseException(response()->json([
+                'code' => 'NO_CART_TODAY',
+                'message' => 'Produksi belum kasih stok ke gerobak kamu hari ini. Minta Produksi Add Stock dulu ya.',
+            ], 403));
         }
 
         $merged = $this->mergeLines($lines);
@@ -104,6 +111,15 @@ class SaleService
             // First database read in this transaction is a current locking read. A plain UUID
             // lookup before this lock would pin an old REPEATABLE READ stock snapshot.
             $cart = Cart::query()->whereKey($assignment->cart_id)->lockForUpdate()->firstOrFail();
+            $stillAssigned = StaffAssignment::query()->whereKey($assignment->id)
+                ->where('source', 'hand_to_cart')->whereNull('superseded_at')
+                ->lockForUpdate()->first();
+            if (! $stillAssigned) {
+                throw new HttpResponseException(response()->json([
+                    'code' => 'NO_CART_TODAY',
+                    'message' => 'Produksi belum kasih stok ke gerobak kamu hari ini. Minta Produksi Add Stock dulu ya.',
+                ], 403));
+            }
 
             // A replay of the same tap returns the sale that already exists rather than selling
             // the cups twice (R14). Checked inside the transaction so two concurrent replays

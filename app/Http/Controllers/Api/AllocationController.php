@@ -84,6 +84,9 @@ class AllocationController extends Controller implements HasMiddleware
         $assignment = StaffAssignment::query()
             ->where('user_id', $request->user()->id)
             ->whereDate('operating_date', now()->toDateString())
+            ->where('source', 'hand_to_cart')
+            ->whereNull('superseded_at')
+            ->latest('id')
             ->first();
 
         $rows = $assignment

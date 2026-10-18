@@ -95,6 +95,7 @@ class SettlementTest extends TestCase
         $this->finance = User::factory()->role(Role::FINANCE)->create();
 
         StaffAssignment::create([
+            'source' => 'hand_to_cart',
             'user_id' => $this->staff->id,
             'cart_id' => $this->cart->id,
             'location_id' => $location->id,
@@ -276,6 +277,56 @@ class SettlementTest extends TestCase
         $this->assertSame(15, $row['cups_remaining']);
         $this->assertSame(100000, $row['expected_total']);
         $this->assertNull($row['settlement_id']);
+    }
+
+    public function test_cart_with_sales_stays_in_finance_queue_after_rider_moves_to_another_cart(): void
+    {
+        $this->issue(10);
+        $this->sell(2);
+        $old = StaffAssignment::query()->where('cart_id', $this->cart->id)->firstOrFail();
+        $old->update(['superseded_at' => now()]);
+        $nextCart = Cart::create(['code' => '0020', 'status' => 'active', 'kitchen_id' => $this->kitchen->id]);
+        StaffAssignment::create([
+            'source' => 'hand_to_cart',
+            'user_id' => $this->staff->id,
+            'cart_id' => $nextCart->id,
+            'location_id' => $old->location_id,
+            'operating_date' => today(),
+            'assigned_by' => $this->barista->id,
+            'kitchen_id' => $this->kitchen->id,
+        ]);
+        $replacement = User::factory()->role(Role::STAFF)->create();
+        StaffAssignment::create([
+            'source' => 'hand_to_cart',
+            'user_id' => $replacement->id,
+            'cart_id' => $this->cart->id,
+            'location_id' => $old->location_id,
+            'operating_date' => today(),
+            'assigned_by' => $this->barista->id,
+            'kitchen_id' => $this->kitchen->id,
+        ]);
+        $manualCart = Cart::create(['code' => '0021', 'status' => 'active', 'kitchen_id' => $this->kitchen->id]);
+        StaffAssignment::create([
+            'source' => 'manual',
+            'user_id' => User::factory()->role(Role::STAFF)->create()->id,
+            'cart_id' => $manualCart->id,
+            'location_id' => $old->location_id,
+            'operating_date' => today(),
+            'assigned_by' => $this->barista->id,
+            'kitchen_id' => $this->kitchen->id,
+        ]);
+
+        $queue = $this->asFinance()->getJson('/api/v1/settlements/queue')->assertOk()->json('data');
+        $oldRow = collect($queue)->firstWhere('cart_id', $this->cart->id);
+        $this->assertNotNull($oldRow);
+        $this->assertSame(40000, $oldRow['expected_total']);
+        $this->assertSame($replacement->id, $oldRow['staff_id']);
+        $this->assertSame([$this->staff->id], $oldRow['sale_staff_ids']);
+        $this->assertSame([$this->staff->name], $oldRow['sale_staff_names']);
+        $this->assertFalse(collect($queue)->contains('cart_id', $manualCart->id));
+        $this->asFinance()->getJson("/api/v1/settlements/draft/{$this->cart->id}")
+            ->assertOk()->assertJsonPath('data.staff_id', $replacement->id)
+            ->assertJsonPath('data.sale_staff_ids.0', $this->staff->id);
     }
 
     // ── Taking the money ─────────────────────────────────────────────────
@@ -786,6 +837,7 @@ class SettlementTest extends TestCase
         $otherCart = Cart::create(['code' => '0001', 'status' => 'active', 'kitchen_id' => $this->kitchen->id]);
         $location = Location::query()->firstOrFail();
         StaffAssignment::create([
+            'source' => 'hand_to_cart',
             'user_id' => $other->id, 'cart_id' => $otherCart->id,
             'location_id' => $location->id,
             'operating_date' => today()->toDateString(), 'assigned_by' => $this->barista->id,

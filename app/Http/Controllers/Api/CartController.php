@@ -30,7 +30,9 @@ class CartController extends Controller
                 $sub->select('cart_id')
                     ->from('staff_assignments')
                     ->where('user_id', $user->id)
-                    ->whereDate('operating_date', now()->toDateString());
+                    ->whereDate('operating_date', now()->toDateString())
+                    ->where('source', 'hand_to_cart')
+                    ->whereNull('superseded_at');
             });
         }
 

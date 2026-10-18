@@ -5,10 +5,13 @@ namespace Tests\Feature;
 use App\Enums\MovementType;
 use App\Models\Cart;
 use App\Models\Product;
+use App\Models\StaffAssignment;
 use App\Models\User;
+use App\Services\AllocationService;
 use App\Services\AttendanceService;
 use App\Services\StockLedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
 /**
@@ -75,6 +78,42 @@ class AllocationTest extends TestCase
 
         $this->assertSame(5, $ledger->stockFor(StockLedgerService::CART, $this->cart->id, $this->product->id));
         $this->assertSame(195, $ledger->stockFor(StockLedgerService::KITCHEN, $this->cart->kitchen_id, $this->product->id));
+    }
+
+    public function test_allocation_rejects_manual_and_superseded_cart_assignments(): void
+    {
+        $assignment = StaffAssignment::query()->where('user_id', $this->staff->id)
+            ->where('cart_id', $this->cart->id)->firstOrFail();
+
+        $assignment->update(['source' => 'manual']);
+        $this->actingAs($this->barista, 'sanctum')
+            ->postJson('/api/v1/allocations', $this->payload(5), ['Idempotency-Key' => 'alloc-manual'])
+            ->assertUnprocessable()->assertJsonValidationErrors('staff_id');
+
+        $assignment->update(['source' => 'hand_to_cart', 'superseded_at' => now()]);
+        $this->actingAs($this->barista, 'sanctum')
+            ->postJson('/api/v1/allocations', $this->payload(5), ['Idempotency-Key' => 'alloc-superseded'])
+            ->assertUnprocessable()->assertJsonValidationErrors('staff_id');
+    }
+
+    public function test_allocation_rechecks_assignment_inside_the_stock_transfer_transaction(): void
+    {
+        $payload = $this->payload(5);
+        StaffAssignment::query()->where('user_id', $this->staff->id)
+            ->where('cart_id', $this->cart->id)->firstOrFail()
+            ->update(['superseded_at' => now()]);
+
+        try {
+            app(AllocationService::class)->create($payload, $this->barista);
+            $this->fail('A stale assignment must not receive stock.');
+        } catch (HttpException $exception) {
+            $this->assertSame(409, $exception->getStatusCode());
+        }
+
+        $this->assertDatabaseCount('daily_allocations', 0);
+        $this->assertSame(0, app(StockLedgerService::class)->stockFor(
+            StockLedgerService::CART, $this->cart->id, $this->product->id,
+        ));
     }
 
     public function test_allocation_at_25_percent_over_target_is_pending_finance_and_stock_is_not_moved(): void

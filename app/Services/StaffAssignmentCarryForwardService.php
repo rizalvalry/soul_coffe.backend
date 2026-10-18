@@ -93,6 +93,7 @@ class StaffAssignmentCarryForwardService
                             'operating_date' => $date,
                             'assigned_by' => $row->assigned_by,
                             'kitchen_id' => $row->kitchen_id,
+                            'source' => 'carry_forward',
                         ]);
 
                         $result['created']++;

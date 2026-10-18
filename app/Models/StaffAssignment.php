@@ -17,12 +17,15 @@ class StaffAssignment extends Model
         'operating_date',
         'assigned_by',
         'kitchen_id',
+        'source',
+        'superseded_at',
     ];
 
     protected function casts(): array
     {
         return [
             'operating_date' => 'date',
+            'superseded_at' => 'datetime',
         ];
     }
 

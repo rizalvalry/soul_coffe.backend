@@ -87,6 +87,7 @@ class SaleVoidTest extends TestCase
         $this->finance = User::factory()->role(Role::FINANCE)->create();
 
         StaffAssignment::create([
+            'source' => 'hand_to_cart',
             'user_id' => $this->staff->id,
             'cart_id' => $this->cart->id,
             'location_id' => $this->location->id,

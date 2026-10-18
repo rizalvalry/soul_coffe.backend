@@ -2,8 +2,6 @@
 
 namespace App\Filament\Resources\StaffAssignments\Tables;
 
-use Filament\Actions\DeleteAction;
-use Filament\Actions\EditAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
@@ -28,6 +26,17 @@ class StaffAssignmentsTable
                     ->label('Gerobak')
                     ->searchable()
                     ->sortable(),
+                TextColumn::make('source')
+                    ->label('Asal')
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        'hand_to_cart' => 'Add Stock',
+                        'carry_forward' => 'Lanjutan lama',
+                        default => 'Manual lama',
+                    }),
+                TextColumn::make('superseded_at')
+                    ->label('Diganti pada')
+                    ->dateTime('d M Y H:i')
+                    ->placeholder('-'),
                 TextColumn::make('location.name')
                     ->label('Lokasi')
                     ->searchable(),
@@ -52,9 +61,6 @@ class StaffAssignmentsTable
                     ->label('Lokasi')
                     ->relationship('location', 'name'),
             ])
-            ->recordActions([
-                EditAction::make(),
-                DeleteAction::make(),
-            ]);
+            ->recordActions([]);
     }
 }

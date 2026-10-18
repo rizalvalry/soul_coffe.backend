@@ -71,10 +71,10 @@ class SettlementService
     {
         $date = ($date ?? Carbon::today())->startOfDay();
 
-        $assignments = StaffAssignment::query()
+        $assignmentRows = StaffAssignment::query()
             ->with(['cart:id,code,kitchen_id', 'cart.kitchen:id,lat,lng,geofence_m', 'user:id,name', 'location:id,name', 'kitchen:id,lat,lng,geofence_m'])
             ->whereDate('operating_date', $date->toDateString())
-            ->get();
+            ->orderBy('id')->get();
 
         $sales = DB::table('sales')
             ->selectRaw("cart_id, COUNT(*) as trx, COALESCE(SUM(total_qty),0) as cups, COALESCE(SUM(total_amount_minor),0) as revenue, COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total_amount_minor ELSE 0 END),0) as cash, COALESCE(SUM(CASE WHEN payment_method = 'qris' THEN total_amount_minor ELSE 0 END),0) as qris, COALESCE(SUM(CASE WHEN payment_method = 'transfer' THEN total_amount_minor ELSE 0 END),0) as transfer")
@@ -89,6 +89,25 @@ class SettlementService
             ->whereDate('operating_date', $date->toDateString())
             ->get()
             ->keyBy('cart_id');
+        $saleStaffIds = Sale::query()
+            ->whereDate('operating_date', $date->toDateString())
+            ->whereNull('voided_at')
+            ->get(['cart_id', 'staff_id'])
+            ->groupBy('cart_id')
+            ->map(fn ($rows): array => $rows->pluck('staff_id')->unique()->values()->all());
+        $saleStaffNames = User::query()
+            ->whereIn('id', $saleStaffIds->flatten()->unique()->all())
+            ->pluck('name', 'id');
+
+        // Keep every cart that received Add Stock, including one later reassigned.
+        // A legacy manual row is relevant only if sales/settlement already exist for
+        // that cart; it must not manufacture a Finance queue item on its own.
+        $assignments = $assignmentRows
+            ->filter(fn (StaffAssignment $row): bool => $row->source === 'hand_to_cart'
+                || $sales->has($row->cart_id) || $settlements->has($row->cart_id))
+            ->sortBy(fn (StaffAssignment $row): array => [$row->source === 'hand_to_cart' ? 1 : 0, $row->id])
+            ->keyBy('cart_id')
+            ->values();
 
         // The newest server-recorded ping is authoritative; an earlier kitchen ping cannot make
         // a Rider who has since departed appear to have arrived. One indexed day lookup for all.
@@ -113,7 +132,7 @@ class SettlementService
             ->all();
 
         return $assignments
-            ->map(function (StaffAssignment $assignment) use ($sales, $settlements, $remaining, $lastPings): array {
+            ->map(function (StaffAssignment $assignment) use ($sales, $settlements, $saleStaffIds, $saleStaffNames, $remaining, $lastPings): array {
                 $sale = $sales->get($assignment->cart_id);
                 $settlement = $settlements->get($assignment->cart_id);
                 $ping = $lastPings->get($assignment->user_id);
@@ -125,6 +144,9 @@ class SettlementService
                     'cart_code' => $assignment->cart?->code,
                     'staff_id' => $assignment->user_id,
                     'staff_name' => $assignment->user?->name,
+                    'sale_staff_ids' => $saleStaffIds->get($assignment->cart_id, []),
+                    'sale_staff_names' => collect($saleStaffIds->get($assignment->cart_id, []))
+                        ->map(fn ($id): string => $saleStaffNames->get($id) ?? 'Rider #'.$id)->all(),
                     'area' => $assignment->location?->name,
                     'transactions' => (int) ($sale->trx ?? 0),
                     'cups_sold' => (int) ($sale->cups ?? 0),
@@ -164,7 +186,27 @@ class SettlementService
             ->with(['user:id,name', 'location:id,name'])
             ->where('cart_id', $cart->id)
             ->whereDate('operating_date', $date->toDateString())
+            ->where('source', 'hand_to_cart')
+            ->latest('id')
             ->first();
+        if (! $assignment && (Sale::query()->where('cart_id', $cart->id)
+            ->whereDate('operating_date', $date->toDateString())->exists()
+            || Settlement::query()->where('cart_id', $cart->id)
+                ->whereDate('operating_date', $date->toDateString())->exists())) {
+            $assignment = StaffAssignment::query()
+                ->with(['user:id,name', 'location:id,name'])
+                ->where('cart_id', $cart->id)
+                ->whereDate('operating_date', $date->toDateString())
+                ->latest('id')
+                ->first();
+        }
+        $saleStaffIds = Sale::query()
+            ->where('cart_id', $cart->id)
+            ->whereDate('operating_date', $date->toDateString())
+            ->whereNull('voided_at')
+            ->distinct()
+            ->pluck('staff_id')
+            ->all();
 
         $expectations = Sale::query()
             ->where('cart_id', $cart->id)
@@ -216,6 +258,7 @@ class SettlementService
             'operating_date' => $date->toDateString(),
             'staff_id' => $assignment?->user_id,
             'staff_name' => $assignment?->user?->name,
+            'sale_staff_ids' => $saleStaffIds,
             'area' => $assignment?->location?->name,
             'expected_total' => (int) $expectations->total,
             'expected_total_minor' => (int) $expectations->total,
@@ -279,6 +322,8 @@ class SettlementService
             $values = [
                 'operating_date' => $date->toDateString(),
                 'cart_id' => $cart->id,
+                // The latest handover names the cart custodian for settlement.
+                // Individual sale staff IDs stay on sales and in the draft.
                 'staff_id' => $draft['staff_id'] ?? $finance->id,
                 'status' => $variance !== 0 ? 'VARIANCE_FLAGGED' : 'SUBMITTED',
                 'cash_minor' => $cash,

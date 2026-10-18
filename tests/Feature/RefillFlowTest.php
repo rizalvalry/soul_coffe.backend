@@ -103,6 +103,7 @@ class RefillFlowTest extends TestCase
         $this->rider = User::factory()->role(Role::RIDER)->create();
 
         StaffAssignment::create([
+            'source' => 'hand_to_cart',
             'user_id' => $this->staff->id,
             'cart_id' => $this->cart->id,
             'location_id' => $location->id,

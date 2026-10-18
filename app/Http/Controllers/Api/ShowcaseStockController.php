@@ -197,6 +197,8 @@ class ShowcaseStockController extends Controller implements HasMiddleware
 
         $assignments = StaffAssignment::query()
             ->whereDate('operating_date', $date)
+            ->where('source', 'hand_to_cart')
+            ->whereNull('superseded_at')
             ->with('cart:id,code')
             ->get()
             ->keyBy('user_id');

@@ -67,6 +67,8 @@ class StoreAllocationRequest extends FormRequest
                 ->where('user_id', $this->input('staff_id'))
                 ->where('cart_id', $this->input('cart_id'))
                 ->whereDate('operating_date', $this->input('operating_date'))
+                ->where('source', 'hand_to_cart')
+                ->whereNull('superseded_at')
                 ->exists();
 
             if (! $assigned) {

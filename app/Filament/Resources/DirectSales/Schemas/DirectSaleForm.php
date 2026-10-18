@@ -85,6 +85,8 @@ class DirectSaleForm
         $assignedStaffNameByCart = StaffAssignment::query()
             ->with('user:id,name')
             ->whereDate('operating_date', $today)
+            ->where('source', 'hand_to_cart')
+            ->whereNull('superseded_at')
             ->get()
             ->keyBy('cart_id')
             ->map(fn (StaffAssignment $assignment): ?string => $assignment->user?->name);

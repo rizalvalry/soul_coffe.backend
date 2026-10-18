@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Enums\Role;
 use App\Models\Cart;
 use App\Models\DailyCartAllowance;
+use App\Models\Media;
+use App\Models\OutboxEvent;
 use App\Models\Product;
 use App\Models\StaffAssignment;
 use App\Models\User;
@@ -12,6 +14,8 @@ use App\Services\AttendanceService;
 use App\Services\CentralStockService;
 use App\Services\StockLedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -120,13 +124,16 @@ class CentralStockTest extends TestCase
     {
         $locationId = $this->clearAssignmentsKeepingLocation();
 
-        $this->service->handToCart(
-            $this->barista,
-            $this->cart,
-            $this->staff,
-            [$this->product->id => 10],
-            locationId: $locationId,
-        );
+        DB::transaction(function () use ($locationId): void {
+            $this->service->handToCart(
+                $this->barista,
+                $this->cart,
+                $this->staff,
+                [$this->product->id => 10],
+                locationId: $locationId,
+            );
+            $this->assertNull(OutboxEvent::query()->where('name', 'CartAssignmentChanged')->sole()->published_at);
+        });
 
         $assignment = StaffAssignment::query()
             ->where('cart_id', $this->cart->id)
@@ -136,6 +143,60 @@ class CentralStockTest extends TestCase
         $this->assertNotNull($assignment, 'Handing stock over should have put this cart on today\'s roster.');
         $this->assertSame((int) $this->staff->id, (int) $assignment->user_id);
         $this->assertSame((int) $this->barista->id, (int) $assignment->assigned_by);
+
+        $this->actingAs($this->staff, 'sanctum')->getJson('/api/v1/me')
+            ->assertOk()
+            ->assertJsonPath('data.today_cart.id', $this->cart->id)
+            ->assertJsonPath('data.today_cart.code', $this->cart->code);
+
+        $event = OutboxEvent::query()->where('name', 'CartAssignmentChanged')->sole();
+        $this->assertSame(['user.'.$this->staff->id], $event->payload_json['channels']);
+        $this->assertSame($this->cart->id, $event->payload_json['cart_id']);
+        $this->assertNotNull($event->published_at, 'Outbox delivery follows the transaction commit.');
+    }
+
+    public function test_me_has_no_cart_before_handover_and_after_operating_day_changes(): void
+    {
+        $locationId = $this->clearAssignmentsKeepingLocation();
+        $this->actingAs($this->staff, 'sanctum')->getJson('/api/v1/me')
+            ->assertOk()->assertJsonPath('data.today_cart', null);
+
+        StaffAssignment::query()->create([
+            'user_id' => $this->staff->id,
+            'cart_id' => $this->cart->id,
+            'location_id' => $locationId,
+            'operating_date' => today()->subDay(),
+            'assigned_by' => $this->barista->id,
+            'kitchen_id' => $this->barista->kitchen_id,
+        ]);
+        $this->actingAs($this->staff, 'sanctum')->getJson('/api/v1/me')
+            ->assertOk()->assertJsonPath('data.today_cart', null);
+    }
+
+    public function test_sale_and_refill_without_todays_cart_return_stable_code_and_friendly_copy(): void
+    {
+        $this->clearAssignmentsKeepingLocation();
+        $message = 'Produksi belum kasih stok ke gerobak kamu hari ini. Minta Produksi Add Stock dulu ya.';
+        $this->actingAs($this->staff, 'sanctum')
+            ->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/sales', [
+                'uuid' => (string) Str::uuid(),
+                'lines' => [['product_id' => $this->product->id, 'qty' => 1]],
+            ])
+            ->assertForbidden()->assertJsonPath('code', 'NO_CART_TODAY')->assertJsonPath('message', $message);
+
+        $media = Media::query()->create([
+            'kind' => 'evidence', 'path' => 'evidence/test.jpg', 'mime' => 'image/jpeg',
+            'bytes' => 100, 'sha256' => hash('sha256', 'test'), 'uploaded_by' => $this->staff->id,
+        ]);
+        $this->actingAs($this->staff, 'sanctum')
+            ->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/refills', [
+                'uuid' => (string) Str::uuid(), 'cart_id' => $this->cart->id,
+                'evidence_media_id' => $media->id,
+                'lines' => [['product_id' => $this->product->id, 'qty_requested' => 1]],
+            ])
+            ->assertForbidden()->assertJsonPath('code', 'NO_CART_TODAY')->assertJsonPath('message', $message);
     }
 
     public function test_a_second_handover_to_the_same_cart_reuses_the_same_assignment(): void
@@ -147,35 +208,111 @@ class CentralStockTest extends TestCase
 
         $this->assertSame($first->id, $second->id);
         $this->assertSame(1, StaffAssignment::query()->where('cart_id', $this->cart->id)->count());
+        $this->assertSame(1, OutboxEvent::query()->where('name', 'CartAssignmentChanged')->count());
     }
 
-    /** R11: one cart per staff per operating day. */
-    public function test_a_staff_already_on_another_cart_today_is_refused(): void
+    public function test_a_new_handover_replaces_the_riders_previous_cart_without_erasing_history(): void
     {
         $locationId = $this->clearAssignmentsKeepingLocation();
         $otherCart = Cart::query()->where('code', '!=', $this->cart->code)->firstOrFail();
 
-        $this->service->handToCart($this->barista, $otherCart, $this->staff, [$this->product->id => 5], locationId: $locationId);
-
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('sudah ditugaskan di gerobak lain');
-
-        $this->service->handToCart($this->barista, $this->cart, $this->staff, [$this->product->id => 5], locationId: $locationId);
+        $old = $this->service->handToCart($this->barista, $otherCart, $this->staff, [$this->product->id => 5], locationId: $locationId);
+        $new = $this->service->handToCart($this->barista, $this->cart, $this->staff, [$this->product->id => 5], locationId: $locationId);
+        $this->assertNotSame($old->id, $new->id);
+        $this->assertNotNull($old->fresh()->superseded_at);
+        $this->actingAs($this->staff, 'sanctum')->getJson('/api/v1/me')
+            ->assertOk()->assertJsonPath('data.today_cart.id', $this->cart->id);
     }
 
-    public function test_a_cart_already_assigned_to_someone_else_today_is_refused(): void
+    public function test_a_cart_handover_to_another_rider_preserves_old_row_and_notifies_both(): void
     {
         $otherStaff = User::factory()->role(Role::STAFF)->create([
             'kitchen_id' => $this->barista->kitchen_id,
         ]);
         app(AttendanceService::class)->clockIn($otherStaff);
 
-        $this->service->handToCart($this->barista, $this->cart, $this->staff, [$this->product->id => 5]);
+        $old = $this->service->handToCart($this->barista, $this->cart, $this->staff, [$this->product->id => 5]);
+        $new = $this->service->handToCart($this->barista, $this->cart, $otherStaff, [$this->product->id => 5]);
+        $this->assertNotSame($old->id, $new->id);
+        $this->assertNotNull($old->fresh()->superseded_at);
+        $this->assertSame(2, StaffAssignment::query()->where('cart_id', $this->cart->id)->count());
+        $this->actingAs($this->staff, 'sanctum')->getJson('/api/v1/me')
+            ->assertOk()->assertJsonPath('data.today_cart', null);
+        $this->actingAs($otherStaff, 'sanctum')->getJson('/api/v1/me')
+            ->assertOk()->assertJsonPath('data.today_cart.id', $this->cart->id);
+        $events = OutboxEvent::query()->where('name', 'CartAssignmentChanged')->orderBy('id')->get();
+        $this->assertCount(2, $events);
+        $this->assertSame(['user.'.$otherStaff->id], $events[0]->payload_json['channels']);
+        $this->assertSame(['user.'.$this->staff->id], $events[1]->payload_json['channels']);
+    }
 
+    public function test_manual_row_does_not_become_todays_cart_or_block_first_location_free_handover(): void
+    {
+        $this->clearAssignmentsKeepingLocation();
+        $otherStaff = User::factory()->role(Role::STAFF)->create(['kitchen_id' => $this->barista->kitchen_id]);
+        app(AttendanceService::class)->clockIn($otherStaff);
+        $manual = StaffAssignment::query()->create([
+            'user_id' => $otherStaff->id,
+            'cart_id' => $this->cart->id,
+            'location_id' => null,
+            'operating_date' => today(),
+            'assigned_by' => $this->barista->id,
+            'kitchen_id' => $this->barista->kitchen_id,
+            'source' => 'manual',
+        ]);
+        $this->actingAs($otherStaff, 'sanctum')->getJson('/api/v1/me')
+            ->assertOk()->assertJsonPath('data.today_cart', null);
+        $active = $this->service->handToCart($this->barista, $this->cart, $this->staff, [$this->product->id => 5]);
+        $this->assertNull($active->location_id);
+        $this->assertSame('manual', $manual->fresh()->source);
+        $this->assertNull($manual->fresh()->superseded_at);
+        $this->actingAs($this->staff, 'sanctum')->getJson('/api/v1/me')
+            ->assertOk()->assertJsonPath('data.today_cart.id', $this->cart->id);
+    }
+
+    public function test_provenance_backfill_preserves_old_add_stock_and_excludes_manual_row(): void
+    {
+        $locationId = $this->clearAssignmentsKeepingLocation();
+        $otherCart = Cart::query()->where('id', '!=', $this->cart->id)->firstOrFail();
+        $otherStaff = User::factory()->role(Role::STAFF)->create(['kitchen_id' => $this->barista->kitchen_id]);
+        $manual = StaffAssignment::query()->create([
+            'user_id' => $otherStaff->id,
+            'cart_id' => $otherCart->id,
+            'location_id' => $locationId,
+            'operating_date' => today(),
+            'assigned_by' => $this->barista->id,
+            'kitchen_id' => $this->barista->kitchen_id,
+            'source' => 'manual',
+        ]);
+        $handover = $this->service->handToCart(
+            $this->barista, $this->cart, $this->staff, [$this->product->id => 5], locationId: $locationId,
+        );
+        (require database_path('migrations/2026_10_18_120000_add_staff_assignment_provenance.php'))->backfill();
+        $this->assertSame('hand_to_cart', $handover->fresh()->source);
+        $this->assertSame('manual', $manual->fresh()->source);
+        $this->actingAs($this->staff, 'sanctum')->getJson('/api/v1/me')
+            ->assertOk()->assertJsonPath('data.today_cart.id', $this->cart->id);
+        $this->actingAs($otherStaff, 'sanctum')->getJson('/api/v1/me')
+            ->assertOk()->assertJsonPath('data.today_cart', null);
+    }
+
+    public function test_rollback_refuses_to_discard_same_day_assignment_history(): void
+    {
+        $old = StaffAssignment::query()->where('cart_id', $this->cart->id)->firstOrFail();
+        $otherStaff = User::factory()->role(Role::STAFF)->create(['kitchen_id' => $this->barista->kitchen_id]);
+        StaffAssignment::query()->create([
+            'user_id' => $otherStaff->id,
+            'cart_id' => $this->cart->id,
+            'location_id' => $old->location_id,
+            'operating_date' => $old->operating_date,
+            'assigned_by' => $this->barista->id,
+            'kitchen_id' => $this->barista->kitchen_id,
+            'source' => 'hand_to_cart',
+        ]);
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('sudah ditugaskan ke staff lain');
-
-        $this->service->handToCart($this->barista, $this->cart, $otherStaff, [$this->product->id => 5]);
+        $this->expectExceptionMessage('audit-preserving plan');
+        (require database_path('migrations/2026_10_18_120000_add_staff_assignment_provenance.php'))
+            ->assertRollbackSafe();
     }
 
     public function test_handing_over_more_than_the_showcase_holds_is_refused_and_moves_nothing(): void

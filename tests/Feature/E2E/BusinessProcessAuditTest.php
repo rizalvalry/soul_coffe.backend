@@ -108,6 +108,7 @@ class BusinessProcessAuditTest extends TestCase
         $this->staff = User::factory()->role(Role::STAFF)->create();
         $this->runner = User::factory()->role(Role::RIDER)->create();
         StaffAssignment::create([
+            'source' => 'hand_to_cart',
             'user_id' => $this->staff->id, 'cart_id' => $this->cart->id,
             'location_id' => $this->location->id, 'operating_date' => today(),
             'assigned_by' => $this->admin->id, 'kitchen_id' => $this->kitchen->id,
@@ -351,6 +352,7 @@ class BusinessProcessAuditTest extends TestCase
         $attendance->openStaffWindow($this->barista);
         $attendance->clockIn($this->staff);
         StaffAssignment::create([
+            'source' => 'hand_to_cart',
             'user_id' => $this->staff->id, 'cart_id' => $this->cart->id,
             'location_id' => $this->location->id, 'operating_date' => today(),
             'assigned_by' => $this->admin->id, 'kitchen_id' => $this->kitchen->id,
@@ -405,6 +407,7 @@ class BusinessProcessAuditTest extends TestCase
         $otherCart = Cart::create(['code' => 'T036-B', 'status' => 'active', 'kitchen_id' => $this->kitchen->id]);
         $otherStaff = User::factory()->role(Role::STAFF)->create();
         StaffAssignment::create([
+            'source' => 'hand_to_cart',
             'user_id' => $otherStaff->id, 'cart_id' => $otherCart->id,
             'location_id' => $this->location->id, 'operating_date' => today(),
             'assigned_by' => $this->admin->id, 'kitchen_id' => $this->kitchen->id,
@@ -614,9 +617,10 @@ class BusinessProcessAuditTest extends TestCase
     {
         Artisan::call('schedule:list');
         $schedule = Artisan::output();
-        foreach (['soul:seed-daily-allowances', 'soul:carry-forward-staff-assignments', 'refills:expire-stale', 'queue:work'] as $command) {
+        foreach (['soul:seed-daily-allowances', 'refills:expire-stale', 'queue:work'] as $command) {
             $this->assertStringContainsString($command, $schedule);
         }
+        $this->assertStringNotContainsString('soul:carry-forward-staff-assignments', $schedule);
         $expiryEvent = collect(Schedule::events())->first(fn ($event): bool => str_contains($event->command, 'refills:expire-stale'));
         $this->assertNotNull($expiryEvent);
         $this->assertSame('0 * * * *', $expiryEvent->expression);

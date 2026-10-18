@@ -12,8 +12,11 @@ use App\Filament\Resources\Products\ProductResource;
 use App\Filament\Resources\StaffAssignments\StaffAssignmentResource;
 use App\Filament\Resources\Users\UserResource;
 use App\Models\AuditLog;
+use App\Models\StaffAssignment;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -87,6 +90,34 @@ class AdminResourcesTest extends TestCase
 
         // Reading it, however, must work — that is the entire point of the screen.
         $this->get(AuditLogResource::getUrl('view', ['record' => $log]))->assertSuccessful();
+    }
+
+    public function test_staff_assignments_are_hidden_and_only_administrator_can_read_direct_url(): void
+    {
+        $this->assertFalse(StaffAssignmentResource::shouldRegisterNavigation());
+        $this->assertSame(['index'], array_keys(StaffAssignmentResource::getPages()));
+        $record = StaffAssignment::query()->firstOrFail();
+        $this->assertFalse(StaffAssignmentResource::canCreate());
+        $this->assertFalse(StaffAssignmentResource::canEdit($record));
+        $this->assertFalse(StaffAssignmentResource::canDelete($record));
+        $url = StaffAssignmentResource::getUrl('index');
+        $this->get($url)->assertOk();
+
+        foreach ([Role::STAFF, Role::RIDER, Role::BARISTA, Role::FINANCE, Role::MANAGEMENT, Role::CONTENT_CREATOR] as $role) {
+            $this->actingAs(User::factory()->role($role)->create());
+            $this->assertFalse(StaffAssignmentResource::canViewAny());
+            $this->assertContains($this->get($url)->status(), [302, 403]);
+        }
+
+        $this->actingAs(User::factory()->role(Role::CONTENT_CREATOR)->create())
+            ->get($url)->assertForbidden();
+    }
+
+    public function test_staff_assignment_carry_forward_is_not_scheduled(): void
+    {
+        Artisan::call('schedule:list');
+        $this->assertFalse(collect(Schedule::events())
+            ->contains(fn ($event): bool => str_contains($event->command, 'soul:carry-forward-staff-assignments')));
     }
 
     public function test_management_actor_uses_its_label_in_the_audit_table_and_detail(): void

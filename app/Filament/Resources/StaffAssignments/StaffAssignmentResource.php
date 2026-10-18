@@ -2,20 +2,20 @@
 
 namespace App\Filament\Resources\StaffAssignments;
 
-use App\Filament\Resources\StaffAssignments\Pages\CreateStaffAssignment;
-use App\Filament\Resources\StaffAssignments\Pages\EditStaffAssignment;
+use App\Enums\PanelModule;
+use App\Enums\Role;
+use App\Filament\Concerns\MatrixGoverned;
 use App\Filament\Resources\StaffAssignments\Pages\ListStaffAssignments;
 use App\Filament\Resources\StaffAssignments\Schemas\StaffAssignmentForm;
 use App\Filament\Resources\StaffAssignments\Tables\StaffAssignmentsTable;
 use App\Models\StaffAssignment;
 use BackedEnum;
-use UnitEnum;
-use App\Enums\PanelModule;
-use App\Filament\Concerns\MatrixGoverned;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use Illuminate\Support\Facades\Auth;
+use UnitEnum;
 
 class StaffAssignmentResource extends Resource
 {
@@ -34,6 +34,31 @@ class StaffAssignmentResource extends Resource
     protected static ?string $pluralModelLabel = 'Penugasan';
 
     protected static ?int $navigationSort = 2;
+
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
+    public static function canViewAny(): bool
+    {
+        return Auth::user()?->role === Role::ADMINISTRATOR;
+    }
+
+    public static function canCreate(): bool
+    {
+        return false;
+    }
+
+    public static function canEdit(mixed $record): bool
+    {
+        return false;
+    }
+
+    public static function canDelete(mixed $record): bool
+    {
+        return false;
+    }
 
     public static function panelModule(): PanelModule
     {
@@ -61,8 +86,6 @@ class StaffAssignmentResource extends Resource
     {
         return [
             'index' => ListStaffAssignments::route('/'),
-            'create' => CreateStaffAssignment::route('/create'),
-            'edit' => EditStaffAssignment::route('/{record}/edit'),
         ];
     }
 }

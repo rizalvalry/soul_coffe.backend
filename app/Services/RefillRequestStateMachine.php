@@ -7,6 +7,7 @@ use App\Enums\RefillStatus;
 use App\Enums\Role;
 use App\Enums\SignatureMethod;
 use App\Jobs\PostRefillStockLedger;
+use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\Media;
 use App\Models\Product;
@@ -15,6 +16,7 @@ use App\Models\RefillRequestLine;
 use App\Models\RefillStatusHistory;
 use App\Models\StaffAssignment;
 use App\Models\User;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -82,11 +84,15 @@ class RefillRequestStateMachine
             ->where('user_id', $staff->id)
             ->where('cart_id', $cartId)
             ->whereDate('operating_date', $today)
+            ->where('source', 'hand_to_cart')
+            ->whereNull('superseded_at')
             ->first();
 
         if (! $assignment) {
-            // R11 / §9.
-            abort(403, 'Anda tidak bertugas di gerobak ini hari ini');
+            throw new HttpResponseException(response()->json([
+                'code' => 'NO_CART_TODAY',
+                'message' => 'Produksi belum kasih stok ke gerobak kamu hari ini. Minta Produksi Add Stock dulu ya.',
+            ], 403));
         }
 
         // R2 must not let yesterday's unfinished request occupy this cart forever.
@@ -110,9 +116,19 @@ class RefillRequestStateMachine
         $outOfHours = $this->isOutOfHours($assignment->kitchen);
 
         $refill = DB::transaction(function () use (
-            $staff, $data, $cartId, $kitchenId, $today,
+            $staff, $data, $cartId, $kitchenId, $today, $assignment,
             $lineInputs, $totalCost, $outOfHours, $idempotencyKey,
         ): RefillRequest {
+            Cart::query()->whereKey($cartId)->lockForUpdate()->firstOrFail();
+            $stillAssigned = StaffAssignment::query()->whereKey($assignment->id)
+                ->where('source', 'hand_to_cart')->whereNull('superseded_at')
+                ->lockForUpdate()->first();
+            if (! $stillAssigned) {
+                throw new HttpResponseException(response()->json([
+                    'code' => 'NO_CART_TODAY',
+                    'message' => 'Produksi belum kasih stok ke gerobak kamu hari ini. Minta Produksi Add Stock dulu ya.',
+                ], 403));
+            }
             $evidence = Media::query()
                 ->where('id', $data['evidence_media_id'])
                 ->where('kind', 'evidence')
