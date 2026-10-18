@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Enums\Role;
+use App\Models\Cart;
+use App\Models\CentralKitchen;
 use App\Models\StaffAssignment;
 use App\Models\StaffLocationPing;
 use App\Models\User;
@@ -22,9 +24,8 @@ use Illuminate\Support\Facades\DB;
  *
  * WHAT IS DELIBERATELY NOT HERE
  * -----------------------------
- * • **No broadcast per ping.** A phone reports roughly once a minute, so pushing every ping to
- *   Pusher would spend the notification quota on data that has not changed yet. The CMS map
- *   refreshes itself instead — see App\Filament\Pages\StaffActivity.
+ * • **No broadcast per ping.** Only a kitchen arrival status change refreshes Finance's
+ *   settlement queue. The CMS map refreshes itself — see App\Filament\Pages\StaffActivity.
  *
  * • **No blocking on GPS.** Consistent with E10 everywhere else in this system: a phone with
  *   location switched off reports nothing and every other feature keeps working. A missing
@@ -38,6 +39,8 @@ class StaffLocationService
 {
     /** Metres per degree of latitude — good to well under a metre at Jakarta's latitude. */
     private const METRES_PER_DEGREE = 111_320.0;
+
+    public function __construct(private readonly EventPublisher $events) {}
 
     /**
      * Store a batch of pings, newest last. Batches exist because the app queues fixes while
@@ -55,50 +58,89 @@ class StaffLocationService
         $max = (int) config('soul.location_ping_max_batch', 50);
         $pings = array_slice(array_values($pings), -$max);
 
-        $assignment = $this->assignmentFor($staff);
-        $last = $this->latestFor($staff);
-        $written = 0;
+        return DB::transaction(function () use ($staff, $pings, $deviceId): int {
+            $assignment = $this->assignmentFor($staff);
+            // Serialize pings for a cart so two uploads cannot both emit the same transition.
+            if ($assignment?->cart_id) {
+                Cart::query()->whereKey($assignment->cart_id)->lockForUpdate()->firstOrFail();
+            }
+            $kitchen = $assignment?->kitchen ?? $assignment?->cart?->kitchen;
+            $hasGeofence = $kitchen && $kitchen->lat !== null && $kitchen->lng !== null && $kitchen->geofence_m;
+            // A locking read sees the preceding upload after the cart lock becomes available,
+            // even when assignmentFor() already established a REPEATABLE READ snapshot.
+            $last = $this->latestFor($staff, lockForUpdate: true);
+            $wasInside = $hasGeofence && $last
+                && $last->operating_date->toDateString() === Carbon::today()->toDateString()
+                && $last->cart_id === $assignment->cart_id
+                && $this->isInsideKitchen((float) $last->lat, (float) $last->lng, $kitchen);
+            $finalPingIndex = null;
+            for ($index = count($pings) - 1; $index >= 0; $index--) {
+                if ((float) $pings[$index]['lat'] !== 0.0 || (float) $pings[$index]['lng'] !== 0.0) {
+                    $finalPingIndex = $index;
+                    break;
+                }
+            }
+            $written = 0;
 
-        foreach ($pings as $ping) {
-            $lat = (float) $ping['lat'];
-            $lng = (float) $ping['lng'];
+            foreach ($pings as $index => $ping) {
+                $lat = (float) $ping['lat'];
+                $lng = (float) $ping['lng'];
 
-            // A phone that has just woken up sometimes reports (0,0) before its first real fix.
-            // Storing that would put a staff member in the Gulf of Guinea on the map.
-            if ($lat === 0.0 && $lng === 0.0) {
-                continue;
+                // A phone that has just woken up sometimes reports (0,0) before its first real fix.
+                // Storing that would put a staff member in the Gulf of Guinea on the map.
+                if ($lat === 0.0 && $lng === 0.0) {
+                    continue;
+                }
+
+                $capturedAt = isset($ping['captured_at']) && $ping['captured_at'] !== null
+                    ? Carbon::parse($ping['captured_at'])
+                    : null;
+
+                $isInside = $hasGeofence && $this->isInsideKitchen($lat, $lng, $kitchen);
+                // Only the batch's final position can change the visible queue status. A replay
+                // of an outside-to-inside batch must not manufacture DEPARTED then ARRIVED events.
+                $arrivalChanged = $hasGeofence && $index === $finalPingIndex && $isInside !== $wasInside;
+                if (! $arrivalChanged && ! $this->shouldKeep($last, $lat, $lng)) {
+                    continue;
+                }
+
+                $last = StaffLocationPing::query()->create([
+                    'user_id' => $staff->id,
+                    'operating_date' => Carbon::today()->toDateString(),
+                    // Server clock (R16). The phone's own idea of the time is kept beside it, never
+                    // instead of it, so a wrong device clock cannot move a ping into another hour.
+                    'recorded_at' => now(),
+                    'captured_at' => $capturedAt,
+                    'lat' => $lat,
+                    'lng' => $lng,
+                    'accuracy_m' => $ping['accuracy_m'] ?? null,
+                    'battery_pct' => $ping['battery_pct'] ?? null,
+                    'is_moving' => $ping['is_moving'] ?? null,
+                    'source' => 'ping',
+                    'cart_id' => $assignment?->cart_id,
+                    'location_id' => $assignment?->location_id,
+                    'device_id' => $deviceId,
+                ]);
+
+                $written++;
+                if ($arrivalChanged) {
+                    $this->events->publish(
+                        type: 'CartArrivalChanged',
+                        title: $isInside ? 'Gerobak tiba di dapur' : 'Gerobak keluar dari dapur',
+                        body: sprintf('Gerobak %s %s.', $assignment->cart->code, $isInside ? 'sudah tiba di dapur' : 'keluar dari area dapur'),
+                        channels: ['role.FINANCE', 'role.MANAGEMENT'],
+                        status: $isInside ? 'ARRIVED' : 'DEPARTED',
+                        context: [
+                            'cart_id' => $assignment->cart_id,
+                            'operating_date' => $last->operating_date->toDateString(),
+                            'source_id' => $last->id,
+                        ],
+                    );
+                }
             }
 
-            $capturedAt = isset($ping['captured_at']) && $ping['captured_at'] !== null
-                ? Carbon::parse($ping['captured_at'])
-                : null;
-
-            if (! $this->shouldKeep($last, $lat, $lng)) {
-                continue;
-            }
-
-            $last = StaffLocationPing::query()->create([
-                'user_id' => $staff->id,
-                'operating_date' => Carbon::today()->toDateString(),
-                // Server clock (R16). The phone's own idea of the time is kept beside it, never
-                // instead of it, so a wrong device clock cannot move a ping into another hour.
-                'recorded_at' => now(),
-                'captured_at' => $capturedAt,
-                'lat' => $lat,
-                'lng' => $lng,
-                'accuracy_m' => $ping['accuracy_m'] ?? null,
-                'battery_pct' => $ping['battery_pct'] ?? null,
-                'is_moving' => $ping['is_moving'] ?? null,
-                'source' => 'ping',
-                'cart_id' => $assignment?->cart_id,
-                'location_id' => $assignment?->location_id,
-                'device_id' => $deviceId,
-            ]);
-
-            $written++;
-        }
-
-        return $written;
+            return $written;
+        });
     }
 
     /**
@@ -135,13 +177,14 @@ class StaffLocationService
         ]);
     }
 
-    public function latestFor(User $staff): ?StaffLocationPing
+    public function latestFor(User $staff, bool $lockForUpdate = false): ?StaffLocationPing
     {
-        return StaffLocationPing::query()
+        $query = StaffLocationPing::query()
             ->where('user_id', $staff->id)
             ->latest('recorded_at')
-            ->latest('id')
-            ->first();
+            ->latest('id');
+
+        return ($lockForUpdate ? $query->lockForUpdate() : $query)->first();
     }
 
     /**
@@ -272,6 +315,7 @@ class StaffLocationService
     private function assignmentFor(User $staff): ?StaffAssignment
     {
         return StaffAssignment::query()
+            ->with(['cart:id,code,kitchen_id', 'cart.kitchen:id,lat,lng,geofence_m', 'kitchen:id,lat,lng,geofence_m'])
             ->where('user_id', $staff->id)
             ->whereDate('operating_date', Carbon::today()->toDateString())
             ->first();
@@ -295,6 +339,13 @@ class StaffLocationService
         }
 
         return $this->metresBetween((float) $last->lat, (float) $last->lng, $lat, $lng) >= $minMove;
+    }
+
+    private function isInsideKitchen(float $lat, float $lng, CentralKitchen $kitchen): bool
+    {
+        // Match SettlementService's queue projection so the signal and displayed status agree.
+        return $this->metresBetween((float) $kitchen->lat, (float) $kitchen->lng, $lat, $lng)
+            <= $kitchen->geofence_m;
     }
 
     /**
