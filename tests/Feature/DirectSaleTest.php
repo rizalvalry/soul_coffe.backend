@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\MovementType;
 use App\Enums\Role;
+use App\Models\AuditLog;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\DirectSale;
@@ -125,6 +126,8 @@ class DirectSaleTest extends TestCase
         $this->stockCart($this->assignedCart, 10);
         $sale = $this->service()->record($this->finance, $this->assignedCart->id,
             [['product_id' => $this->coffee->id, 'qty' => 2]], 'transfer');
+        $this->assertSame(1, AuditLog::query()->where('action', 'direct_sale.created')
+            ->where('subject_id', $sale->id)->count());
 
         $revenue = JournalEntry::query()->where('source_type', 'direct_sale')
             ->where('source_id', $sale->id)->where('purpose', 'DIRECT_SALE')->firstOrFail();
@@ -132,12 +135,14 @@ class DirectSaleTest extends TestCase
             ->where('ref_id', $sale->id)->where('movement_type', MovementType::SALE_OUT)->firstOrFail()->id;
         $cogs = JournalEntry::query()->where('source_type', 'stock_ledger')
             ->where('source_id', $movementId)->where('purpose', 'SALE_COGS')->firstOrFail();
-        $this->assertSame(['1-1300' => [40000, 0], '4-1200' => [0, 40000]],
+        $this->assertSame(['1-1400' => [40000, 0], '4-1200' => [0, 40000]],
             $revenue->lines()->with('account')->get()->mapWithKeys(fn ($line): array => [$line->account->code => [$line->debit_minor, $line->credit_minor]])->all());
         $this->assertSame(['5-1100' => [20000, 0], '1-1600' => [0, 20000]],
             $cogs->lines()->with('account')->get()->mapWithKeys(fn ($line): array => [$line->account->code => [$line->debit_minor, $line->credit_minor]])->all());
 
         $this->service()->void($sale, $this->finance, 'Salah input');
+        $this->assertSame(1, AuditLog::query()->where('action', 'direct_sale.voided')
+            ->where('subject_id', $sale->id)->count());
         $this->assertNotNull($revenue->fresh()->reversal);
         $this->assertNotNull($cogs->fresh()->reversal);
         $this->assertSame(2, JournalEntry::query()->where('purpose', 'REVERSAL')->count());

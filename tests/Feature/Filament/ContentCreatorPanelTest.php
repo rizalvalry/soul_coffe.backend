@@ -6,6 +6,7 @@ use App\Enums\Role;
 use App\Filament\Resources\CashAccounts\CashAccountResource;
 use App\Filament\Resources\CashCategories\CashCategoryResource;
 use App\Filament\Resources\CashTransactions\CashTransactionResource;
+use App\Filament\Resources\ClearingReceipts\ClearingReceiptResource;
 use App\Filament\Resources\NewsPosts\NewsPostResource;
 use App\Filament\Resources\OfficeItems\OfficeItemResource;
 use App\Filament\Resources\RefillRequests\RefillRequestResource;
@@ -132,6 +133,7 @@ class ContentCreatorPanelTest extends TestCase
         foreach (Filament::getPanel('admin')->getResources() as $resource) {
             if (in_array($resource, [
                 CashTransactionResource::class,
+                ClearingReceiptResource::class,
                 CashCategoryResource::class,
                 CashAccountResource::class,
                 OfficeItemResource::class,

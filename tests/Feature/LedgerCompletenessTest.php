@@ -15,11 +15,13 @@ use App\Models\Product;
 use App\Models\ProductPriceVersion;
 use App\Models\RawMaterial;
 use App\Models\Recipe;
+use App\Models\Settlement;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Services\AccountingPeriodService;
 use App\Services\AttendanceService;
 use App\Services\CentralStockService;
+use App\Services\ClearingService;
 use App\Services\DailyAllowanceService;
 use App\Services\InventoryJournalService;
 use App\Services\JournalService;
@@ -74,19 +76,34 @@ class LedgerCompletenessTest extends TestCase
         $this->actingAs($rider, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson('/api/v1/me/closing', [
                 'lines' => [['product_id' => $product->id, 'qty_remaining' => 2, 'qty_wasted' => 1]],
-                'qris' => 0, 'transfer' => 0, 'gps_lat' => -6.18, 'gps_lng' => 106.88,
+                'qris' => 10000, 'transfer' => 5000, 'gps_lat' => -6.18, 'gps_lng' => 106.88,
             ])->assertCreated();
         $gap = app(InventoryAccountingReportService::class)->inventoryGap(today());
         $this->assertSame(4800, $gap[0]['physical_minor']);
         $this->assertSame(4800, $gap[0]['book_minor']);
         $this->assertSame(0, $gap[1]['gap_minor']);
         $settlementId = $this->actingAs($finance, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
-            ->postJson('/api/v1/settlements', ['cart_id' => $cart->id, 'cash' => 25000,
-                'qris' => 0, 'transfer' => 0])->assertCreated()->json('data.id');
+            ->postJson('/api/v1/settlements', ['cart_id' => $cart->id, 'cash' => 10000,
+                'qris' => 9000, 'transfer' => 6000])->assertCreated()->json('data.id');
+        $this->assertTrue(Settlement::query()->findOrFail($settlementId)->method_variance_flagged);
         $this->actingAs($finance, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson('/api/v1/settlements/'.$settlementId.'/approve', [
                 'lines' => [['product_id' => $product->id, 'qty_returned' => 2, 'qty_rejected' => 0]],
             ])->assertOk();
+        $clearing = app(ClearingService::class);
+        $receipt = $clearing->record($finance, [
+            'uuid' => (string) Str::uuid(), 'received_on' => today()->toDateString(),
+            'amount_minor' => 14700, 'mdr_minor' => 300,
+            'bank_account_id' => Account::query()->where('code', '1-1300')->value('id'),
+            'sale_dates' => [today()->toDateString()],
+        ]);
+        $this->assertSame(15000, (int) $receipt->allocations->sum('amount_minor'));
+        $this->assertSame(0, $clearing->aging(today()->toDateString())['net_balance_minor']);
+        $clearingLines = JournalEntry::query()->where('source_type', 'clearing_receipt')
+            ->where('source_id', $receipt->id)->sole()->lines()->with('account')->get()
+            ->mapWithKeys(fn ($line): array => [$line->account->code => [$line->debit_minor, $line->credit_minor]])->all();
+        $this->assertSame(['1-1300' => [14700, 0], '1-1400' => [0, 15000],
+            '6-1990' => [300, 0]], $clearingLines);
         $opname = app(StockOpnameService::class)->create(StockLedgerService::KITCHEN, $kitchen->id,
             [['product_id' => $product->id, 'counted_qty' => 3]], 'Hitung fisik siklus', $finance);
         app(StockOpnameService::class)->apply($opname, $finance);

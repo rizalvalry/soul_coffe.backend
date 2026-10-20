@@ -24,6 +24,7 @@ use App\Models\StaffLocationPing;
 use App\Models\StockLedger;
 use App\Models\User;
 use App\Services\AttendanceService;
+use App\Services\PendingStockCostService;
 use App\Services\RefillRequestStateMachine;
 use App\Services\Reporting\SalesActivityService;
 use App\Services\RiderCommissionService;
@@ -105,6 +106,47 @@ class RiderClosingTest extends TestCase
     private function closingKey(): string
     {
         return (string) Str::uuid();
+    }
+
+    public function test_correction_after_cost_revaluation_restores_sale_and_waste_at_resolved_cost(): void
+    {
+        ProductPriceVersion::query()->where('product_id', $this->product->id)
+            ->update(['cost_price_minor' => 0]);
+        $ledger = app(StockLedgerService::class);
+        $ledger->post(StockLedgerService::KITCHEN, $this->cart->kitchen_id, $this->product->id,
+            MovementType::PRODUCTION_IN, 5, $this->barista->id, $this->cart->kitchen_id,
+            'pending_closing_production', 1);
+        $ledger->transfer(StockLedgerService::KITCHEN, $this->cart->kitchen_id,
+            StockLedgerService::CART, $this->cart->id, $this->product->id,
+            MovementType::ALLOCATION_OUT, MovementType::ALLOCATION_IN, 5,
+            $this->barista->id, $this->cart->kitchen_id, 'pending_closing_transfer', 1);
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', [...$this->body(2, 1), 'qris' => 0, 'transfer' => 0])
+            ->assertCreated();
+        ProductPriceVersion::create([
+            'product_id' => $this->product->id, 'cost_price_minor' => 1000,
+            'sell_price_minor' => 20000, 'effective_from' => now(),
+        ]);
+        $this->assertGreaterThan(0, app(PendingStockCostService::class)
+            ->resolveProduct($this->product, $this->finance));
+
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', [...$this->body(3, 0), 'qris' => 0, 'transfer' => 0])
+            ->assertOk();
+
+        $compensations = StockLedger::query()->whereIn('ref_type', [
+            'rider_closing_sale_compensation', 'rider_closing_waste_compensation',
+        ])->get()->pluck('cost_minor', 'ref_type')->all();
+        $this->assertSame(2000, $compensations['rider_closing_sale_compensation']);
+        $this->assertSame(1000, $compensations['rider_closing_waste_compensation']);
+        $this->assertSame([3, 3000], array_slice(app(StockLedgerService::class)->valuation(
+            StockLedgerService::CART, $this->cart->id, $this->product->id), 0, 2));
+        $book = DB::table('journal_lines as l')->join('accounts as a', 'a.id', '=', 'l.account_id')
+            ->where('a.code', '1-1600')->selectRaw('SUM(l.debit_minor) AS debit, SUM(l.credit_minor) AS credit')
+            ->first();
+        $this->assertSame(3000, (int) $book->debit - (int) $book->credit);
+        $this->assertSame((int) DB::table('journal_lines')->sum('debit_minor'),
+            (int) DB::table('journal_lines')->sum('credit_minor'));
     }
 
     public function test_closing_uses_handover_refill_and_carry_then_posts_aggregate_ledger_once(): void
@@ -233,6 +275,38 @@ class RiderClosingTest extends TestCase
         foreach (JournalEntry::query()->whereIn('purpose', ['SETTLEMENT', 'SETTLEMENT_COGS', 'SETTLEMENT_CORRECTION', 'SETTLEMENT_COGS_CORRECTION'])->with('lines')->get() as $journal) {
             $this->assertSame((int) $journal->lines->sum('debit_minor'), (int) $journal->lines->sum('credit_minor'));
         }
+    }
+
+    public function test_approved_closing_method_correction_updates_flag_and_notifies_management(): void
+    {
+        $this->issue(10, MovementType::ALLOCATION_IN);
+        $management = User::factory()->role(Role::MANAGEMENT)->create();
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', [...$this->body(3, 0), 'qris' => 20000, 'transfer' => 0])
+            ->assertCreated();
+        $closing = RiderClosing::query()->sole();
+        $id = $this->actingAs($this->finance, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/settlements', [
+                'cart_id' => $this->cart->id, 'cash' => $closing->cash_minor,
+                'qris' => $closing->qris_minor, 'transfer' => 0,
+            ])->assertCreated()->assertJsonPath('data.method_variance_flagged', false)->json('data.id');
+        $this->actingAs($this->finance, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson("/api/v1/settlements/{$id}/approve", [
+                'lines' => [['product_id' => $this->product->id, 'qty_returned' => 3, 'qty_rejected' => 0]],
+            ])->assertOk();
+        $this->actingAs($management, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson("/api/v1/closings/{$closing->id}/corrections", [
+                ...$this->body(3, 0), 'qris' => 30000, 'transfer' => 0,
+                'reason' => 'Metode QRIS dikoreksi',
+            ])->assertOk();
+        $settlement = Settlement::query()->findOrFail($id);
+        $this->assertSame(0, $settlement->variance_minor);
+        $this->assertTrue($settlement->method_variance_flagged);
+        $this->assertSame(10000, $settlement->cash_variance_minor);
+        $this->assertSame(-10000, $settlement->qris_variance_minor);
+        $event = OutboxEvent::query()->where('name', 'SettlementMethodVarianceFlagged')->sole();
+        $this->assertSame(1, AppNotification::query()->where('event_id', $event->event_id)
+            ->where('user_id', $management->id)->count());
     }
 
     public function test_day_gate_and_legacy_sale_are_respected(): void

@@ -388,6 +388,9 @@ class StockLedgerService
             return [];
         }
 
+        // Stock writers take the product cost mutex before ledger rows; use the same order
+        // for sufficiency checks so production and transfers cannot wait on each other.
+        $this->lockProductCostRows($ids);
         StockLedger::query()
             ->where('location_type', $locationType)
             ->where('location_id', $locationId)

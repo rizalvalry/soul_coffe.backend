@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\Role;
+use App\Models\AuditLog;
 use App\Models\CashAccount;
 use App\Models\CashCategory;
 use App\Models\CashTransaction;
@@ -102,6 +103,11 @@ class CashTransactionService
                 ['account_id' => $credit, 'debit_minor' => 0, 'credit_minor' => $amount],
             ]);
 
+            AuditLog::recordAction($actor, 'cash_transaction.created', $transaction, null, [
+                'date' => $data['date'], 'amount_minor' => $amount,
+                'cash_category_id' => $data['cash_category_id'], 'cash_account_id' => $data['cash_account_id'],
+            ]);
+
             return $transaction;
         }, 3);
     }
@@ -124,6 +130,9 @@ class CashTransactionService
             $this->journals->reverse($entry, $reason);
             $locked->update(['status' => 'VOID', 'voided_by' => $actor->id,
                 'voided_at' => now(), 'void_reason' => $reason]);
+
+            AuditLog::recordAction($actor, 'cash_transaction.voided', $locked,
+                ['status' => 'POSTED'], ['status' => 'VOID', 'reason' => $reason]);
 
             return $locked;
         }, 3);

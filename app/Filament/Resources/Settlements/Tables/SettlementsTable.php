@@ -136,7 +136,15 @@ class SettlementsTable
                         'VARIANCE_FLAGGED' => 'danger',
                         default => 'warning',
                     })
-                    ->description(fn (Settlement $record): ?string => $record->expected_stale ? 'Ekspektasi berubah: '.static::rupiah($record->stale_delta_minor) : null),
+                    ->description(fn (Settlement $record): ?string => $record->expected_stale ? 'Ekspektasi berubah: '.static::rupiah($record->stale_delta_minor)
+                        : ($record->method_variance_flagged ? 'Selisih metode: tunai '.static::rupiah($record->cash_variance_minor)
+                            .', QRIS '.static::rupiah($record->qris_variance_minor).', transfer '.static::rupiah($record->transfer_variance_minor) : null)),
+
+                TextColumn::make('self_approved')->label('Penyetuju')->badge()
+                    ->formatStateUsing(fn (Settlement $record): string => $record->reconciled_at === null ? 'Menunggu approve'
+                        : ($record->self_approved ? 'Disetujui sendiri' : 'Berbeda dari pencatat'))
+                    ->color(fn (Settlement $record): string => $record->reconciled_at === null ? 'gray'
+                        : ($record->self_approved ? 'warning' : 'success')),
 
                 TextColumn::make('reconciledBy.name')
                     ->label('Disetujui oleh')
@@ -151,7 +159,8 @@ class SettlementsTable
 
                 Filter::make('selisih')
                     ->label('Hanya yang ada selisih')
-                    ->query(fn (Builder $query): Builder => $query->where('variance_minor', '!=', 0)),
+                    ->query(fn (Builder $query): Builder => $query->where(fn (Builder $query): Builder => $query
+                        ->where('variance_minor', '!=', 0)->orWhere('method_variance_flagged', true))),
 
                 SelectFilter::make('status')
                     ->label('Status')

@@ -43,6 +43,12 @@ class SettlementResource extends JsonResource
             'stale_delta_minor' => $settlement->stale_delta_minor,
             'variance' => $settlement->variance_minor,
             'variance_reason' => $settlement->variance_reason,
+            'recorded_by' => $settlement->recorded_by,
+            'self_approved' => $settlement->self_approved,
+            'method_variance_flagged' => $settlement->method_variance_flagged,
+            'cash_variance_minor' => $settlement->cash_variance_minor,
+            'qris_variance_minor' => $settlement->qris_variance_minor,
+            'transfer_variance_minor' => $settlement->transfer_variance_minor,
             'reconciled_by' => $settlement->reconciledBy?->name,
             'reconciled_at' => $settlement->reconciled_at?->toIso8601String(),
             'lines' => $settlement->lines->map(fn ($line): array => [

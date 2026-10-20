@@ -178,6 +178,11 @@ class SettlementService
                     'qris_minor' => $settlement?->qris_minor,
                     'transfer_minor' => $settlement?->transfer_minor,
                     'variance_minor' => $settlement?->variance_minor,
+                    'method_variance_flagged' => (bool) ($settlement?->method_variance_flagged ?? false),
+                    'cash_variance_minor' => $settlement?->cash_variance_minor,
+                    'qris_variance_minor' => $settlement?->qris_variance_minor,
+                    'transfer_variance_minor' => $settlement?->transfer_variance_minor,
+                    'self_approved' => (bool) ($settlement?->self_approved ?? false),
                     'cups_remaining' => (int) ($closing?->lines->sum('qty_remaining') ?? $remaining[$assignment->cart_id] ?? 0),
                     'cups_live_remaining' => $remaining[$assignment->cart_id] ?? 0,
                     'settlement_id' => $settlement?->id,
@@ -347,6 +352,12 @@ class SettlementService
             }
             $expected = (int) $draft['expected_total'];
             $variance = $declared - $expected;
+            $methodVariances = [
+                'cash_variance_minor' => $cash - (int) $draft['expected_cash_minor'],
+                'qris_variance_minor' => $qris - (int) $draft['expected_qris_minor'],
+                'transfer_variance_minor' => $transfer - (int) $draft['expected_transfer_minor'],
+            ];
+            $methodFlagged = collect($methodVariances)->contains(fn (int $value): bool => $value !== 0);
 
             $closingCogs = RiderClosing::query()->where('cart_id', $cart->id)
                 ->whereDate('operating_date', $date->toDateString())->value('cogs_minor');
@@ -375,6 +386,9 @@ class SettlementService
                 'stale_delta_minor' => 0,
                 'variance_minor' => $variance,
                 'variance_reason' => $varianceReason,
+                'recorded_by' => $finance->id,
+                'method_variance_flagged' => $methodFlagged,
+                ...$methodVariances,
             ];
 
             if ($existing) {
@@ -453,6 +467,26 @@ class SettlementService
                 );
             }
 
+            if ($methodFlagged) {
+                AuditLog::recordAction($finance, 'settlement.method_variance_flagged', $settlement, null, [
+                    'cart_id' => $cart->id, 'operating_date' => $date->toDateString(),
+                    ...$methodVariances,
+                ]);
+                $recipientIds = User::query()->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT])
+                    ->where('is_active', true)->orderBy('id')->pluck('id')->all();
+                $this->events->publish(
+                    type: 'SettlementMethodVarianceFlagged',
+                    title: 'Selisih metode setoran perlu dicek',
+                    body: sprintf('Setoran Coffee Bike %s: tunai %s, QRIS %s, transfer %s. Cek rincian metode ya.',
+                        $cart->code, number_format($methodVariances['cash_variance_minor'], 0, ',', '.'),
+                        number_format($methodVariances['qris_variance_minor'], 0, ',', '.'),
+                        number_format($methodVariances['transfer_variance_minor'], 0, ',', '.')),
+                    channels: array_map(fn (int $id): string => "user.{$id}", $recipientIds),
+                    notifyUserIds: $recipientIds, status: $settlement->status, includeActorPush: true,
+                    context: ['cart_id' => $cart->id, 'operating_date' => $date->toDateString(), 'source_id' => $settlement->id],
+                );
+            }
+
             $this->events->publish(
                 type: 'SettlementRecorded',
                 title: 'Setoran tercatat',
@@ -527,14 +561,6 @@ class SettlementService
 
             $cart = Cart::query()->findOrFail($locked->cart_id);
             $kitchenId = $cart->kitchen_id;
-
-            // JournalService always locks the chart before the accounting period.
-            Account::query()->orderBy('id')->lockForUpdate()->firstOrFail();
-            $period = AccountingPeriod::query()->where('year', $locked->operating_date->year)
-                ->where('month', $locked->operating_date->month)->lockForUpdate()->first();
-            if ($period?->status === 'CLOSED') {
-                throw new RuntimeException('Periode akuntansi tanggal setoran sudah ditutup. Setoran belum disetujui.');
-            }
 
             $rows = [];
 
@@ -630,9 +656,20 @@ class SettlementService
                 throw new RuntimeException('Masih ada cups di Coffee Bike. Tentukan jumlah kembali atau reject sebelum menyetujui setoran.');
             }
 
+            // Disposition takes product cost locks before journal locks. Check the settlement
+            // period afterward in the same transaction so a closed period rolls everything back.
+            Account::query()->orderBy('id')->lockForUpdate()->firstOrFail();
+            $period = AccountingPeriod::query()->where('year', $locked->operating_date->year)
+                ->where('month', $locked->operating_date->month)->lockForUpdate()->first();
+            if ($period?->status === 'CLOSED') {
+                throw new RuntimeException('Periode akuntansi tanggal setoran sudah ditutup. Setoran belum disetujui.');
+            }
+
+            $beforeStatus = $locked->status;
             $locked->status = 'RECONCILED';
             $locked->reconciled_by = $finance->id;
             $locked->reconciled_at = now();
+            $locked->self_approved = $locked->recorded_by !== null && $locked->recorded_by === $finance->id;
 
             if ($note !== null && trim($note) !== '') {
                 $locked->variance_reason = trim(($locked->variance_reason ? $locked->variance_reason.' — ' : '').$note);
@@ -643,6 +680,22 @@ class SettlementService
             app(RiderCommissionService::class)->lockForSettlement($locked->cart_id, $locked->operating_date->toDateString());
 
             $this->postJournals($locked, $finance);
+
+            AuditLog::recordAction($finance, 'settlement.approved', $locked,
+                ['status' => $beforeStatus, 'recorded_by' => $locked->recorded_by],
+                ['status' => 'RECONCILED', 'reconciled_by' => $finance->id,
+                    'self_approved' => $locked->self_approved]);
+            if ($locked->self_approved) {
+                $recipientIds = User::query()->where('role', Role::MANAGEMENT)->where('is_active', true)
+                    ->orderBy('id')->pluck('id')->all();
+                $this->events->publish(
+                    type: 'SettlementSelfApproved', title: 'Setoran disetujui pencatatnya',
+                    body: sprintf('Setoran Coffee Bike %s disetujui oleh pencatatnya sendiri. Cek auditnya ya.', $cart->code),
+                    channels: array_map(fn (int $id): string => "user.{$id}", $recipientIds),
+                    notifyUserIds: $recipientIds, status: $locked->status, includeActorPush: true,
+                    context: ['cart_id' => $cart->id, 'operating_date' => $locked->operating_date->toDateString(), 'source_id' => $locked->id],
+                );
+            }
 
             $this->events->publish(
                 type: 'SettlementApproved',

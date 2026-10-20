@@ -1202,7 +1202,7 @@ class PayrollRunTest extends TestCase
             [['product_id' => $product->id, 'qty' => 1]], 'transfer');
         $this->assertSame(1, JournalEntry::query()->where('source_type', 'direct_sale')
             ->where('source_id', $direct->id)->count());
-        $this->assertSame(['1-1300' => [20000, 0], '4-1200' => [0, 20000]],
+        $this->assertSame(['1-1400' => [20000, 0], '4-1200' => [0, 20000]],
             $entryLines(JournalEntry::query()->where('source_type', 'direct_sale')
                 ->where('source_id', $direct->id)->where('purpose', 'DIRECT_SALE')->sole()));
         $this->assertSame(['5-1100' => [8000, 0], '1-1600' => [0, 8000]],

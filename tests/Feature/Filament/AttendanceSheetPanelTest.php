@@ -10,6 +10,7 @@ use App\Filament\Resources\Accounts\AccountResource;
 use App\Filament\Resources\CashAccounts\CashAccountResource;
 use App\Filament\Resources\CashCategories\CashCategoryResource;
 use App\Filament\Resources\CashTransactions\CashTransactionResource;
+use App\Filament\Resources\ClearingReceipts\ClearingReceiptResource;
 use App\Filament\Resources\EmployeeProfiles\EmployeeProfileResource;
 use App\Filament\Resources\FixedAssets\FixedAssetResource;
 use App\Filament\Resources\Journals\JournalResource;
@@ -100,6 +101,7 @@ class AttendanceSheetPanelTest extends TestCase
                     CashAccountResource::class,
                     CashCategoryResource::class,
                     CashTransactionResource::class,
+                    ClearingReceiptResource::class,
                     OfficeItemResource::class,
                     // T-035 gives Finance an explicit expiry decision desk.
                     RefillRequestResource::class], true),

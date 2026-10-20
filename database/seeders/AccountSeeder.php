@@ -40,6 +40,7 @@ class AccountSeeder extends Seeder
             ['6-1800', 'Beban Lain-lain', 'EXPENSE'],
             ['6-1910', 'Beban Rusak & Selisih Persediaan', 'EXPENSE'],
             ['6-1920', 'Selisih Penilaian Persediaan', 'EXPENSE'],
+            ['6-1990', 'Biaya Admin/MDR', 'EXPENSE'],
             ['6-2000', 'Beban Penyusutan', 'EXPENSE'],
             ['6-2100', 'Laba/Rugi Pelepasan Aset', 'EXPENSE'],
         ];

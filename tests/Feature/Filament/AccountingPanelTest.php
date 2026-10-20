@@ -182,6 +182,8 @@ class AccountingPanelTest extends TestCase
         $account = Account::query()->where('code', '6-1900')->firstOrFail();
         $this->assertSame('DEBIT', $account->normal_balance);
         $this->assertFalse($account->is_system);
+        $this->assertSame(1, AuditLog::query()->where('action', 'account.created')
+            ->where('subject_id', $account->id)->count());
 
         Livewire::test(AccountingPeriods::class)->call('setStatus', 2026, 10, 'CLOSED')
             ->call('setStatus', 2026, 10, 'OPEN', 'Koreksi jurnal uji');

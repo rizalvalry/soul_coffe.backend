@@ -7,6 +7,7 @@ use App\Enums\PanelModule;
 use App\Enums\PurchaseOrderStatus;
 use App\Enums\Role;
 use App\Models\Account;
+use App\Models\AuditLog;
 use App\Models\CashAccount;
 use App\Models\JournalEntry;
 use App\Models\PurchaseOrder;
@@ -93,6 +94,13 @@ class PurchaseOrderService
                 ]);
             }
 
+            AuditLog::recordAction($actor, 'purchase_order.created', $po, null, [
+                'supplier_id' => $supplierId, 'kitchen_id' => $kitchenId,
+                'lines' => $po->lines()->get()->map(fn ($line): array => $line->only([
+                    'raw_material_id', 'qty_ordered', 'unit_cost_minor',
+                ]))->all(),
+            ]);
+
             return $po->load('lines');
         });
     }
@@ -101,7 +109,7 @@ class PurchaseOrderService
     {
         $this->assertMayOperate($actor);
 
-        return DB::transaction(function () use ($po): PurchaseOrder {
+        return DB::transaction(function () use ($po, $actor): PurchaseOrder {
             $locked = PurchaseOrder::query()->whereKey($po->id)->lockForUpdate()->firstOrFail();
 
             if (! $locked->status->isDraft()) {
@@ -111,6 +119,9 @@ class PurchaseOrderService
             $locked->status = PurchaseOrderStatus::ORDERED;
             $locked->ordered_at = now();
             $locked->save();
+
+            AuditLog::recordAction($actor, 'purchase_order.ordered', $locked,
+                ['status' => 'DRAFT'], ['status' => 'ORDERED']);
 
             return $locked->fresh(['lines']);
         });
@@ -196,6 +207,12 @@ class PurchaseOrderService
 
             $this->postReceiptJournal($locked, $amount, $actor->id);
 
+            AuditLog::recordAction($actor, 'purchase_order.received', $locked,
+                ['status' => 'ORDERED'], ['status' => 'RECEIVED', 'amount_minor' => $amount,
+                    'payment_method' => $paymentMethod, 'lines' => $locked->lines->map(fn ($line): array => [
+                        'raw_material_id' => $line->raw_material_id, 'qty_received' => $line->qty_received,
+                    ])->all()]);
+
             return $locked->fresh(['lines']);
         });
 
@@ -276,6 +293,11 @@ class PurchaseOrderService
             ], [
                 ['account_id' => $liability->id, 'debit_minor' => $amount, 'credit_minor' => 0],
                 ['account_id' => $cash->account_id, 'debit_minor' => 0, 'credit_minor' => $amount],
+            ]);
+
+            AuditLog::recordAction($actor, 'purchase_order.paid', $payment, null, [
+                'purchase_order_id' => $locked->id, 'paid_on' => $data['paid_on'],
+                'amount_minor' => $amount, 'cash_account_id' => $cash->id,
             ]);
 
             return $payment;
