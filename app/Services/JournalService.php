@@ -372,6 +372,8 @@ class JournalService
     /** Call inside the business transaction before new stock or asset state is written. */
     public function assertOpenDate(string $date): void
     {
+        // Match postInternal's chart -> period order for callers that check before posting.
+        Account::query()->orderBy('id')->lockForUpdate()->firstOrFail();
         if ($this->lockPeriod(Carbon::parse($date))->status !== 'OPEN') {
             throw ValidationException::withMessages(['entry_date' => 'Periode akuntansi sudah ditutup.']);
         }

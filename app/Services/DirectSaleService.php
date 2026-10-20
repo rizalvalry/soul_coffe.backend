@@ -161,8 +161,10 @@ class DirectSaleService
                 $split = app(TaxService::class)->splitPbjt($totalAmount, $occurredAt->toDateString());
                 $revenueLines = [
                     ['account_id' => $accountIds[$cashCode], 'debit_minor' => $totalAmount, 'credit_minor' => 0],
-                    ['account_id' => $accountIds['4-1200'], 'debit_minor' => 0, 'credit_minor' => $split['revenue']],
                 ];
+                if ($split['revenue'] > 0) {
+                    $revenueLines[] = ['account_id' => $accountIds['4-1200'], 'debit_minor' => 0, 'credit_minor' => $split['revenue']];
+                }
                 if ($split['tax'] > 0) {
                     $revenueLines[] = ['account_id' => $accountIds['2-1500'], 'debit_minor' => 0, 'credit_minor' => $split['tax']];
                 }

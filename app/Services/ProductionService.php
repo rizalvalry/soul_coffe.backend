@@ -79,9 +79,6 @@ class ProductionService
 
         return DB::transaction(function () use ($kitchen, $rows, $recipeByProduct, $demand, $actor): Production {
             $this->ledger->lockProductCostRows(array_keys($rows));
-            if ($this->journals->isAccountingDate(today()->toDateString())) {
-                $this->journals->assertOpenDate(today()->toDateString());
-            }
             if ($demand !== []) {
                 $locked = $this->ledger->lockAndProjectRawMaterials(
                     StockLedgerService::RAW_MATERIAL_STORE,
@@ -90,6 +87,9 @@ class ProductionService
                 );
 
                 $this->assertSufficient($demand, $locked);
+            }
+            if ($this->journals->isAccountingDate(today()->toDateString())) {
+                $this->journals->assertOpenDate(today()->toDateString());
             }
 
             $production = Production::query()->create([

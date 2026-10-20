@@ -42,6 +42,32 @@ class LedgerCompletenessTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_open_date_locks_chart_before_accounting_period(): void
+    {
+        DB::enableQueryLog();
+        try {
+            DB::transaction(fn () => app(JournalService::class)->assertOpenDate(today()->toDateString()));
+            $queries = array_map(fn (array $row): string => strtolower($row['query']), DB::getQueryLog());
+        } finally {
+            DB::disableQueryLog();
+            DB::flushQueryLog();
+        }
+
+        $chartLock = null;
+        $periodLock = null;
+        foreach ($queries as $index => $sql) {
+            if (str_contains($sql, 'for update') && str_contains($sql, 'accounts')) {
+                $chartLock ??= $index;
+            }
+            if (str_contains($sql, 'for update') && str_contains($sql, 'accounting_periods')) {
+                $periodLock ??= $index;
+            }
+        }
+        $this->assertNotNull($chartLock);
+        $this->assertNotNull($periodLock);
+        $this->assertLessThan($periodLock, $chartLock);
+    }
+
     public function test_real_po_production_closing_taxed_settlement_and_opname_keep_moving_average_balanced(): void
     {
         config(['outbox.publish_mode' => 'queue']);
@@ -104,8 +130,11 @@ class LedgerCompletenessTest extends TestCase
             ->mapWithKeys(fn ($line): array => [$line->account->code => [$line->debit_minor, $line->credit_minor]])->all();
         $this->assertSame(['1-1200' => [10000, 0], '1-1400' => [15000, 0],
             '4-1100' => [0, 22727], '2-1500' => [0, 2273]], $settlementLines);
-        $this->assertSame(1, JournalEntry::query()->where('purpose', 'SALE_COGS')
-            ->where('source_type', 'stock_ledger')->count());
+        $saleCost = JournalEntry::query()->where('purpose', 'SALE_COGS')
+            ->where('source_type', 'stock_ledger')->sole();
+        $this->assertSame(['5-1100' => [6000, 0], '1-1600' => [0, 6000]],
+            $saleCost->lines()->with('account')->get()
+                ->mapWithKeys(fn ($line): array => [$line->account->code => [$line->debit_minor, $line->credit_minor]])->all());
         $clearing = app(ClearingService::class);
         $receipt = $clearing->record($finance, [
             'uuid' => (string) Str::uuid(), 'received_on' => today()->toDateString(),

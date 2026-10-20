@@ -95,6 +95,7 @@ class FixedAssetService
             ->orderBy('id')->chunkById(100, function ($assets) use ($date, $start, $actor, &$count): void {
                 foreach ($assets as $asset) {
                     DB::transaction(function () use ($asset, $date, $start, $actor, &$count): void {
+                        $this->journals->assertOpenDate($date);
                         $locked = FixedAsset::query()->whereKey($asset->id)->lockForUpdate()->firstOrFail();
                         if ($locked->status !== 'ACTIVE') {
                             return;

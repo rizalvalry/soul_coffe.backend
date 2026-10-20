@@ -519,6 +519,8 @@ class RiderClosingService
     private function correctApprovedSettlement(Settlement $settlement, RiderClosing $closing, User $actor, string $reason, int $revisionId): void
     {
         $revenueDelta = $closing->total_minor - $settlement->expected_total_minor;
+        // Keep the chart -> tax-version lock order used by tax settings and settlement posting.
+        Account::query()->orderBy('id')->lockForUpdate()->firstOrFail();
         $accounts = Account::query()->whereIn('code', ['4-1100', '2-1500', '6-1100'])->pluck('id', 'code');
         $line = static fn (string $code, int $debit, int $credit): array => [
             'account_id' => $accounts[$code], 'debit_minor' => $debit,
