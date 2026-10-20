@@ -31,6 +31,7 @@ use App\Services\RecipeService;
 use App\Services\Reporting\InventoryAccountingReportService;
 use App\Services\StockLedgerService;
 use App\Services\StockOpnameService;
+use App\Services\TaxService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -41,12 +42,19 @@ class LedgerCompletenessTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_real_po_production_closing_settlement_and_opname_keep_moving_average_balanced(): void
+    public function test_real_po_production_closing_taxed_settlement_and_opname_keep_moving_average_balanced(): void
     {
         config(['outbox.publish_mode' => 'queue']);
         $barista = User::factory()->role(Role::BARISTA)->create();
         $finance = User::factory()->role(Role::FINANCE)->create();
+        $management = User::factory()->role(Role::MANAGEMENT)->create();
         $rider = User::factory()->role(Role::STAFF)->create();
+        app(TaxService::class)->saveSetting($management, [
+            'tax_type' => 'PBJT', 'is_active' => true, 'rate_bps' => 1000,
+            'price_mode' => 'INCLUDED', 'scheme' => null,
+            'effective_from' => today()->toDateString(), 'effective_until' => null,
+            'legal_note' => null, 'monthly_threshold_minor' => null, 'reason' => 'Tarif uji integrasi',
+        ]);
         $kitchen = CentralKitchen::create(['name' => 'Dapur Siklus', 'address' => 'Jalan Uji',
             'open_at' => '05:00', 'close_at' => '20:00', 'is_active' => true]);
         $barista->update(['kitchen_id' => $kitchen->id]);
@@ -90,6 +98,14 @@ class LedgerCompletenessTest extends TestCase
             ->postJson('/api/v1/settlements/'.$settlementId.'/approve', [
                 'lines' => [['product_id' => $product->id, 'qty_returned' => 2, 'qty_rejected' => 0]],
             ])->assertOk();
+        $settlementLines = JournalEntry::query()->where('source_type', 'settlement')
+            ->where('source_id', $settlementId)->where('purpose', 'SETTLEMENT')->sole()
+            ->lines()->with('account')->get()
+            ->mapWithKeys(fn ($line): array => [$line->account->code => [$line->debit_minor, $line->credit_minor]])->all();
+        $this->assertSame(['1-1200' => [10000, 0], '1-1400' => [15000, 0],
+            '4-1100' => [0, 22727], '2-1500' => [0, 2273]], $settlementLines);
+        $this->assertSame(1, JournalEntry::query()->where('purpose', 'SALE_COGS')
+            ->where('source_type', 'stock_ledger')->count());
         $clearing = app(ClearingService::class);
         $receipt = $clearing->record($finance, [
             'uuid' => (string) Str::uuid(), 'received_on' => today()->toDateString(),

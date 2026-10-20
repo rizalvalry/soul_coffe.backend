@@ -519,7 +519,7 @@ class RiderClosingService
     private function correctApprovedSettlement(Settlement $settlement, RiderClosing $closing, User $actor, string $reason, int $revisionId): void
     {
         $revenueDelta = $closing->total_minor - $settlement->expected_total_minor;
-        $accounts = Account::query()->whereIn('code', ['4-1100', '6-1100'])->pluck('id', 'code');
+        $accounts = Account::query()->whereIn('code', ['4-1100', '2-1500', '6-1100'])->pluck('id', 'code');
         $line = static fn (string $code, int $debit, int $credit): array => [
             'account_id' => $accounts[$code], 'debit_minor' => $debit,
             'credit_minor' => $credit, 'cart_id' => $closing->cart_id,
@@ -531,9 +531,20 @@ class RiderClosingService
         ];
         if ($revenueDelta !== 0) {
             $amount = abs($revenueDelta);
-            $this->journals->post([...$header, 'purpose' => 'SETTLEMENT_CORRECTION'], $revenueDelta > 0
-                ? [$line('6-1100', $amount, 0), $line('4-1100', 0, $amount)]
-                : [$line('4-1100', $amount, 0), $line('6-1100', 0, $amount)]);
+            $tax = app(TaxService::class);
+            $date = $settlement->operating_date->toDateString();
+            $before = $tax->splitPbjt((int) $settlement->expected_total_minor, $date);
+            $after = $tax->splitPbjt((int) $closing->total_minor, $date);
+            $revenueChange = $after['revenue'] - $before['revenue'];
+            $taxChange = $after['tax'] - $before['tax'];
+            $lines = $revenueDelta > 0 ? [$line('6-1100', $amount, 0)] : [$line('6-1100', 0, $amount)];
+            if ($revenueChange !== 0) {
+                $lines[] = $line('4-1100', max(0, -$revenueChange), max(0, $revenueChange));
+            }
+            if ($taxChange !== 0) {
+                $lines[] = $line('2-1500', max(0, -$taxChange), max(0, $taxChange));
+            }
+            $this->journals->post([...$header, 'purpose' => 'SETTLEMENT_CORRECTION'], $lines);
         }
         $methodVariances = [
             'cash_variance_minor' => $settlement->cash_minor - $closing->cash_minor,
