@@ -19,6 +19,7 @@ class StaffAssignment extends Model
         'kitchen_id',
         'source',
         'superseded_at',
+        'location_setup_missing',
     ];
 
     protected function casts(): array
@@ -26,6 +27,7 @@ class StaffAssignment extends Model
         return [
             'operating_date' => 'date',
             'superseded_at' => 'datetime',
+            'location_setup_missing' => 'boolean',
         ];
     }
 

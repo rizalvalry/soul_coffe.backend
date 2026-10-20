@@ -11,7 +11,7 @@ class RiderClosing extends Model
     protected $fillable = [
         'operating_date', 'cart_id', 'rider_id', 'total_minor', 'cogs_minor',
         'qris_minor', 'transfer_minor', 'cash_minor', 'gps_lat', 'gps_lng',
-        'gps_unavailable', 'closed_at',
+        'gps_unavailable', 'closed_at', 'closing_basis', 'closing_distance_m', 'outside_closing_point',
     ];
 
     protected function casts(): array
@@ -25,6 +25,8 @@ class RiderClosing extends Model
             'transfer_minor' => 'integer',
             'cash_minor' => 'integer',
             'gps_unavailable' => 'boolean',
+            'closing_distance_m' => 'integer',
+            'outside_closing_point' => 'boolean',
         ];
     }
 

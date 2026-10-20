@@ -20,6 +20,7 @@ use App\Models\StaffLocationPing;
 use App\Models\StockLedger;
 use App\Models\User;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -76,6 +77,8 @@ class SettlementService
     public function queue(?Carbon $date = null): array
     {
         $date = ($date ?? Carbon::today())->startOfDay();
+        $viewerRole = Auth::user()?->role;
+        $showClosingLocation = in_array($viewerRole, [Role::ADMINISTRATOR, Role::FINANCE], true);
 
         $assignmentRows = StaffAssignment::query()
             ->with(['cart:id,code,kitchen_id', 'cart.kitchen:id,lat,lng,geofence_m', 'user:id,name', 'location:id,name', 'kitchen:id,lat,lng,geofence_m'])
@@ -144,7 +147,7 @@ class SettlementService
             ->all();
 
         return $assignments
-            ->map(function (StaffAssignment $assignment) use ($date, $sales, $settlements, $closings, $closeoutVarianceCounts, $saleStaffIds, $saleStaffNames, $remaining, $lastPings): array {
+            ->map(function (StaffAssignment $assignment) use ($date, $sales, $settlements, $closings, $closeoutVarianceCounts, $saleStaffIds, $saleStaffNames, $remaining, $lastPings, $showClosingLocation): array {
                 $sale = $sales->get($assignment->cart_id);
                 $settlement = $settlements->get($assignment->cart_id);
                 $closing = $closings->get($assignment->cart_id);
@@ -164,6 +167,8 @@ class SettlementService
                     'transactions' => (int) ($sale->trx ?? 0),
                     'closing_status' => $closing ? 'Sudah closing' : ($this->requiresClosing($date) ? 'Menunggu closing Rider' : 'Legacy'),
                     'closing_id' => $closing?->id,
+                    'outside_closing_point' => $showClosingLocation && (bool) ($closing?->outside_closing_point ?? false),
+                    'closing_distance_m' => $showClosingLocation ? $closing?->closing_distance_m : null,
                     'closing_required' => $this->requiresClosing($date),
                     'carry_warning' => (bool) $closing?->lines->contains(fn ($line): bool => $line->qty_carry > 0),
                     'closeout_variance_count' => (int) ($closeoutVarianceCounts[$assignment->cart_id] ?? 0),
@@ -486,12 +491,13 @@ class SettlementService
                     context: ['cart_id' => $cart->id, 'operating_date' => $date->toDateString(), 'source_id' => $settlement->id],
                 );
             }
-
+            $riderId = $this->settlementRiderId($settlement);
             $this->events->publish(
                 type: 'SettlementRecorded',
                 title: 'Setoran tercatat',
                 body: sprintf('Setoran Coffee Bike %s tercatat.', $cart->code),
-                channels: ['role.FINANCE', 'role.MANAGEMENT'],
+                channels: ['role.FINANCE', 'role.MANAGEMENT', 'user.'.$riderId],
+                notifyUserIds: [$riderId],
                 status: $settlement->status,
                 context: [
                     'cart_id' => $settlement->cart_id,
@@ -696,12 +702,13 @@ class SettlementService
                     context: ['cart_id' => $cart->id, 'operating_date' => $locked->operating_date->toDateString(), 'source_id' => $locked->id],
                 );
             }
-
+            $riderId = $this->settlementRiderId($locked);
             $this->events->publish(
                 type: 'SettlementApproved',
                 title: 'Setoran disetujui',
                 body: sprintf('Setoran Coffee Bike %s disetujui.', $cart->code),
-                channels: ['role.FINANCE', 'role.MANAGEMENT'],
+                channels: ['role.FINANCE', 'role.MANAGEMENT', 'user.'.$riderId],
+                notifyUserIds: [$riderId],
                 status: $locked->status,
                 context: [
                     'cart_id' => $locked->cart_id,
@@ -712,6 +719,13 @@ class SettlementService
 
             return $locked->fresh(['lines']);
         });
+    }
+
+    private function settlementRiderId(Settlement $settlement): int
+    {
+        return (int) (RiderClosing::query()->where('cart_id', $settlement->cart_id)
+            ->whereDate('operating_date', $settlement->operating_date->toDateString())
+            ->value('rider_id') ?? $settlement->staff_id);
     }
 
     private function isInsideKitchen(?StaffLocationPing $ping, ?CentralKitchen $kitchen): bool

@@ -66,7 +66,7 @@ class RiderClosingController extends Controller implements HasMiddleware
             $saved = $this->closings->record(
                 $request->user(), $closing->cart, $closing->rider,
                 $closing->operating_date, $data['lines'], (int) $data['qris'],
-                (int) $data['transfer'], $this->gps($data), $data['reason'],
+                (int) $data['transfer'], $this->gps($data, financeCorrection: true), $data['reason'],
                 idempotencyKey: $request->header('Idempotency-Key'),
             );
         } catch (RuntimeException $e) {
@@ -96,12 +96,16 @@ class RiderClosingController extends Controller implements HasMiddleware
         ]);
     }
 
-    private function gps(array $data): array
+    private function gps(array $data, bool $financeCorrection = false): array
     {
+        $hasFix = isset($data['gps_lat'], $data['gps_lng']) && ! ($data['gps_unavailable'] ?? false);
+        $financeKeepsPrevious = $financeCorrection && ! array_key_exists('gps_lat', $data)
+            && ! array_key_exists('gps_lng', $data) && ! array_key_exists('gps_unavailable', $data);
+
         return [
-            'lat' => $data['gps_lat'] ?? null,
-            'lng' => $data['gps_lng'] ?? null,
-            'unavailable' => (bool) ($data['gps_unavailable'] ?? false),
+            'lat' => $hasFix ? $data['gps_lat'] : null,
+            'lng' => $hasFix ? $data['gps_lng'] : null,
+            'unavailable' => ! $hasFix && ! $financeKeepsPrevious,
         ];
     }
 }

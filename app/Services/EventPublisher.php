@@ -115,6 +115,7 @@ class EventPublisher
                         'refill_request_id' => $payload['refill_request_id'],
                         'status' => $payload['status'],
                         'at' => $payload['at'],
+                        ...($payload['operating_date'] ?? null ? ['operating_date' => $payload['operating_date']] : []),
                     ],
                     $includeActorPush ? null : ($actorId !== null ? (int) $actorId : null),
                 );

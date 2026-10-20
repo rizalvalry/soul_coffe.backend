@@ -115,6 +115,9 @@ class RiderClosingService
             'qris_minor' => $existing?->qris_minor ?? 0,
             'transfer_minor' => $existing?->transfer_minor ?? 0,
             'cash_minor' => $existing?->cash_minor ?? 0,
+            'closing_point' => app(RiderClosingPoint::class)->for($rider, $assignment),
+            'outside_closing_point' => (bool) ($existing?->outside_closing_point ?? false),
+            'closing_distance_m' => $existing?->closing_distance_m,
             'lines' => $lines,
             'commission' => app(RiderCommissionService::class)->day($rider->id, $date->toDateString()),
         ];
@@ -207,6 +210,27 @@ class RiderClosingService
                 ->pluck('qty', 'product_id');
             $before = $closing ? $this->snapshot($closing) : null;
             $oldLines = $closing?->lines->keyBy('product_id') ?? collect();
+            $financeKeepsGps = $financeActor && $closing && ($gps['lat'] ?? null) === null
+                && ($gps['lng'] ?? null) === null && ! ($gps['unavailable'] ?? false);
+            if ($financeKeepsGps) {
+                // A Finance cup/money correction has no new phone fix. Keep the Rider's evidence.
+                $gps = ['lat' => $closing->gps_lat, 'lng' => $closing->gps_lng,
+                    'unavailable' => $closing->gps_unavailable];
+                $locationCheck = ['basis' => $closing->closing_basis,
+                    'distance_m' => $closing->closing_distance_m,
+                    'outside' => $closing->outside_closing_point];
+            } else {
+                $assignment = StaffAssignment::query()->where('user_id', $rider->id)
+                    ->where('cart_id', $cart->id)->whereDate('operating_date', $date->toDateString())
+                    ->where('source', 'hand_to_cart')->latest('id')->first();
+                $point = $assignment ? app(RiderClosingPoint::class)->for($rider, $assignment) : [
+                    'basis' => 'kitchen', 'lat' => null, 'lng' => null,
+                    'radius_m' => (int) config('soul.absen_geofence_m', 10),
+                ];
+                $locationCheck = app(RiderClosingPoint::class)->check($point, $gps);
+            }
+            // Suspicion remains visible after a later correction with a closer GPS fix.
+            $everOutside = (bool) ($closing?->outside_closing_point ?? false) || $locationCheck['outside'];
             $rows = [];
             $total = 0;
             $cogs = 0;
@@ -251,6 +275,9 @@ class RiderClosingService
             }
             if ($closing && $closing->total_minor === $total && $closing->qris_minor === $qris
                 && $closing->transfer_minor === $transfer && $closing->gps_unavailable === (bool) ($gps['unavailable'] ?? false)
+                && $closing->closing_basis === $locationCheck['basis']
+                && $closing->closing_distance_m === $locationCheck['distance_m']
+                && $closing->outside_closing_point === $everOutside
                 && ($closing->gps_lat === null ? ! isset($gps['lat']) : round((float) $closing->gps_lat, 7) === round((float) ($gps['lat'] ?? 0), 7))
                 && ($closing->gps_lng === null ? ! isset($gps['lng']) : round((float) $closing->gps_lng, 7) === round((float) ($gps['lng'] ?? 0), 7))
                 && collect($rows)->every(fn (array $row, int $id): bool => ($oldLines->get($id)?->qty_in ?? -1) === $row['qty_in']
@@ -274,6 +301,9 @@ class RiderClosingService
                 'gps_lat' => $gps['lat'] ?? null,
                 'gps_lng' => $gps['lng'] ?? null,
                 'gps_unavailable' => (bool) ($gps['unavailable'] ?? false),
+                'closing_basis' => $locationCheck['basis'],
+                'closing_distance_m' => $locationCheck['distance_m'],
+                'outside_closing_point' => $everOutside,
                 'closed_at' => now(),
             ];
             if (! $closing) {
@@ -380,6 +410,18 @@ class RiderClosingService
                 notifyUserIds: $recipientIds,
                 context: ['cart_id' => $cart->id, 'operating_date' => $date->toDateString(), 'source_id' => $closing->id],
             );
+            if ($locationCheck['outside'] && ! $financeKeepsGps) {
+                $fraudRecipients = User::query()->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE])
+                    ->where('is_active', true)->pluck('id')->all();
+                $this->events->publish(
+                    'RiderClosingOutsidePoint',
+                    'Closing di luar titik',
+                    "Closing Coffee Bike {$cart->code} di luar titik atau GPS belum tersedia. Cek aktivitas Rider ya.",
+                    ['role.ADMINISTRATOR', 'role.FINANCE'],
+                    notifyUserIds: $fraudRecipients,
+                    context: ['cart_id' => $cart->id, 'operating_date' => $date->toDateString(), 'source_id' => $closing->id],
+                );
+            }
 
             return $closing;
         });
@@ -462,6 +504,8 @@ class RiderClosingService
             'total_minor' => $closing->total_minor, 'cogs_minor' => $closing->cogs_minor,
             'qris_minor' => $closing->qris_minor, 'transfer_minor' => $closing->transfer_minor,
             'cash_minor' => $closing->cash_minor, 'gps_lat' => $closing->gps_lat,
+            'closing_basis' => $closing->closing_basis, 'closing_distance_m' => $closing->closing_distance_m,
+            'outside_closing_point' => $closing->outside_closing_point,
             'gps_lng' => $closing->gps_lng, 'gps_unavailable' => $closing->gps_unavailable,
             'closed_at' => $closing->closed_at?->toIso8601String(),
             'lines' => $closing->lines->map(fn ($line): array => $line->only([

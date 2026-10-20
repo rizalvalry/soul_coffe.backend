@@ -427,13 +427,18 @@ class CentralStockService
             ->where(fn ($query) => $query->where('cart_id', $cart->id)->orWhere('user_id', $staff->id))
             ->lockForUpdate()
             ->get();
+        // The legacy location_id request is accepted for old APKs but Management's setup wins.
+        $setup = app(RiderLocationSetupService::class)->active($staff);
+        $resolvedLocationId = $setup ? $setup->location_id : $this->resolveLocationId($cart);
+        $setupMissing = $setup === null;
         $same = $active->first(fn (StaffAssignment $row): bool => (int) $row->cart_id === (int) $cart->id
-            && (int) $row->user_id === (int) $staff->id);
+            && (int) $row->user_id === (int) $staff->id
+            && (int) $row->location_id === (int) $resolvedLocationId
+            && (bool) $row->location_setup_missing === $setupMissing);
         if ($same) {
             return [$same, []];
         }
 
-        $resolvedLocationId = $locationId ?? $this->resolveLocationId($cart);
         $displacedStaffIds = [];
         foreach ($active as $old) {
             $old->update(['superseded_at' => now()]);
@@ -450,11 +455,24 @@ class CentralStockService
             'user_id' => $staff->id,
             'cart_id' => $cart->id,
             'location_id' => $resolvedLocationId,
+            'location_setup_missing' => $setupMissing,
             'operating_date' => $dateString,
             'assigned_by' => $barista->id,
             'kitchen_id' => $kitchenId,
             'source' => 'hand_to_cart',
         ]);
+
+        if ($setupMissing) {
+            $recipientIds = User::query()->where('role', Role::MANAGEMENT)->where('is_active', true)->pluck('id')->all();
+            $this->events->publish(
+                'RiderLocationSetupMissing',
+                'Rider belum punya setup',
+                "Setup Lokasi Rider {$staff->name} belum diisi. Yuk, lengkapi di Management.",
+                ['role.MANAGEMENT'],
+                notifyUserIds: $recipientIds,
+                context: ['cart_id' => $cart->id, 'operating_date' => $dateString, 'source_id' => $assignment->id],
+            );
+        }
 
         return [$assignment, array_values(array_unique($displacedStaffIds))];
     }
