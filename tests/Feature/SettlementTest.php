@@ -17,6 +17,7 @@ use App\Models\Location;
 use App\Models\OutboxEvent;
 use App\Models\Product;
 use App\Models\ProductPriceVersion;
+use App\Models\RiderClosing;
 use App\Models\Sale;
 use App\Models\Settlement;
 use App\Models\StaffAssignment;
@@ -179,7 +180,7 @@ class SettlementTest extends TestCase
 
         $recorded = OutboxEvent::query()->where('name', 'SettlementRecorded')->sole();
         $this->assertSame('SUBMITTED', $recorded->payload_json['status']);
-        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT'], $recorded->payload_json['channels']);
+        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT', 'user.'.$this->staff->id], $recorded->payload_json['channels']);
         $this->assertSame($this->cart->id, $recorded->payload_json['cart_id']);
         $this->assertSame(Carbon::today()->toDateString(), $recorded->payload_json['operating_date']);
         $this->assertSame($settlementId, $recorded->payload_json['source_id']);
@@ -195,7 +196,7 @@ class SettlementTest extends TestCase
 
         $approved = OutboxEvent::query()->where('name', 'SettlementApproved')->sole();
         $this->assertSame('RECONCILED', $approved->payload_json['status']);
-        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT'], $approved->payload_json['channels']);
+        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT', 'user.'.$this->staff->id], $approved->payload_json['channels']);
         $this->assertSame($this->cart->id, $approved->payload_json['cart_id']);
         $this->assertSame(Carbon::today()->toDateString(), $approved->payload_json['operating_date']);
         $this->assertSame($settlementId, $approved->payload_json['source_id']);
@@ -207,6 +208,40 @@ class SettlementTest extends TestCase
         $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson("/api/v1/settlements/{$settlementId}/approve", [])->assertStatus(422);
         $this->assertSame(1, OutboxEvent::query()->where('name', 'SettlementApproved')->count());
+    }
+
+    public function test_settlement_events_reach_the_closing_rider_after_cart_switch(): void
+    {
+        $this->issue(10);
+        RiderClosing::create([
+            'operating_date' => today(), 'cart_id' => $this->cart->id, 'rider_id' => $this->staff->id,
+            'total_minor' => 0, 'cogs_minor' => 0, 'qris_minor' => 0, 'transfer_minor' => 0,
+            'cash_minor' => 0, 'gps_unavailable' => true, 'closed_at' => now(),
+        ]);
+        $nextRider = User::factory()->role(Role::STAFF)->create();
+        $priorAssignment = $this->cart->staffAssignments()->firstOrFail();
+        $priorAssignment->update(['superseded_at' => now()]);
+        StaffAssignment::create([
+            'source' => 'hand_to_cart', 'user_id' => $nextRider->id, 'cart_id' => $this->cart->id,
+            'location_id' => $priorAssignment->location_id,
+            'operating_date' => today(), 'assigned_by' => $this->barista->id,
+            'kitchen_id' => $this->kitchen->id,
+        ]);
+
+        $settlementId = $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', [
+                'cart_id' => $this->cart->id, 'cash' => 0, 'qris' => 0, 'transfer' => 0,
+            ])->assertCreated()->json('data.id');
+        $this->assertSame($nextRider->id, Settlement::findOrFail($settlementId)->staff_id);
+        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT', 'user.'.$this->staff->id],
+            OutboxEvent::query()->where('name', 'SettlementRecorded')->sole()->payload_json['channels']);
+        $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements/'.$settlementId.'/approve', ['lines' => $this->returnAll()])
+            ->assertOk();
+        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT', 'user.'.$this->staff->id],
+            OutboxEvent::query()->where('name', 'SettlementApproved')->sole()->payload_json['channels']);
+        $this->assertFalse(AppNotification::query()->where('user_id', $nextRider->id)
+            ->whereIn('type', ['SettlementRecorded', 'SettlementApproved'])->exists());
     }
 
     public function test_settlement_request_succeeds_while_pusher_times_out_in_queued_job(): void
@@ -516,7 +551,8 @@ class SettlementTest extends TestCase
         $channels = array_map(fn (int $id): string => "user.{$id}", $recipients);
 
         Event::fake([SoulEvent::class]);
-        $this->mock(PushNotifier::class)
+        $pushNotifier = $this->mock(PushNotifier::class);
+        $pushNotifier
             ->shouldReceive('notifyUsers')
             ->once()
             ->withArgs(function (array $ids, string $title, string $body, array $data, ?int $excludeUserId) use ($recipients): bool {
@@ -529,6 +565,14 @@ class SettlementTest extends TestCase
                     && $data['status'] === 'VARIANCE_FLAGGED'
                     && $title !== '' && str_contains($body, 'Coffee Bike 0018');
             });
+        $pushNotifier
+            ->shouldReceive('notifyUsers')
+            ->once()
+            ->withArgs(fn (array $ids, string $title, string $body, array $data, ?int $excludeUserId): bool => $ids === [$this->staff->id]
+                && $excludeUserId === $this->finance->id
+                && $data['type'] === 'SettlementRecorded'
+                && $data['operating_date'] === today()->toDateString()
+                && $title !== '' && $body !== '');
 
         $this->asFinance()
             ->withHeader('Idempotency-Key', (string) Str::uuid())

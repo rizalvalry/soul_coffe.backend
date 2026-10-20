@@ -164,6 +164,8 @@ class SettlementService
                     'transactions' => (int) ($sale->trx ?? 0),
                     'closing_status' => $closing ? 'Sudah closing' : ($this->requiresClosing($date) ? 'Menunggu closing Rider' : 'Legacy'),
                     'closing_id' => $closing?->id,
+                    'outside_closing_point' => (bool) ($closing?->outside_closing_point ?? false),
+                    'closing_distance_m' => $closing?->closing_distance_m,
                     'closing_required' => $this->requiresClosing($date),
                     'carry_warning' => (bool) $closing?->lines->contains(fn ($line): bool => $line->qty_carry > 0),
                     'closeout_variance_count' => (int) ($closeoutVarianceCounts[$assignment->cart_id] ?? 0),
@@ -453,11 +455,13 @@ class SettlementService
                 );
             }
 
+            $riderId = $this->settlementRiderId($settlement);
             $this->events->publish(
                 type: 'SettlementRecorded',
                 title: 'Setoran tercatat',
                 body: sprintf('Setoran Coffee Bike %s tercatat.', $cart->code),
-                channels: ['role.FINANCE', 'role.MANAGEMENT'],
+                channels: ['role.FINANCE', 'role.MANAGEMENT', 'user.'.$riderId],
+                notifyUserIds: [$riderId],
                 status: $settlement->status,
                 context: [
                     'cart_id' => $settlement->cart_id,
@@ -644,11 +648,13 @@ class SettlementService
 
             $this->postJournals($locked, $finance);
 
+            $riderId = $this->settlementRiderId($locked);
             $this->events->publish(
                 type: 'SettlementApproved',
                 title: 'Setoran disetujui',
                 body: sprintf('Setoran Coffee Bike %s disetujui.', $cart->code),
-                channels: ['role.FINANCE', 'role.MANAGEMENT'],
+                channels: ['role.FINANCE', 'role.MANAGEMENT', 'user.'.$riderId],
+                notifyUserIds: [$riderId],
                 status: $locked->status,
                 context: [
                     'cart_id' => $locked->cart_id,
@@ -659,6 +665,13 @@ class SettlementService
 
             return $locked->fresh(['lines']);
         });
+    }
+
+    private function settlementRiderId(Settlement $settlement): int
+    {
+        return (int) (RiderClosing::query()->where('cart_id', $settlement->cart_id)
+            ->whereDate('operating_date', $settlement->operating_date->toDateString())
+            ->value('rider_id') ?? $settlement->staff_id);
     }
 
     private function isInsideKitchen(?StaffLocationPing $ping, ?CentralKitchen $kitchen): bool

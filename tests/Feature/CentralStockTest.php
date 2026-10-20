@@ -65,6 +65,7 @@ class CentralStockTest extends TestCase
             'assigned_by' => User::query()->where('role', Role::ADMINISTRATOR)->firstOrFail()->id,
             'kitchen_id' => $this->cart->kitchen_id,
             'source' => 'hand_to_cart',
+            'location_setup_missing' => true,
         ]);
     }
 

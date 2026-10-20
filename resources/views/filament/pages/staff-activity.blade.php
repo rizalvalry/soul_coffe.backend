@@ -319,6 +319,9 @@
                                 <td class="bsi-num">{{ number_format($row['revenue'], 0, ',', '.') }}</td>
                                 <td class="bsi-num @if ($row['flagged'] > 0) bsi-num--alarm @endif">
                                     {{ $row['flagged'] > 0 ? $row['flagged'] : '' }}
+                                    @if ($row['closing_location_warning'] ?? null)
+                                        <div>{{ $row['closing_location_warning'] }}</div>
+                                    @endif
                                 </td>
                                 <td>{{ $row['last_sale_at']?->format('H:i') ?? '—' }}</td>
                             </tr>

@@ -52,7 +52,9 @@ class SalesActivityService
                 'transactions' => 1,
                 'cups' => (int) $closing->lines->sum('qty_sold'),
                 'revenue' => $closing->total_minor,
-                'flagged' => (int) $closing->lines->contains(fn ($line): bool => $line->qty_carry > 0),
+                'flagged' => (int) ($closing->outside_closing_point || $closing->lines->contains(fn ($line): bool => $line->qty_carry > 0)),
+                'closing_location_warning' => $closing->outside_closing_point
+                    ? ($closing->closing_distance_m === null ? 'Pernah Closing tanpa GPS' : 'Pernah Closing di luar titik; lokasi terbaru '.$closing->closing_distance_m.' m') : null,
                 'last_sale_at' => $closing->closed_at,
             ])->sortByDesc('cups')->values()->all();
         }
@@ -249,7 +251,8 @@ class SalesActivityService
                 'transactions' => $closings->count(),
                 'cups' => (int) $closings->sum(fn (RiderClosing $closing): int => $closing->lines->sum('qty_sold')),
                 'revenue' => (int) $closings->sum('total_minor'),
-                'flagged' => $closings->filter(fn (RiderClosing $closing): bool => $closing->lines->contains(fn ($line): bool => $line->qty_carry > 0))->count(),
+                'flagged' => $closings->filter(fn (RiderClosing $closing): bool => $closing->outside_closing_point
+                    || $closing->lines->contains(fn ($line): bool => $line->qty_carry > 0))->count(),
                 'carts' => $closings->pluck('cart_id')->unique()->count(),
             ];
         }

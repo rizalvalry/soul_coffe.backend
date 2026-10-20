@@ -20,6 +20,8 @@ use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\RefillRequestController;
 use App\Http\Controllers\Api\RefillTransitionController;
 use App\Http\Controllers\Api\RiderClosingController;
+use App\Http\Controllers\Api\RiderDailySettlementController;
+use App\Http\Controllers\Api\RiderLocationSetupController;
 use App\Http\Controllers\Api\SaleController;
 use App\Http\Controllers\Api\SettlementController;
 use App\Http\Controllers\Api\ShowcaseStockController;
@@ -82,6 +84,10 @@ Route::middleware(['auth:sanctum', RecoverOutboxAfterResponse::class])->group(fu
     Route::get('products', [ProductController::class, 'index']);
     Route::get('carts', [CartController::class, 'index']);
     Route::get('locations', [LocationController::class, 'index']);
+    Route::get('rider-location-setups', [RiderLocationSetupController::class, 'index'])
+        ->middleware('role:MANAGEMENT,BARISTA,ADMINISTRATOR,FINANCE');
+    Route::patch('rider-location-setups/{rider}', [RiderLocationSetupController::class, 'update'])
+        ->middleware(['role:MANAGEMENT', 'idempotent:require']);
 
     // ── Flow A — daily allocation (requirement 1) ──────────────────────────
     Route::get('allocations/today', [AllocationController::class, 'today']);
@@ -174,6 +180,7 @@ Route::middleware(['auth:sanctum', RecoverOutboxAfterResponse::class])->group(fu
     Route::post('sales/{sale}/void', [SaleController::class, 'void']);
 
     Route::get('me/closing/draft', [RiderClosingController::class, 'draft']);
+    Route::get('me/settlement', [RiderDailySettlementController::class, 'show']);
     Route::post('me/closing', [RiderClosingController::class, 'store'])
         ->middleware('idempotent:require');
     Route::post('closings/{closing}/corrections', [RiderClosingController::class, 'correct'])
