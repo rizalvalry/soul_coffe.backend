@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\MovementType;
 use App\Enums\RefillStatus;
 use App\Enums\Role;
+use App\Models\Account;
 use App\Models\AppNotification;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
@@ -23,6 +24,7 @@ use App\Models\StaffLocationPing;
 use App\Models\StockLedger;
 use App\Models\User;
 use App\Services\AttendanceService;
+use App\Services\PendingStockCostService;
 use App\Services\RefillRequestStateMachine;
 use App\Services\Reporting\SalesActivityService;
 use App\Services\RiderCommissionService;
@@ -32,6 +34,7 @@ use Database\Seeders\AccountSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -104,6 +107,47 @@ class RiderClosingTest extends TestCase
     private function closingKey(): string
     {
         return (string) Str::uuid();
+    }
+
+    public function test_correction_after_cost_revaluation_restores_sale_and_waste_at_resolved_cost(): void
+    {
+        ProductPriceVersion::query()->where('product_id', $this->product->id)
+            ->update(['cost_price_minor' => 0]);
+        $ledger = app(StockLedgerService::class);
+        $ledger->post(StockLedgerService::KITCHEN, $this->cart->kitchen_id, $this->product->id,
+            MovementType::PRODUCTION_IN, 5, $this->barista->id, $this->cart->kitchen_id,
+            'pending_closing_production', 1);
+        $ledger->transfer(StockLedgerService::KITCHEN, $this->cart->kitchen_id,
+            StockLedgerService::CART, $this->cart->id, $this->product->id,
+            MovementType::ALLOCATION_OUT, MovementType::ALLOCATION_IN, 5,
+            $this->barista->id, $this->cart->kitchen_id, 'pending_closing_transfer', 1);
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', [...$this->body(2, 1), 'qris' => 0, 'transfer' => 0])
+            ->assertCreated();
+        ProductPriceVersion::create([
+            'product_id' => $this->product->id, 'cost_price_minor' => 1000,
+            'sell_price_minor' => 20000, 'effective_from' => now(),
+        ]);
+        $this->assertGreaterThan(0, app(PendingStockCostService::class)
+            ->resolveProduct($this->product, $this->finance));
+
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', [...$this->body(3, 0), 'qris' => 0, 'transfer' => 0])
+            ->assertOk();
+
+        $compensations = StockLedger::query()->whereIn('ref_type', [
+            'rider_closing_sale_compensation', 'rider_closing_waste_compensation',
+        ])->get()->pluck('cost_minor', 'ref_type')->all();
+        $this->assertSame(2000, $compensations['rider_closing_sale_compensation']);
+        $this->assertSame(1000, $compensations['rider_closing_waste_compensation']);
+        $this->assertSame([3, 3000], array_slice(app(StockLedgerService::class)->valuation(
+            StockLedgerService::CART, $this->cart->id, $this->product->id), 0, 2));
+        $book = DB::table('journal_lines as l')->join('accounts as a', 'a.id', '=', 'l.account_id')
+            ->where('a.code', '1-1600')->selectRaw('SUM(l.debit_minor) AS debit, SUM(l.credit_minor) AS credit')
+            ->first();
+        $this->assertSame(3000, (int) $book->debit - (int) $book->credit);
+        $this->assertSame((int) DB::table('journal_lines')->sum('debit_minor'),
+            (int) DB::table('journal_lines')->sum('credit_minor'));
     }
 
     public function test_closing_uses_handover_refill_and_carry_then_posts_aggregate_ledger_once(): void
@@ -444,6 +488,41 @@ class RiderClosingTest extends TestCase
         $this->assertFalse($settlement->fresh()->expected_stale);
         $this->actingAs($this->finance, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
             ->postJson("/api/v1/settlements/{$settlement->id}/approve", ['lines' => []])->assertOk();
+    }
+
+    public function test_approved_settlement_closing_correction_keeps_inventory_book_aligned_with_physical_change(): void
+    {
+        $this->issue(10, MovementType::ALLOCATION_IN);
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', [...$this->body(3, 0), 'qris' => 20000, 'transfer' => 0])->assertCreated();
+        $closing = RiderClosing::query()->firstOrFail();
+        $this->actingAs($this->finance, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/settlements', [
+                'cart_id' => $this->cart->id, 'cash' => $closing->cash_minor,
+                'qris' => $closing->qris_minor, 'transfer' => 0,
+            ])->assertCreated();
+        $settlement = Settlement::query()->firstOrFail();
+        $this->actingAs($this->finance, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson("/api/v1/settlements/{$settlement->id}/approve", [
+                'lines' => [['product_id' => $this->product->id, 'qty_returned' => 3, 'qty_rejected' => 0]],
+            ])->assertOk();
+        $stockAccountId = Account::query()->where('code', '1-1600')->firstOrFail()->id;
+        $book = fn (): int => (int) DB::table('journal_lines')->where('account_id', $stockAccountId)->sum('debit_minor')
+            - (int) DB::table('journal_lines')->where('account_id', $stockAccountId)->sum('credit_minor');
+        $beforeBook = $book();
+        $beforeStock = app(StockLedgerService::class)->stockFor(StockLedgerService::CART, $this->cart->id, $this->product->id);
+
+        $this->actingAs($this->finance, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson("/api/v1/closings/{$closing->id}/corrections", [
+                ...$this->body(2, 0), 'qris' => 20000, 'transfer' => 0, 'reason' => 'Hitung ulang cups',
+            ])->assertOk();
+
+        $this->assertSame($beforeStock, app(StockLedgerService::class)->stockFor(StockLedgerService::CART, $this->cart->id, $this->product->id));
+        $this->assertSame($beforeBook, $book());
+        $disposition = StockLedger::query()->where('ref_type', 'rider_closing_after_disposition')->firstOrFail();
+        $this->assertDatabaseHas('journal_entries', [
+            'source_type' => 'stock_ledger', 'source_id' => $disposition->id, 'purpose' => 'STOCK_LOSS',
+        ]);
     }
 
     public function test_closeout_before_closing_is_reconciled_and_flagged(): void

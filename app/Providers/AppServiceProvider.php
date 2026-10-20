@@ -27,6 +27,11 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('manage-payroll', fn (User $user): bool => $user->is_active && $user->role === Role::MANAGEMENT);
         Gate::define('manage-tax-settings', fn (User $user): bool => $user->is_active && $user->role === Role::MANAGEMENT);
         Gate::define('manage-accounting-periods', fn (User $user): bool => $user->role === Role::MANAGEMENT);
+        Gate::define('view-fixed-assets', fn (User $user): bool => $user->is_active && in_array($user->role, [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT], true));
+        Gate::define('record-fixed-assets', fn (User $user): bool => $user->is_active && in_array($user->role, [Role::FINANCE, Role::MANAGEMENT], true));
+        Gate::define('post-fixed-asset-depreciation', fn (User $user): bool => $user->is_active && $user->role === Role::MANAGEMENT);
+        Gate::define('void-production', fn (User $user): bool => $user->is_active && in_array($user->role, [Role::FINANCE, Role::MANAGEMENT], true));
+        Gate::define('revalue-inventory', fn (User $user): bool => $user->is_active && in_array($user->role, [Role::FINANCE, Role::MANAGEMENT], true));
         Gate::define('post-manual-journal', fn (User $user): bool => in_array($user->role, [Role::FINANCE, Role::MANAGEMENT], true));
     }
 }

@@ -2,10 +2,14 @@
 
 namespace App\Services;
 
+use App\Models\Account;
 use App\Models\Cart;
 use App\Models\DailyCartAllowance;
+use App\Models\JournalEntry;
 use App\Models\User;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 /**
@@ -88,6 +92,11 @@ class DailyAllowanceService
 
         $allowance = $this->forCart($cart, $operatingDate);
 
+        if ($allowance->amount_minor !== $amount && JournalEntry::query()
+            ->where('source_type', 'daily_allowance')->where('source_id', $allowance->id)->exists()) {
+            throw ValidationException::withMessages(['amount_minor' => 'Uang harian sudah diberikan. Koreksinya lewat jurnal pembalik ya.']);
+        }
+
         // Only mark as edited when the figure actually moved: submitting the pre-filled form
         // unchanged is the normal path and shouldn't look like a deliberate override.
         if ($allowance->amount_minor !== $amount) {
@@ -101,6 +110,46 @@ class DailyAllowanceService
         return $allowance;
     }
 
+    public function recordGiven(DailyCartAllowance $allowance, User $rider, User $actor): int
+    {
+        if ($allowance->amount_minor <= 0) {
+            return 0;
+        }
+
+        return DB::transaction(function () use ($allowance, $rider, $actor): int {
+            User::query()->whereKey($rider->id)->lockForUpdate()->firstOrFail();
+            if (! app(JournalService::class)->isAccountingDate($allowance->operating_date->toDateString())) {
+                return $allowance->amount_minor;
+            }
+            app(JournalService::class)->assertOpenDate($allowance->operating_date->toDateString());
+            $purpose = 'DAY_'.$allowance->operating_date->format('Ymd').'_R'.$rider->id;
+            $existing = JournalEntry::query()->where('source_type', 'daily_allowance')
+                ->where('source_id', $allowance->id)->where('purpose', $purpose)->first();
+            if ($existing) {
+                return 0;
+            }
+            $already = JournalEntry::query()->where('source_type', 'daily_allowance')
+                ->where('purpose', $purpose)->first();
+            if ($already) {
+                return 0;
+            }
+            $expense = Account::query()->where('code', '6-1700')->firstOrFail();
+            $cash = Account::query()->where('code', '1-1100')->firstOrFail();
+            app(JournalService::class)->post([
+                'entry_date' => $allowance->operating_date->toDateString(),
+                'description' => 'Uang harian Rider '.$rider->name,
+                'source_type' => 'daily_allowance', 'source_id' => $allowance->id,
+                'purpose' => $purpose,
+                'posted_by' => $actor->id,
+            ], [
+                ['account_id' => $expense->id, 'debit_minor' => $allowance->amount_minor, 'credit_minor' => 0],
+                ['account_id' => $cash->id, 'debit_minor' => 0, 'credit_minor' => $allowance->amount_minor],
+            ]);
+
+            return $allowance->amount_minor;
+        });
+    }
+
     /**
      * Total allowance handed to one cart on one day — the figure Settlement consults when
      * `soul.allowance_counts_toward_settlement` is on.
@@ -110,6 +159,8 @@ class DailyAllowanceService
         return (int) DailyCartAllowance::query()
             ->where('cart_id', $cart->id)
             ->whereDate('operating_date', ($operatingDate ?? Carbon::today())->toDateString())
+            ->whereIn('id', JournalEntry::query()->select('source_id')->where('source_type', 'daily_allowance')
+                ->whereDoesntHave('reversal'))
             ->sum('amount_minor');
     }
 }

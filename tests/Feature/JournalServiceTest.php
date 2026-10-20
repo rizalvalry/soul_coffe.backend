@@ -101,7 +101,7 @@ class JournalServiceTest extends TestCase
         } catch (ValidationException) {
             $this->assertSame(0, JournalEntry::query()->count());
         }
-        $service->setStatus(2026, 10, 'OPEN', $actor);
+        $service->setStatus(2026, 10, 'OPEN', $actor, 'Koreksi jurnal uji');
         $this->assertNull($period->fresh()->closed_by);
         $this->assertSame(2, AuditLog::query()->where('subject_type', $period::class)->count());
         $this->journal->post($this->header(), $this->lines());

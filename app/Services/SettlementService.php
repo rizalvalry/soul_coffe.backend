@@ -568,14 +568,6 @@ class SettlementService
             $cart = Cart::query()->findOrFail($locked->cart_id);
             $kitchenId = $cart->kitchen_id;
 
-            // JournalService always locks the chart before the accounting period.
-            Account::query()->orderBy('id')->lockForUpdate()->firstOrFail();
-            $period = AccountingPeriod::query()->where('year', $locked->operating_date->year)
-                ->where('month', $locked->operating_date->month)->lockForUpdate()->first();
-            if ($period?->status === 'CLOSED') {
-                throw new RuntimeException('Periode akuntansi tanggal setoran sudah ditutup. Setoran belum disetujui.');
-            }
-
             $rows = [];
 
             foreach ($disposition as $entry) {
@@ -668,6 +660,15 @@ class SettlementService
             $liveStock = $this->currentCartStock($cart->id);
             if (collect($liveStock)->contains(fn (int $qty): bool => $qty > 0)) {
                 throw new RuntimeException('Masih ada cups di Coffee Bike. Tentukan jumlah kembali atau reject sebelum menyetujui setoran.');
+            }
+
+            // Disposition takes product cost locks before journal locks. Check the settlement
+            // period afterward in the same transaction so a closed period rolls everything back.
+            Account::query()->orderBy('id')->lockForUpdate()->firstOrFail();
+            $period = AccountingPeriod::query()->where('year', $locked->operating_date->year)
+                ->where('month', $locked->operating_date->month)->lockForUpdate()->first();
+            if ($period?->status === 'CLOSED') {
+                throw new RuntimeException('Periode akuntansi tanggal setoran sudah ditutup. Setoran belum disetujui.');
             }
 
             $beforeStatus = $locked->status;
@@ -805,12 +806,6 @@ class SettlementService
         if ($settlement->expected_cogs_minor === null) {
             throw new RuntimeException('Setoran lama belum memiliki snapshot HPP. Catat ulang setoran sebelum menyetujui.');
         }
-        $cogs = (int) $settlement->expected_cogs_minor;
-        if ($cogs > 0) {
-            $this->journals->post([...$header, 'purpose' => 'SETTLEMENT_COGS', 'description' => 'HPP '.$header['description']], [
-                $line('5-1100', $cogs, 0),
-                $line('1-1600', 0, $cogs),
-            ]);
-        }
+        // SALE_OUT already posted moving-average HPP when cups left stock.
     }
 }

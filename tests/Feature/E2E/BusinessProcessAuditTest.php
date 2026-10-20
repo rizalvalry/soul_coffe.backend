@@ -43,9 +43,11 @@ use App\Services\ProductionService;
 use App\Services\PurchaseOrderService;
 use App\Services\RecipeService;
 use App\Services\RefillExpiryDecisionService;
+use App\Services\Reporting\InventoryAccountingReportService;
 use App\Services\SaleService;
 use App\Services\SettlementService;
 use App\Services\StockLedgerService;
+use App\Services\StockOpnameService;
 use Database\Seeders\AccountSeeder;
 use Database\Seeders\PayrollConfigurationSeeder;
 use DomainException;
@@ -255,11 +257,11 @@ class BusinessProcessAuditTest extends TestCase
         $this->assertSame(0, $settlement->variance_minor);
         $this->actingAs($this->finance)->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson("/api/v1/settlements/{$settlementId}/approve", ['lines' => []])->assertOk();
-        foreach (['SETTLEMENT', 'SETTLEMENT_COGS'] as $purpose) {
-            $journal = JournalEntry::query()->where('source_type', 'settlement')
-                ->where('source_id', $settlement->id)->where('purpose', $purpose)->with('lines')->sole();
-            $this->assertSame($journal->lines->sum('debit_minor'), $journal->lines->sum('credit_minor'));
-        }
+        $journal = JournalEntry::query()->where('source_type', 'settlement')
+            ->where('source_id', $settlement->id)->where('purpose', 'SETTLEMENT')->with('lines')->sole();
+        $this->assertSame($journal->lines->sum('debit_minor'), $journal->lines->sum('credit_minor'));
+        $this->assertGreaterThan(0, JournalEntry::query()->where('source_type', 'stock_ledger')
+            ->where('purpose', 'SALE_COGS')->count());
         $movements = DB::table('stock_ledger')->where('location_type', StockLedgerService::CART)
             ->where('location_id', $this->cart->id)->where('product_id', $this->product->id);
         $quantity = fn (MovementType $type): int => (int) (clone $movements)
@@ -275,6 +277,18 @@ class BusinessProcessAuditTest extends TestCase
         $this->assertSame($issued + $refilled, $sold + $returned + $waste);
         $this->assertSame([10, 4, 5, 8, 1], [$issued, $refilled, $sold, $returned, $waste]);
         $this->assertDatabaseHas('stock_ledger', ['movement_type' => MovementType::WASTE_OUT->value, 'qty_delta' => -1]);
+        $gap = app(InventoryAccountingReportService::class)->inventoryGap(today());
+        $this->assertSame(24000, $gap[0]['physical_minor']);
+        $this->assertSame(24000, $gap[0]['book_minor']);
+        $this->assertSame(0, $gap[1]['gap_minor']);
+        $opname = app(StockOpnameService::class)->create(StockLedgerService::KITCHEN, $this->kitchen->id,
+            [['product_id' => $this->product->id, 'counted_qty' => 23]], 'Hitung fisik setelah setoran', $this->finance);
+        app(StockOpnameService::class)->apply($opname, $this->finance);
+        $gap = app(InventoryAccountingReportService::class)->inventoryGap(today());
+        $this->assertSame(23000, $gap[0]['physical_minor']);
+        $this->assertSame(23000, $gap[0]['book_minor']);
+        $this->assertSame((int) DB::table('journal_lines')->sum('debit_minor'),
+            (int) DB::table('journal_lines')->sum('credit_minor'));
     }
 
     public function test_02_closed_day_blocks_both_allocation_paths_and_rider_sale_but_not_other_roles(): void

@@ -55,11 +55,13 @@ class CentralStockService
         User $barista,
         CentralKitchen $kitchen,
         array $qtyByProductId,
+        ?int $productionId = null,
+        ?array $costByProductId = null,
     ): void {
         $this->assertBarista($barista);
         $rows = $this->normalizeQuantities($qtyByProductId);
 
-        DB::transaction(function () use ($barista, $kitchen, $rows): void {
+        DB::transaction(function () use ($barista, $kitchen, $rows, $productionId, $costByProductId): void {
             foreach ($rows as $productId => $qty) {
                 $this->ledger->post(
                     StockLedgerService::KITCHEN,
@@ -69,8 +71,9 @@ class CentralStockService
                     $qty,
                     $barista->id,
                     $kitchen->id,
-                    'showcase_brew',
-                    null,
+                    $productionId === null ? 'showcase_brew' : 'production',
+                    $productionId,
+                    costMinor: $costByProductId[$productId] ?? null,
                 );
             }
 
@@ -203,13 +206,14 @@ class CentralStockService
             $allowance = $allowanceAmount === null
                 ? $this->allowances->forCart($cart, $date)
                 : $this->allowances->override($cart, $allowanceAmount, $barista, $date);
+            $givenMinor = $this->allowances->recordGiven($allowance, $staff, $barista);
 
             $this->audit($barista, 'central_stock.hand_to_cart', $assignment->id, [
                 'cart_id' => $cart->id,
                 'staff_id' => $staff->id,
                 'operating_date' => $date->toDateString(),
                 'quantities' => $rows,
-                'allowance_minor' => $allowance->amount_minor,
+                'allowance_minor' => $givenMinor,
                 'allowance_edited' => $allowance->is_edited,
             ]);
 
@@ -223,7 +227,7 @@ class CentralStockService
                     $cart->code,
                     array_sum($rows),
                     $barista->name,
-                    number_format((int) $allowance->amount_minor, 0, ',', '.'),
+                    number_format($givenMinor, 0, ',', '.'),
                 ),
                 ['user.'.$staff->id, 'kitchen.'.$kitchenId, 'role.ADMINISTRATOR'],
                 array_merge([$staff->id], $this->kitchenWatcherIds($kitchenId)),

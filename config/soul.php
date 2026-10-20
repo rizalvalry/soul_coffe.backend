@@ -39,6 +39,9 @@ return [
     // no typing at all.
     'daily_cart_allowance' => (int) env('SOUL_DAILY_CART_ALLOWANCE', 50000),
 
+    // Flag a product when the latest recipe differs from the month's standard cost by more than this percent.
+    'recipe_cost_variance_threshold_percent' => (int) env('SOUL_RECIPE_COST_VARIANCE_THRESHOLD_PERCENT', 10),
+
     // How the allowance above is treated in the money reports.
     //
     // false (default) = biaya operasional: company expense, outside the rider's settlement.

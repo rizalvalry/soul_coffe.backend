@@ -1155,7 +1155,7 @@ class PayrollRunTest extends TestCase
         ], $entryLines($settlementRevenue));
         $this->assertSame('2026-10-19', $settlementRevenue->entry_date->toDateString());
         $this->assertSame(48000, (int) JournalLine::query()->whereHas('entry', fn ($query) => $query
-            ->where('source_type', 'settlement')->where('purpose', 'SETTLEMENT_COGS'))
+            ->where('source_type', 'stock_ledger')->where('purpose', 'SALE_COGS'))
             ->where('account_id', $accounts['5-1100']->id)->sum('debit_minor'));
 
         $supplier = Supplier::query()->create(['code' => 'E2E-048-S', 'name' => 'Supplier E2E', 'is_active' => true]);
@@ -1200,14 +1200,16 @@ class PayrollRunTest extends TestCase
         }
         $direct = app(DirectSaleService::class)->record($finance, $directCart->id,
             [['product_id' => $product->id, 'qty' => 1]], 'transfer');
-        $this->assertSame(2, JournalEntry::query()->where('source_type', 'direct_sale')
+        $this->assertSame(1, JournalEntry::query()->where('source_type', 'direct_sale')
             ->where('source_id', $direct->id)->count());
         $this->assertSame(['1-1400' => [20000, 0], '4-1200' => [0, 20000]],
             $entryLines(JournalEntry::query()->where('source_type', 'direct_sale')
                 ->where('source_id', $direct->id)->where('purpose', 'DIRECT_SALE')->sole()));
         $this->assertSame(['5-1100' => [8000, 0], '1-1600' => [0, 8000]],
-            $entryLines(JournalEntry::query()->where('source_type', 'direct_sale')
-                ->where('source_id', $direct->id)->where('purpose', 'DIRECT_SALE_COGS')->sole()));
+            $entryLines(JournalEntry::query()->where('source_type', 'stock_ledger')
+                ->where('source_id', DB::table('stock_ledger')->where('ref_type', 'direct_sale')
+                    ->where('ref_id', $direct->id)->where('movement_type', 'SALE_OUT')->value('id'))
+                ->where('purpose', 'SALE_COGS')->sole()));
 
         $payroll = app(PayrollRunService::class);
         $run = $payroll->create('2026-10', $this->manager);

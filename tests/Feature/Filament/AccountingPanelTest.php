@@ -186,7 +186,7 @@ class AccountingPanelTest extends TestCase
             ->where('subject_id', $account->id)->count());
 
         Livewire::test(AccountingPeriods::class)->call('setStatus', 2026, 10, 'CLOSED')
-            ->call('setStatus', 2026, 10, 'OPEN');
+            ->call('setStatus', 2026, 10, 'OPEN', 'Koreksi jurnal uji');
         $this->assertSame(2, AuditLog::query()->where('subject_type', AccountingPeriod::class)->count());
     }
 

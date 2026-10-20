@@ -96,7 +96,7 @@ class RefillExpiryDecisionService
                     continue;
                 }
                 $line = $recorded->get($id);
-                $this->ledger->post(StockLedgerService::KITCHEN, $locked->kitchen_id,
+                $out = $this->ledger->post(StockLedgerService::KITCHEN, $locked->kitchen_id,
                     $line->product_id, MovementType::REFILL_OUT, $qty, $actor->id,
                     $locked->kitchen_id, 'refill_request', $locked->id,
                     note: 'Keputusan Finance kedaluwarsa #'.$decision->id,
@@ -104,6 +104,7 @@ class RefillExpiryDecisionService
                 $this->ledger->post(StockLedgerService::CART, $locked->cart_id,
                     $line->product_id, MovementType::REFILL_IN, $qty, $actor->id,
                     $locked->kitchen_id, 'refill_request', $locked->id,
+                    costMinor: $out->cost_minor,
                     note: 'Keputusan Finance kedaluwarsa #'.$decision->id,
                     occurredAt: $occurredAt);
             }

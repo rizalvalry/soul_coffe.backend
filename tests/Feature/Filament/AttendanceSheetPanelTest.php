@@ -12,6 +12,7 @@ use App\Filament\Resources\CashCategories\CashCategoryResource;
 use App\Filament\Resources\CashTransactions\CashTransactionResource;
 use App\Filament\Resources\ClearingReceipts\ClearingReceiptResource;
 use App\Filament\Resources\EmployeeProfiles\EmployeeProfileResource;
+use App\Filament\Resources\FixedAssets\FixedAssetResource;
 use App\Filament\Resources\Journals\JournalResource;
 use App\Filament\Resources\OfficeItems\OfficeItemResource;
 use App\Filament\Resources\RefillRequests\RefillRequestResource;
@@ -96,6 +97,7 @@ class AttendanceSheetPanelTest extends TestCase
                 in_array($resource, [EmployeeProfileResource::class,
                     AccountResource::class,
                     JournalResource::class,
+                    FixedAssetResource::class,
                     CashAccountResource::class,
                     CashCategoryResource::class,
                     CashTransactionResource::class,

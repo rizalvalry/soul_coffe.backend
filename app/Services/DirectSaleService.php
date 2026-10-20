@@ -156,13 +156,15 @@ class DirectSaleService
                     'transfer' => '1-1400',
                     default => throw new RuntimeException('Metode pembayaran tidak valid.'),
                 };
-                $accountIds = Account::query()->whereIn('code', [$cashCode, '4-1200', '2-1500', '5-1100', '1-1600'])
+                $accountIds = Account::query()->whereIn('code', [$cashCode, '4-1200', '2-1500'])
                     ->pluck('id', 'code');
                 $split = app(TaxService::class)->splitPbjt($totalAmount, $occurredAt->toDateString());
                 $revenueLines = [
                     ['account_id' => $accountIds[$cashCode], 'debit_minor' => $totalAmount, 'credit_minor' => 0],
-                    ['account_id' => $accountIds['4-1200'], 'debit_minor' => 0, 'credit_minor' => $split['revenue']],
                 ];
+                if ($split['revenue'] > 0) {
+                    $revenueLines[] = ['account_id' => $accountIds['4-1200'], 'debit_minor' => 0, 'credit_minor' => $split['revenue']];
+                }
                 if ($split['tax'] > 0) {
                     $revenueLines[] = ['account_id' => $accountIds['2-1500'], 'debit_minor' => 0, 'credit_minor' => $split['tax']];
                 }
@@ -172,18 +174,6 @@ class DirectSaleService
                     'source_type' => 'direct_sale', 'source_id' => $directSale->id,
                     'purpose' => 'DIRECT_SALE', 'posted_by' => $actor->id,
                 ], $revenueLines);
-                $cost = array_sum(array_map(fn (array $row): int => (int) ($row['unit_cost_minor'] ?? 0) * $row['qty'], $lineRows));
-                if ($cost > 0) {
-                    $this->journals->post([
-                        'entry_date' => $occurredAt->toDateString(),
-                        'description' => 'HPP penjualan langsung kantor #'.$directSale->id,
-                        'source_type' => 'direct_sale', 'source_id' => $directSale->id,
-                        'purpose' => 'DIRECT_SALE_COGS', 'posted_by' => $actor->id,
-                    ], [
-                        ['account_id' => $accountIds['5-1100'], 'debit_minor' => $cost, 'credit_minor' => 0],
-                        ['account_id' => $accountIds['1-1600'], 'debit_minor' => 0, 'credit_minor' => $cost],
-                    ]);
-                }
             }
 
             AuditLog::recordAction($actor, 'direct_sale.created', $directSale, null, [

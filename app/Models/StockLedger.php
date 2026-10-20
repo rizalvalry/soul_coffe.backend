@@ -29,6 +29,9 @@ class StockLedger extends Model
         'movement_type',
         'qty_delta',
         'cost_minor',
+        'cost_fallback',
+        'cost_pending',
+        'cost_pending_qty',
         'ref_type',
         'ref_id',
         'note',
@@ -43,6 +46,9 @@ class StockLedger extends Model
             'movement_type' => MovementType::class,
             'qty_delta' => 'integer',
             'cost_minor' => 'integer',
+            'cost_fallback' => 'boolean',
+            'cost_pending' => 'boolean',
+            'cost_pending_qty' => 'integer',
         ];
     }
 
