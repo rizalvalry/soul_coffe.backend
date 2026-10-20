@@ -27,6 +27,7 @@ use App\Services\RefillRequestStateMachine;
 use App\Services\Reporting\SalesActivityService;
 use App\Services\RiderCommissionService;
 use App\Services\StockLedgerService;
+use App\Services\TaxService;
 use Database\Seeders\AccountSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -168,6 +169,13 @@ class RiderClosingTest extends TestCase
 
     public function test_invalid_quantity_roles_gate_and_correction_lock(): void
     {
+        $management = User::factory()->role(Role::MANAGEMENT)->create();
+        app(TaxService::class)->saveSetting($management, [
+            'tax_type' => 'PBJT', 'is_active' => true, 'rate_bps' => 1000,
+            'price_mode' => 'INCLUDED', 'scheme' => null,
+            'effective_from' => today()->toDateString(), 'effective_until' => null,
+            'legal_note' => null, 'monthly_threshold_minor' => null, 'reason' => 'Tarif uji baru',
+        ]);
         app(RiderCommissionService::class)->save([$this->rider->id], today()->toDateString(), [
             ['min_cups' => 5, 'amount_per_cup_minor' => 1000],
             ['min_cups' => 6, 'amount_per_cup_minor' => 1500],
@@ -218,7 +226,6 @@ class RiderClosingTest extends TestCase
         $this->actingAs($this->barista, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
             ->postJson("/api/v1/closings/{$closing->id}/corrections", [...$this->body(1, 2), 'reason' => 'Tidak boleh'])
             ->assertForbidden();
-        $management = User::factory()->role(Role::MANAGEMENT)->create();
         $this->travel(1)->days();
         $this->issue(5, MovementType::ALLOCATION_IN);
         $this->actingAs($management, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
@@ -228,6 +235,12 @@ class RiderClosingTest extends TestCase
         $this->assertSame(9000, app(RiderCommissionService::class)->day($this->rider->id, $closing->operating_date->toDateString())['commission_minor']);
         $this->assertSame(5, app(StockLedgerService::class)->stockFor(StockLedgerService::CART, $this->cart->id, $this->product->id));
         $this->assertTrue(JournalEntry::query()->where('purpose', 'SETTLEMENT_CORRECTION')->exists());
+        $originalTax = JournalEntry::query()->where('purpose', 'SETTLEMENT')->firstOrFail()->lines()
+            ->whereHas('account', fn ($query) => $query->where('code', '2-1500'))->firstOrFail();
+        $correctionTax = JournalEntry::query()->where('purpose', 'SETTLEMENT_CORRECTION')->firstOrFail()->lines()
+            ->whereHas('account', fn ($query) => $query->where('code', '2-1500'))->firstOrFail();
+        $this->assertSame(10909, (int) $originalTax->credit_minor);
+        $this->assertSame(1818, (int) $correctionTax->credit_minor);
         foreach (JournalEntry::query()->whereIn('purpose', ['SETTLEMENT', 'SETTLEMENT_COGS', 'SETTLEMENT_CORRECTION', 'SETTLEMENT_COGS_CORRECTION'])->with('lines')->get() as $journal) {
             $this->assertSame((int) $journal->lines->sum('debit_minor'), (int) $journal->lines->sum('credit_minor'));
         }

@@ -22,6 +22,7 @@ use App\Services\Reporting\DashboardMetricsService;
 use App\Services\Reporting\SalesActivityService;
 use App\Services\SettlementService;
 use App\Services\StockLedgerService;
+use App\Services\TaxService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use RuntimeException;
@@ -144,6 +145,29 @@ class DirectSaleTest extends TestCase
         $this->assertNotNull($revenue->fresh()->reversal);
         $this->assertNotNull($cogs->fresh()->reversal);
         $this->assertSame(2, JournalEntry::query()->where('purpose', 'REVERSAL')->count());
+    }
+
+    public function test_active_included_pbjt_splits_direct_sale_and_reversal_balances(): void
+    {
+        $management = User::factory()->role(Role::MANAGEMENT)->create();
+        app(TaxService::class)->saveSetting($management, [
+            'tax_type' => 'PBJT', 'is_active' => true, 'rate_bps' => 1000,
+            'price_mode' => 'INCLUDED', 'scheme' => null,
+            'effective_from' => today()->toDateString(), 'effective_until' => null,
+            'legal_note' => null, 'monthly_threshold_minor' => null, 'reason' => 'Tarif uji baru',
+        ]);
+        ProductPriceVersion::query()->where('product_id', $this->coffee->id)->update(['sell_price_minor' => 110000]);
+        $this->stockCart($this->assignedCart, 1);
+        $sale = $this->service()->record($this->finance, $this->assignedCart->id,
+            [['product_id' => $this->coffee->id, 'qty' => 1]]);
+        $journal = JournalEntry::query()->where('source_type', 'direct_sale')->where('source_id', $sale->id)
+            ->where('purpose', 'DIRECT_SALE')->firstOrFail();
+        $this->assertSame(['1-1100' => [110000, 0], '4-1200' => [0, 100000], '2-1500' => [0, 10000]],
+            $journal->lines()->with('account')->get()->mapWithKeys(fn ($line): array => [$line->account->code => [$line->debit_minor, $line->credit_minor]])->all());
+        $this->service()->void($sale, $this->finance, 'Salah catat penjualan');
+        $this->assertNotNull($journal->fresh()->reversal);
+        $this->assertSame(110000, (int) $journal->reversal->lines()->sum('debit_minor'));
+        $this->assertSame(110000, (int) $journal->reversal->lines()->sum('credit_minor'));
     }
 
     public function test_unpriced_direct_sale_does_not_move_stock_or_create_journals(): void

@@ -747,7 +747,7 @@ class SettlementService
         if ($opening && $settlement->operating_date->lt($opening->entry_date)) {
             return;
         }
-        $codes = ['1-1200', '1-1400', '4-1100', '6-1100', '5-1100', '1-1600'];
+        $codes = ['1-1200', '1-1400', '4-1100', '2-1500', '6-1100', '5-1100', '1-1600'];
         $accounts = Account::query()->whereIn('code', $codes)->pluck('id', 'code');
         $line = static fn (string $code, int $debit, int $credit): array => [
             'account_id' => $accounts[$code],
@@ -764,7 +764,13 @@ class SettlementService
             $lines[] = $line('1-1400', $noncash, 0);
         }
         if ($settlement->expected_total_minor > 0) {
-            $lines[] = $line('4-1100', 0, $settlement->expected_total_minor);
+            $split = app(TaxService::class)->splitPbjt($settlement->expected_total_minor, $settlement->operating_date->toDateString());
+            if ($split['revenue'] > 0) {
+                $lines[] = $line('4-1100', 0, $split['revenue']);
+            }
+            if ($split['tax'] > 0) {
+                $lines[] = $line('2-1500', 0, $split['tax']);
+            }
         }
         if ($settlement->variance_minor < 0) {
             $lines[] = $line('6-1100', -$settlement->variance_minor, 0);

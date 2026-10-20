@@ -29,6 +29,7 @@ use App\Services\JournalService;
 use App\Services\Push\PushNotifier;
 use App\Services\SaleService;
 use App\Services\StockLedgerService;
+use App\Services\TaxService;
 use Database\Seeders\AccountSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -890,6 +891,30 @@ class SettlementTest extends TestCase
         $journal = JournalEntry::query()->where('source_type', 'settlement')->where('purpose', 'SETTLEMENT')->sole();
         $this->assertSame(40000, (int) $journal->lines()->sum('debit_minor'));
         $this->assertSame(40000, (int) $journal->lines()->sum('credit_minor'));
+    }
+
+    public function test_active_included_pbjt_splits_settlement_journal_with_integer_rounding(): void
+    {
+        $management = User::factory()->role(Role::MANAGEMENT)->create();
+        app(TaxService::class)->saveSetting($management, [
+            'tax_type' => 'PBJT', 'is_active' => true, 'rate_bps' => 1000,
+            'price_mode' => 'INCLUDED', 'scheme' => null,
+            'effective_from' => today()->toDateString(), 'effective_until' => null,
+            'legal_note' => null, 'monthly_threshold_minor' => null, 'reason' => 'Tarif uji baru',
+        ]);
+        ProductPriceVersion::query()->where('product_id', $this->coffee->id)->update(['sell_price_minor' => 15000]);
+        $this->issue(1);
+        $this->sell(1);
+        $id = $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', [
+                'cart_id' => $this->cart->id, 'cash' => 15000, 'qris' => 0, 'transfer' => 0,
+            ])->assertCreated()->json('data.id');
+        $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson("/api/v1/settlements/{$id}/approve", ['lines' => []])->assertOk();
+        $journal = JournalEntry::query()->where('source_type', 'settlement')->where('source_id', $id)
+            ->where('purpose', 'SETTLEMENT')->firstOrFail();
+        $this->assertSame(['1-1200' => [15000, 0], '4-1100' => [0, 13636], '2-1500' => [0, 1364]],
+            $journal->lines()->with('account')->get()->mapWithKeys(fn ($line): array => [$line->account->code => [$line->debit_minor, $line->credit_minor]])->all());
     }
 
     public function test_self_approval_is_audited_and_notified_but_other_approver_is_not_flagged(): void
