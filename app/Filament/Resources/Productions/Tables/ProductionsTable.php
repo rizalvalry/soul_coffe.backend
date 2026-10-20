@@ -5,10 +5,14 @@ namespace App\Filament\Resources\Productions\Tables;
 use App\Enums\Role;
 use App\Models\Production;
 use App\Models\ProductionLine;
+use App\Services\ProductionService;
+use Filament\Actions\Action;
+use Filament\Forms\Components\Textarea;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate;
 
 class ProductionsTable
 {
@@ -49,6 +53,14 @@ class ProductionsTable
                     ->state(fn (Production $record): int => $record->lines
                         ->sum(fn (ProductionLine $line): int => ($line->recipe_cost_minor ?? 0) * $line->qty_brewed))
                     ->money('IDR', 0),
+                TextColumn::make('voided_at')->label('Status')
+                    ->formatStateUsing(fn ($state): string => $state ? 'Dibatalkan' : 'Aktif'),
+            ])->recordActions([
+                Action::make('void')->label('Batalkan produksi')
+                    ->visible(fn (Production $record): bool => $record->voided_at === null && Gate::allows('void-production'))
+                    ->schema([Textarea::make('reason')->label('Alasan')->required()->maxLength(255)])
+                    ->requiresConfirmation()
+                    ->action(fn (Production $record, array $data) => app(ProductionService::class)->void($record, $data['reason'], Auth::user())),
             ]);
     }
 }

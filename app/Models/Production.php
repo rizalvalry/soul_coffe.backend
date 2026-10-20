@@ -16,12 +16,14 @@ class Production extends Model
         'kitchen_id',
         'actor_id',
         'produced_at',
+        'voided_at', 'voided_by', 'void_reason',
     ];
 
     protected function casts(): array
     {
         return [
             'produced_at' => 'datetime',
+            'voided_at' => 'datetime',
         ];
     }
 

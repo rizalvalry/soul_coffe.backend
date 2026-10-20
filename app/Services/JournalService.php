@@ -342,4 +342,12 @@ class JournalService
         return AccountingPeriod::query()->where('year', $date->year)->where('month', $date->month)
             ->lockForUpdate()->firstOrFail();
     }
+
+    /** Call inside the business transaction before new stock or asset state is written. */
+    public function assertOpenDate(string $date): void
+    {
+        if ($this->lockPeriod(Carbon::parse($date))->status !== 'OPEN') {
+            throw ValidationException::withMessages(['entry_date' => 'Periode akuntansi sudah ditutup.']);
+        }
+    }
 }

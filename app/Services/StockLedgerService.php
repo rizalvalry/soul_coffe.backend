@@ -81,7 +81,9 @@ class StockLedgerService
             $delta = in_array($movementType, self::OUT_MOVEMENTS, true) ? -$qty : $qty;
         }
 
-        return StockLedger::create([
+        return DB::transaction(function () use ($locationType, $locationId, $productId, $movementType, $delta, $costMinor,
+            $refType, $refId, $note, $occurredAt, $actorId, $kitchenId, $rawMaterialId): StockLedger {
+            $movement = StockLedger::create([
             'location_type' => $locationType,
             'location_id' => $locationId,
             'product_id' => $productId,
@@ -97,7 +99,11 @@ class StockLedgerService
             'created_at' => $occurredAt ?? now(),
             'actor_id' => $actorId,
             'kitchen_id' => $kitchenId,
-        ]);
+            ]);
+            app(InventoryJournalService::class)->postMovement($movement);
+
+            return $movement;
+        });
     }
 
     /**

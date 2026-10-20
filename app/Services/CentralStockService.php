@@ -203,6 +203,7 @@ class CentralStockService
             $allowance = $allowanceAmount === null
                 ? $this->allowances->forCart($cart, $date)
                 : $this->allowances->override($cart, $allowanceAmount, $barista, $date);
+            $this->allowances->recordGiven($allowance, $staff, $barista);
 
             $this->audit($barista, 'central_stock.hand_to_cart', $assignment->id, [
                 'cart_id' => $cart->id,

@@ -18,6 +18,8 @@ class AccountSeeder extends Seeder
             ['1-1500', 'Piutang Karyawan (Kasbon)', 'ASSET'],
             ['1-1600', 'Persediaan', 'ASSET'],
             ['1-1700', 'Persediaan Bahan Baku', 'ASSET'],
+            ['1-1800', 'Aset Tetap', 'ASSET'],
+            ['1-1900', 'Akumulasi Penyusutan', 'ASSET'],
             ['2-1400', 'Hutang Supplier', 'LIABILITY'],
             ['2-1100', 'Utang Gaji', 'LIABILITY'],
             ['2-1200', 'Utang BPJS', 'LIABILITY'],
@@ -36,6 +38,9 @@ class AccountSeeder extends Seeder
             ['6-1600', 'Beban Keperluan Kantor', 'EXPENSE'],
             ['6-1700', 'Beban Fasilitas Karyawan', 'EXPENSE'],
             ['6-1800', 'Beban Lain-lain', 'EXPENSE'],
+            ['6-1900', 'Beban Rusak & Selisih Persediaan', 'EXPENSE'],
+            ['6-2000', 'Beban Penyusutan', 'EXPENSE'],
+            ['6-2100', 'Laba/Rugi Pelepasan Aset', 'EXPENSE'],
         ];
 
         foreach ($accounts as [$code, $name, $type]) {
@@ -43,7 +48,7 @@ class AccountSeeder extends Seeder
                 'code' => $code,
                 'name' => $name,
                 'type' => $type,
-                'normal_balance' => in_array($type, ['ASSET', 'COGS', 'EXPENSE'], true) ? 'DEBIT' : 'CREDIT',
+                'normal_balance' => $code === '1-1900' ? 'CREDIT' : (in_array($type, ['ASSET', 'COGS', 'EXPENSE'], true) ? 'DEBIT' : 'CREDIT'),
                 'is_active' => true,
                 'is_system' => true,
                 'created_at' => now(),

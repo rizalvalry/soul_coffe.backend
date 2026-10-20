@@ -88,6 +88,17 @@ class RefillExpiryDecisionService
                 'decided_at' => now(),
             ]);
 
+            foreach ($recorded as $id => $line) {
+                $prepared = (int) ($confirmedPrepared[$id] ?? $line->qty_prepared ?? 0);
+                $lost = $prepared - (int) ($quantities[$id] ?? 0);
+                if ($lost > 0) {
+                    $this->ledger->post(StockLedgerService::KITCHEN, $locked->kitchen_id,
+                        $line->product_id, MovementType::WASTE_OUT, $lost, $actor->id,
+                        $locked->kitchen_id, 'refill_expiry_decision', $decision->id,
+                        note: 'Cups kedaluwarsa tidak diakui Finance.');
+                }
+            }
+
             // Ordinary refill delivery posts only a kitchen-to-cart stock transfer, no journal.
             // This decision posts the same pair for cups Finance confirms physically arrived.
             $occurredAt = $locked->picked_up_at ?? $locked->prepared_at ?? $locked->operating_date->endOfDay();

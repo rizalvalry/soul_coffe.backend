@@ -207,6 +207,7 @@ class RiderClosingService
                 ->pluck('qty', 'product_id');
             $before = $closing ? $this->snapshot($closing) : null;
             $oldLines = $closing?->lines->keyBy('product_id') ?? collect();
+            $oldWasteMinor = $oldLines->sum(fn ($line): int => (int) $line->qty_wasted * (int) $line->unit_cost_minor);
             $rows = [];
             $total = 0;
             $cogs = 0;
@@ -346,6 +347,8 @@ class RiderClosingService
                 'snapshot_json' => json_encode($this->snapshot($closing), JSON_THROW_ON_ERROR),
                 'created_at' => now(),
             ]);
+            app(InventoryJournalService::class)->postClosingRevision($revisionId, $date->toDateString(),
+                $oldWasteMinor, $closing->lines->all(), $actor->id);
             $this->rememberKey($keyHash, $requestHash, $closing->id);
             AuditLog::query()->create([
                 'actor_id' => $actor->id, 'actor_role' => $actor->role->value,

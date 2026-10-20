@@ -10,6 +10,7 @@ use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Section;
@@ -92,15 +93,17 @@ class AccountingPeriods extends Page implements HasTable
                 Action::make('toggle')->label(fn (AccountingPeriod $record): string => $record->status === 'CLOSED' ? 'Buka kembali' : 'Tutup')
                     ->visible(fn (): bool => Gate::allows('manage-accounting-periods'))
                     ->requiresConfirmation()
-                    ->action(fn (AccountingPeriod $record) => $this->setStatus($record->year, $record->month,
-                        $record->status === 'CLOSED' ? 'OPEN' : 'CLOSED')),
+                    ->schema(fn (AccountingPeriod $record): array => $record->status === 'CLOSED'
+                        ? [Textarea::make('reason')->label('Alasan buka ulang')->required()->maxLength(255)] : [])
+                    ->action(fn (AccountingPeriod $record, array $data) => $this->setStatus($record->year, $record->month,
+                        $record->status === 'CLOSED' ? 'OPEN' : 'CLOSED', $data['reason'] ?? null)),
             ]);
     }
 
-    public function setStatus(int $year, int $month, string $status): void
+    public function setStatus(int $year, int $month, string $status, ?string $reason = null): void
     {
         Gate::authorize('manage-accounting-periods');
-        app(AccountingPeriodService::class)->setStatus($year, $month, $status, Auth::user());
+        app(AccountingPeriodService::class)->setStatus($year, $month, $status, Auth::user(), $reason);
         Notification::make()->success()->title($status === 'CLOSED' ? 'Periode ditutup' : 'Periode dibuka')->send();
     }
 

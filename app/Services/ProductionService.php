@@ -4,12 +4,18 @@ namespace App\Services;
 
 use App\Enums\MovementType;
 use App\Models\CentralKitchen;
+use App\Models\Account;
 use App\Models\Production;
 use App\Models\ProductionLine;
+use App\Models\JournalEntry;
+use App\Models\StockLedger;
+use App\Models\AuditLog;
 use App\Models\RawMaterial;
 use App\Models\Recipe;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Str;
 use RuntimeException;
 
@@ -34,6 +40,7 @@ class ProductionService
         private readonly StockLedgerService $ledger,
         private readonly RecipeService $recipes,
         private readonly CentralStockService $centralStock,
+        private readonly JournalService $journals,
     ) {}
 
     /**
@@ -71,6 +78,7 @@ class ProductionService
         }
 
         return DB::transaction(function () use ($kitchen, $rows, $recipeByProduct, $demand, $actor): Production {
+            $this->journals->assertOpenDate(today()->toDateString());
             if ($demand !== []) {
                 $locked = $this->ledger->lockAndProjectRawMaterials(
                     StockLedgerService::RAW_MATERIAL_STORE,
@@ -119,8 +127,72 @@ class ProductionService
                 );
             }
 
+            $cost = $production->lines()->get()->sum(fn (ProductionLine $line): int =>
+                (int) ($line->recipe_cost_minor ?? 0) * (int) $line->qty_brewed);
+            if ($cost > 0) {
+                $finished = Account::query()->where('code', '1-1600')->firstOrFail();
+                $raw = Account::query()->where('code', '1-1700')->firstOrFail();
+                $this->journals->post([
+                    'entry_date' => $production->produced_at->toDateString(),
+                    'description' => 'Produksi #'.$production->id,
+                    'source_type' => 'production', 'source_id' => $production->id,
+                    'purpose' => 'TRANSFER', 'posted_by' => $actor->id,
+                ], [
+                    ['account_id' => $finished->id, 'debit_minor' => $cost, 'credit_minor' => 0],
+                    ['account_id' => $raw->id, 'debit_minor' => 0, 'credit_minor' => $cost],
+                ]);
+            }
+
             return $production->load('lines.product', 'lines.recipe');
         });
+    }
+
+    public function void(Production $production, string $reason, User $actor): Production
+    {
+        Gate::forUser($actor)->authorize('void-production');
+        $reason = trim($reason);
+        if ($reason === '' || mb_strlen($reason) > 255) {
+            throw ValidationException::withMessages(['reason' => 'Alasan batal produksi wajib diisi, maksimal 255 karakter ya.']);
+        }
+
+        return DB::transaction(function () use ($production, $reason, $actor): Production {
+            $locked = Production::query()->with('lines')->whereKey($production->id)->lockForUpdate()->firstOrFail();
+            if ($locked->voided_at !== null) {
+                return $locked;
+            }
+            $ids = $locked->lines->pluck('product_id')->all();
+            $stock = $this->ledger->lockAndProject(StockLedgerService::KITCHEN, $locked->kitchen_id, $ids);
+            foreach ($locked->lines as $line) {
+                if (($stock[$line->product_id] ?? 0) < $line->qty_brewed) {
+                    throw ValidationException::withMessages(['production' => 'Cups produksi ini sudah keluar dari dapur. Catat koreksi stok terpisah ya.']);
+                }
+            }
+            foreach ($locked->lines as $line) {
+                $this->ledger->post(StockLedgerService::KITCHEN, $locked->kitchen_id,
+                    $line->product_id, MovementType::ADJUSTMENT, -$line->qty_brewed,
+                    $actor->id, $locked->kitchen_id, 'production_void', $locked->id,
+                    note: $reason);
+            }
+            $consumed = StockLedger::query()->where('ref_type', 'production')->where('ref_id', $locked->id)
+                ->where('movement_type', MovementType::RECIPE_CONSUME_OUT)->get();
+            foreach ($consumed as $row) {
+                $this->ledger->post(StockLedgerService::RAW_MATERIAL_STORE, $locked->kitchen_id,
+                    null, MovementType::ADJUSTMENT, -(int) $row->qty_delta, $actor->id,
+                    $locked->kitchen_id, 'production_void', $locked->id,
+                    rawMaterialId: $row->raw_material_id, note: $reason);
+            }
+            $journal = JournalEntry::query()->where('source_type', 'production')
+                ->where('source_id', $locked->id)->where('purpose', 'TRANSFER')->first();
+            if ($journal) {
+                $this->journals->reverse($journal, $reason);
+            }
+            $locked->update(['voided_at' => now(), 'voided_by' => $actor->id, 'void_reason' => $reason]);
+            AuditLog::query()->create(['actor_id' => $actor->id, 'actor_role' => $actor->role->value,
+                'action' => 'production.voided', 'subject_type' => Production::class, 'subject_id' => $locked->id,
+                'after_json' => ['reason' => $reason], 'ip' => request()->ip()]);
+
+            return $locked;
+        }, 3);
     }
 
     /**
