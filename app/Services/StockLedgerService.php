@@ -66,6 +66,8 @@ class StockLedgerService
         ?int $costMinor = null,
         ?string $note = null,
         ?Carbon $occurredAt = null,
+        bool $costPending = false,
+        int $costPendingQty = 0,
     ): StockLedger {
         $this->assertLocationType($locationType);
         $this->assertExactlyOneCatalogue($productId, $rawMaterialId);
@@ -83,7 +85,12 @@ class StockLedgerService
         }
 
         return DB::transaction(function () use ($locationType, $locationId, $productId, $movementType, $delta, $costMinor,
-            $refType, $refId, $note, $occurredAt, $actorId, $kitchenId, $rawMaterialId): StockLedger {
+            $refType, $refId, $note, $occurredAt, $actorId, $kitchenId, $rawMaterialId, $costPending, $costPendingQty): StockLedger {
+            if ($productId !== null) {
+                // Both movement posting and revaluation take this product lock before any
+                // valuation/accounting lock, without touching the Product or ledger row locks.
+                $this->lockProductCostRows([$productId]);
+            }
             $lock = ['location_type' => $locationType, 'location_id' => $locationId,
                 'catalogue_type' => $productId === null ? 'raw' : 'product',
                 'catalogue_id' => $productId ?? $rawMaterialId];
@@ -99,10 +106,17 @@ class StockLedgerService
             $fallback = false;
             if ($costMinor === null && $movementType === MovementType::SALE_VOID_IN && $refId !== null) {
                 $originalType = str_replace('_void', '', (string) $refType);
-                $costMinor = (int) StockLedger::query()->where('location_type', $locationType)
+                $original = StockLedger::query()->where('location_type', $locationType)
                     ->where('location_id', $locationId)->where('product_id', $productId)
                     ->where('movement_type', MovementType::SALE_OUT)->where('ref_type', $originalType)
-                    ->where('ref_id', $refId)->sum('cost_minor');
+                    ->where('ref_id', $refId)->first();
+                if ($original) {
+                    $resolved = DB::table('stock_cost_resolutions')->where('stock_ledger_id', $original->id)
+                        ->value('resolved_cost_minor');
+                    $costMinor = (int) $original->cost_minor + (int) $resolved;
+                    $costPending = $original->cost_pending && $resolved === null;
+                    $costPendingQty = $costPending ? (int) $original->cost_pending_qty : 0;
+                }
             }
             if ($costMinor === null) {
                 $fallbackUnit = $this->fallbackUnitCost($productId, $rawMaterialId, $kitchenId, $at);
@@ -111,9 +125,15 @@ class StockLedgerService
                     $costMinor = $covered === $onHand ? $value
                         : intdiv($value * $covered + intdiv($onHand, 2), $onHand);
                     $costMinor += (abs($delta) - $covered) * $fallbackUnit;
+                    if ($productId !== null && $fallbackUnit === 0 && abs($delta) > $covered) {
+                        $costPending = true;
+                        $costPendingQty = abs($delta) - $covered;
+                    }
                 } else {
                     $costMinor = abs($delta) * $fallbackUnit;
                     $fallback = true;
+                    $costPending = $productId !== null && $fallbackUnit === 0;
+                    $costPendingQty = $costPending ? abs($delta) : 0;
                 }
             }
             $movement = StockLedger::create([
@@ -125,6 +145,8 @@ class StockLedgerService
                 'qty_delta' => $delta,
                 'cost_minor' => $costMinor,
                 'cost_fallback' => $fallback,
+                'cost_pending' => $costPending,
+                'cost_pending_qty' => $costPendingQty,
                 'ref_type' => $refType,
                 'ref_id' => $refId,
                 'note' => $note,
@@ -143,6 +165,17 @@ class StockLedgerService
 
             return $movement;
         });
+    }
+
+    /** Take cost mutexes in product order before journal-period or valuation locks. */
+    public function lockProductCostRows(array $productIds): void
+    {
+        $ids = array_values(array_unique(array_map('intval', $productIds)));
+        sort($ids);
+        foreach ($ids as $id) {
+            DB::table('stock_cost_revaluation_locks')->insertOrIgnore(['product_id' => $id]);
+            DB::table('stock_cost_revaluation_locks')->where('product_id', $id)->lockForUpdate()->first();
+        }
     }
 
     /**
@@ -172,7 +205,8 @@ class StockLedgerService
         ): void {
             $out = $this->post($fromType, $fromId, $productId, $outType, $qty, $actorId, $kitchenId, $refType, $refId);
             $this->post($toType, $toId, $productId, $inType, $qty, $actorId, $kitchenId,
-                $refType, $refId, costMinor: $out->cost_minor);
+                $refType, $refId, costMinor: $out->cost_minor, costPending: $out->cost_pending,
+                costPendingQty: $out->cost_pending_qty);
         });
     }
 
@@ -180,12 +214,17 @@ class StockLedgerService
     public function valuation(string $locationType, int $locationId, ?int $productId,
         ?int $rawMaterialId = null, ?Carbon $at = null): array
     {
-        $query = StockLedger::query()->where('location_type', $locationType)->where('location_id', $locationId)
-            ->where('product_id', $productId)->where('raw_material_id', $rawMaterialId);
+        $query = StockLedger::query()->where('stock_ledger.location_type', $locationType)
+            ->where('stock_ledger.location_id', $locationId)
+            ->where('stock_ledger.product_id', $productId)
+            ->where('stock_ledger.raw_material_id', $rawMaterialId)
+            ->leftJoin('stock_cost_resolutions as resolution', 'resolution.stock_ledger_id', '=', 'stock_ledger.id');
         if ($at) {
-            $query->where('created_at', '<=', $at);
+            $query->where('stock_ledger.created_at', '<=', $at);
         }
-        $rows = $query->orderBy('id')->get(['qty_delta', 'cost_minor', 'cost_fallback', 'created_at', 'kitchen_id']);
+        $rows = $query->orderBy('stock_ledger.id')->get(['stock_ledger.qty_delta', 'stock_ledger.cost_minor',
+            'stock_ledger.cost_fallback', 'stock_ledger.created_at', 'stock_ledger.kitchen_id',
+            'resolution.resolved_cost_minor', 'resolution.resolved_at']);
         $qty = 0;
         $value = 0;
         $fallbackRows = 0;
@@ -198,6 +237,9 @@ class StockLedgerService
                 $fallbackRows++;
             } elseif ($row->cost_fallback) {
                 $fallbackRows++;
+            }
+            if ($row->resolved_at !== null && (! $at || Carbon::parse($row->resolved_at)->lte($at))) {
+                $cost += (int) $row->resolved_cost_minor;
             }
             $qty += $delta;
             $value += $delta < 0 ? -(int) $cost : (int) $cost;

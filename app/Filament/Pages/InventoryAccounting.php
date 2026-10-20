@@ -2,12 +2,16 @@
 
 namespace App\Filament\Pages;
 
-use App\Services\Reporting\InventoryAccountingReportService;
+use App\Models\Product;
 use App\Services\Menu\MenuLabels;
+use App\Services\PendingStockCostService;
+use App\Services\Reporting\InventoryAccountingReportService;
 use BackedEnum;
+use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 use UnitEnum;
@@ -57,6 +61,14 @@ class InventoryAccounting extends Page
         $service = app(InventoryAccountingReportService::class);
 
         return ['costs' => $service->costVariance(Carbon::parse($this->month.'-01')),
-            'gap' => $service->inventoryGap(Carbon::parse($this->startDate))];
+            'gap' => $service->inventoryGap(Carbon::parse($this->startDate)),
+            'pending' => $service->pendingCosts()];
+    }
+
+    public function revalueProduct(int $productId): void
+    {
+        Gate::authorize('revalue-inventory');
+        $count = app(PendingStockCostService::class)->resolveProduct(Product::query()->findOrFail($productId), Auth::user());
+        Notification::make()->success()->title("{$count} gerak stok sudah dinilai ulang")->send();
     }
 }

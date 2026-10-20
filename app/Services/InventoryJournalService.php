@@ -35,6 +35,10 @@ class InventoryJournalService
                 ->where('source_id', $out->id)->where('purpose', 'SALE_COGS')->first() : null;
             if ($costEntry && ! $costEntry->reversal) {
                 $this->journals->reverse($costEntry, 'Penjualan dibatalkan');
+                $revalued = (int) $movement->cost_minor - (int) $out->cost_minor;
+                if ($revalued !== 0) {
+                    $this->postSaleCost($movement, $revalued, 'SALE_COGS_REVALUE_VOID');
+                }
             } elseif (! $costEntry) {
                 $this->postSaleCost($movement);
             }
@@ -61,21 +65,23 @@ class InventoryJournalService
             $movement->actor_id, 'Rusak / selisih stok #'.$movement->id);
     }
 
-    private function postSaleCost(StockLedger $movement): void
+    private function postSaleCost(StockLedger $movement, ?int $overrideAmount = null,
+        string $purpose = 'SALE_COGS'): void
     {
-        $amount = (int) $movement->cost_minor;
-        if ($amount === 0) {
+        $this->journals->assertOpenDate($movement->created_at->toDateString());
+        $signedAmount = $overrideAmount ?? (int) $movement->cost_minor;
+        if ($signedAmount === 0) {
             return;
         }
-        $this->journals->assertOpenDate($movement->created_at->toDateString());
+        $amount = abs($signedAmount);
         $stock = Account::query()->where('code', '1-1600')->firstOrFail();
         $expense = Account::query()->where('code', '5-1100')->firstOrFail();
-        $out = $movement->qty_delta < 0;
+        $out = ($movement->qty_delta < 0) !== ($signedAmount < 0);
         $this->journals->post([
             'entry_date' => $movement->created_at->toDateString(),
             'description' => 'HPP stok terjual #'.$movement->id,
             'source_type' => 'stock_ledger', 'source_id' => $movement->id,
-            'purpose' => 'SALE_COGS',
+            'purpose' => $purpose,
             'posted_by' => $movement->actor_id,
         ], [
             ['account_id' => $expense->id, 'debit_minor' => $out ? $amount : 0, 'credit_minor' => $out ? 0 : $amount],

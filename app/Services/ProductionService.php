@@ -78,6 +78,7 @@ class ProductionService
         }
 
         return DB::transaction(function () use ($kitchen, $rows, $recipeByProduct, $demand, $actor): Production {
+            $this->ledger->lockProductCostRows(array_keys($rows));
             if ($this->journals->isAccountingDate(today()->toDateString())) {
                 $this->journals->assertOpenDate(today()->toDateString());
             }

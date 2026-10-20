@@ -3,7 +3,9 @@
 namespace App\Services\Reporting;
 
 use App\Models\Product;
+use App\Models\ProductPriceVersion;
 use App\Models\StockLedger;
+use App\Services\PendingStockCostService;
 use App\Services\RecipeService;
 use App\Services\StockLedgerService;
 use Illuminate\Support\Carbon;
@@ -34,6 +36,39 @@ class InventoryAccountingReportService
                     'flagged' => $delta !== null && $standard > 0 && abs($delta) * 100 > $threshold * $standard,
                 ];
             })->all();
+    }
+
+    public function pendingCosts(): array
+    {
+        $cutover = app(PendingStockCostService::class)->cutoverDate();
+        $rows = StockLedger::query()->where('cost_pending', true)
+            ->whereNotIn('stock_ledger.id', DB::table('stock_cost_resolutions')->select('stock_ledger_id'))
+            ->when($cutover, fn ($query) => $query->whereDate('stock_ledger.created_at', '>=', $cutover))
+            ->with('product')->orderBy('stock_ledger.id')->get();
+        $prices = ProductPriceVersion::query()->whereIn('product_id', $rows->pluck('product_id')->unique())
+            ->where('cost_price_minor', '>', 0)->orderBy('created_at')->orderBy('id')->get()->groupBy('product_id');
+        $products = [];
+        foreach ($rows as $row) {
+            if ($row->product === null) {
+                continue;
+            }
+            $id = $row->product_id;
+            $products[$id] ??= ['product_id' => $id, 'product' => $row->product->name, 'count' => 0,
+                'estimated_minor' => 0, 'stock_impact_minor' => 0, 'unpriced_count' => 0];
+            $version = ($prices[$id] ?? collect())->first(
+                fn (ProductPriceVersion $price): bool => $price->created_at->gte($row->created_at),
+            );
+            $products[$id]['count']++;
+            if ($version) {
+                $products[$id]['estimated_minor'] += (int) $row->cost_pending_qty * (int) $version->cost_price_minor;
+                $products[$id]['stock_impact_minor'] += ($row->qty_delta < 0 ? -1 : 1)
+                    * (int) $row->cost_pending_qty * (int) $version->cost_price_minor;
+            } else {
+                $products[$id]['unpriced_count']++;
+            }
+        }
+
+        return array_values($products);
     }
 
     public function inventoryGap(Carbon $start): array
