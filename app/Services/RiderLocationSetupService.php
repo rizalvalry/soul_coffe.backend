@@ -7,6 +7,7 @@ use App\Models\AuditLog;
 use App\Models\Location;
 use App\Models\RiderLocationSetup;
 use App\Models\User;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -36,7 +37,7 @@ class RiderLocationSetupService
             })->all();
     }
 
-    public function save(User $actor, User $rider, ?int $locationId, string $basis): RiderLocationSetup
+    public function save(User $actor, User $rider, ?int $locationId, string $basis, ?string $idempotencyKey = null): RiderLocationSetup
     {
         if ($actor->role !== Role::MANAGEMENT || ! $actor->is_active) {
             abort(403);
@@ -44,19 +45,37 @@ class RiderLocationSetupService
         if ($rider->role !== Role::STAFF || ! $rider->is_active) {
             throw new RuntimeException('Rider aktif tidak ditemukan ya.');
         }
-        if ($basis === 'selling_location') {
-            $location = Location::query()->find($locationId);
-            if (! $location || $location->lat === null || $location->lng === null) {
-                throw new RuntimeException('Pilih titik jualan yang sudah punya pin GPS ya.');
-            }
-        }
 
-        return DB::transaction(function () use ($actor, $rider, $locationId, $basis): RiderLocationSetup {
+        return DB::transaction(function () use ($actor, $rider, $locationId, $basis, $idempotencyKey): RiderLocationSetup {
             User::query()->whereKey($rider->id)->lockForUpdate()->firstOrFail();
+            $requestHash = hash('sha256', json_encode([$rider->id, $locationId, $basis], JSON_THROW_ON_ERROR));
+            $keyHash = $idempotencyKey === null ? null : hash('sha256', $actor->id.':'.$idempotencyKey);
+            if ($keyHash !== null) {
+                $prior = DB::table('rider_location_setup_idempotency_keys')->where('key_hash', $keyHash)->first();
+                if ($prior) {
+                    if ($prior->request_hash !== $requestHash) {
+                        throw new HttpResponseException(response()->json([
+                            'code' => 'IDEMPOTENCY_CONFLICT',
+                            'message' => 'Kunci kirim ini sudah dipakai buat setup lain. Muat ulang ya.',
+                        ], 409));
+                    }
+
+                    return RiderLocationSetup::query()->with(['location', 'changedBy'])
+                        ->findOrFail($prior->rider_location_setup_id);
+                }
+            }
+            if ($basis === 'selling_location') {
+                $location = Location::query()->find($locationId);
+                if (! $location || $location->lat === null || $location->lng === null) {
+                    throw new RuntimeException('Pilih titik jualan yang sudah punya pin GPS ya.');
+                }
+            }
             $old = RiderLocationSetup::query()->where('rider_id', $rider->id)
                 ->whereNull('superseded_at')->latest('id')->lockForUpdate()->first();
             if ($old && (int) $old->location_id === (int) $locationId && $old->basis === $basis) {
-                return $old;
+                $this->rememberKey($keyHash, $requestHash, $old->id);
+
+                return $old->load(['location', 'changedBy']);
             }
             $before = $old?->only(['location_id', 'basis']);
             $old?->update(['superseded_at' => now()]);
@@ -81,8 +100,23 @@ class RiderLocationSetupService
                 ['role.MANAGEMENT', 'role.BARISTA', 'user.'.$rider->id],
                 context: ['source_id' => $new->id],
             );
+            $this->rememberKey($keyHash, $requestHash, $new->id);
 
             return $new->load(['location', 'changedBy']);
         });
+    }
+
+    private function rememberKey(?string $keyHash, string $requestHash, int $setupId): void
+    {
+        if ($keyHash === null) {
+            return;
+        }
+
+        DB::table('rider_location_setup_idempotency_keys')->insert([
+            'key_hash' => $keyHash,
+            'request_hash' => $requestHash,
+            'rider_location_setup_id' => $setupId,
+            'created_at' => now(),
+        ]);
     }
 }

@@ -26,7 +26,7 @@
                     </td>
                     <td class="p-3">
                         <div>{{ $row['closing_status'] }}</div>
-                        @if ($row['outside_closing_point'])
+                        @if (in_array(auth()->user()?->role, [\App\Enums\Role::ADMINISTRATOR, \App\Enums\Role::FINANCE], true) && $row['outside_closing_point'])
                             <span class="rounded-full bg-amber-100 px-2 py-1 text-amber-800">Pernah Closing di luar titik / GPS mati{{ $row['closing_distance_m'] !== null ? ' · lokasi terbaru '.number_format($row['closing_distance_m'], 0, ',', '.').' m' : '' }}</span>
                         @endif
                         @if ($row['carry_warning'])

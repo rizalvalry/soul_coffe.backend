@@ -7,8 +7,12 @@ use App\Enums\MovementType;
 use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Filament\Pages\SetupLokasiRider;
+use App\Filament\Pages\StaffActivity;
+use App\Filament\Resources\Settlements\Pages\ListSettlements;
+use App\Filament\Widgets\CartSalesTodayWidget;
 use App\Models\AppNotification;
 use App\Models\AttendanceExemption;
+use App\Models\AuditLog;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\EmployeeProfile;
@@ -24,9 +28,13 @@ use App\Services\AbsenGeofence;
 use App\Services\Access\PermissionMatrix;
 use App\Services\AttendanceService;
 use App\Services\CentralStockService;
+use App\Services\Reporting\SalesActivityService;
 use App\Services\RiderLocationSetupService;
+use App\Services\SettlementService;
 use App\Services\StockLedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
@@ -85,9 +93,9 @@ class RiderLocationSetupTest extends TestCase
         $attendance->openStaffWindow($this->barista);
     }
 
-    private function writeAs(User $actor, ?int $locationId, string $basis): TestResponse
+    private function writeAs(User $actor, ?int $locationId, string $basis, ?string $key = null): TestResponse
     {
-        return $this->actingAs($actor, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
+        return $this->actingAs($actor, 'sanctum')->withHeader('Idempotency-Key', $key ?? (string) Str::uuid())
             ->patchJson('/api/v1/rider-location-setups/'.$this->rider->id,
                 ['location_id' => $locationId, 'basis' => $basis]);
     }
@@ -162,6 +170,29 @@ class RiderLocationSetupTest extends TestCase
         $this->assertSame($this->point->id, $assignment->location_id);
         $this->assertFalse($assignment->location_setup_missing);
         $this->assertSame($this->point->id, app(RiderLocationSetupService::class)->active($this->rider)?->location_id);
+    }
+
+    public function test_expired_setup_retry_cannot_replace_a_newer_management_change(): void
+    {
+        $other = Location::create(['name' => 'Titik Baru', 'lat' => -6.25, 'lng' => 106.82]);
+        $oldKey = (string) Str::uuid();
+        $newKey = (string) Str::uuid();
+        $old = $this->writeAs($this->management, $this->point->id, 'selling_location', $oldKey)
+            ->assertOk();
+        $this->writeAs($this->management, $other->id, 'selling_location', $newKey)->assertOk();
+
+        Cache::forget('idem:'.$this->management->id.':'.hash('sha256', $oldKey));
+        $this->writeAs($this->management, $this->point->id, 'selling_location', $oldKey)
+            ->assertOk()->assertJsonPath('data.id', $old->json('data.id'));
+        $this->assertSame($other->id, app(RiderLocationSetupService::class)->active($this->rider)?->location_id);
+        $this->assertDatabaseCount('rider_location_setups', 2);
+        $this->assertDatabaseCount('rider_location_setup_idempotency_keys', 2);
+        $this->assertSame(2, AuditLog::query()->where('action', 'rider_location_setup.changed')->count());
+
+        Cache::forget('idem:'.$this->management->id.':'.hash('sha256', $oldKey));
+        $this->writeAs($this->management, $other->id, 'selling_location', $oldKey)
+            ->assertStatus(409)->assertJsonPath('code', 'IDEMPOTENCY_CONFLICT');
+        $this->assertSame($other->id, app(RiderLocationSetupService::class)->active($this->rider)?->location_id);
     }
 
     public function test_exemption_uses_default_cart_before_add_stock_and_anywhere_has_priority(): void
@@ -300,6 +331,70 @@ class RiderLocationSetupTest extends TestCase
         $this->actingAs($this->rider, 'sanctum')->getJson('/api/v1/me/settlement?operating_date='.$closingDate)
             ->assertOk()->assertJsonPath('data.closing.id', $closingId)
             ->assertJsonPath('data.status', 'APPROVED');
+    }
+
+    public function test_unpinned_kitchen_does_not_raise_a_closing_location_flag(): void
+    {
+        $this->writeAs($this->management, null, 'kitchen')->assertOk();
+        $this->kitchen->update(['lat' => null, 'lng' => null]);
+        $this->open();
+        app(AttendanceService::class)->clockIn($this->rider, gps: ['lat' => -6.1751, 'lng' => 106.865]);
+        app(CentralStockService::class)->handToCart($this->barista, $this->cart,
+            $this->rider, [$this->product->id => 10]);
+        $this->actingAs($this->rider, 'sanctum')->getJson('/api/v1/me/closing/draft')
+            ->assertOk()->assertJsonPath('data.closing_point.lat', null);
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/me/closing', [
+                'lines' => [['product_id' => $this->product->id, 'qty_remaining' => 5, 'qty_wasted' => 0]],
+                'qris' => 0, 'transfer' => 0, 'gps_unavailable' => true,
+            ])->assertCreated()->assertJsonPath('data.outside_closing_point', false)
+            ->assertJsonPath('data.closing_distance_m', null);
+        $this->assertFalse(AppNotification::query()->where('type', 'RiderClosingOutsidePoint')->exists());
+    }
+
+    public function test_closing_location_warning_is_visible_only_to_admin_and_finance_in_cms(): void
+    {
+        $this->writeAs($this->management, $this->point->id, 'selling_location')->assertOk();
+        $this->open();
+        app(AttendanceService::class)->clockIn($this->rider, gps: ['lat' => -6.244, 'lng' => 106.8]);
+        app(CentralStockService::class)->handToCart($this->barista, $this->cart,
+            $this->rider, [$this->product->id => 10]);
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/me/closing', [
+                'lines' => [['product_id' => $this->product->id, 'qty_remaining' => 5, 'qty_wasted' => 0]],
+                'qris' => 0, 'transfer' => 0, 'gps_lat' => -6.1751, 'gps_lng' => 106.865,
+            ])->assertCreated()->assertJsonPath('data.outside_closing_point', true);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::SETTLEMENTS, ['view']);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::STAFF_ACTIVITY, ['view']);
+
+        Auth::shouldUse('web');
+        $this->assertNull(Auth::user());
+        $this->assertSame(0, app(SalesActivityService::class)->dayTotals()['flagged']);
+        $this->assertFalse(app(SettlementService::class)->queue()[0]['outside_closing_point']);
+
+        foreach ([$this->admin, $this->finance] as $reader) {
+            $this->actingAs($reader);
+            $this->assertSame(1, app(SalesActivityService::class)->dayTotals()['flagged']);
+            $this->assertSame(1, app(SalesActivityService::class)->perCart()[0]['flagged']);
+            $this->assertTrue(app(SettlementService::class)->queue()[0]['outside_closing_point']);
+            Livewire::actingAs($reader)->test(ListSettlements::class)->assertSee('Pernah Closing di luar titik');
+            Livewire::actingAs($reader)->test(StaffActivity::class)->assertSee('Pernah Closing di luar titik');
+        }
+        $this->actingAs($this->management);
+        $this->assertSame(0, app(SalesActivityService::class)->dayTotals()['flagged']);
+        $this->assertSame(0, app(SalesActivityService::class)->perCart()[0]['flagged']);
+        $this->assertNull(app(SalesActivityService::class)->perCart()[0]['closing_location_warning']);
+        $this->assertFalse(app(SettlementService::class)->queue()[0]['outside_closing_point']);
+        $this->assertNull(app(SettlementService::class)->queue()[0]['closing_distance_m']);
+        $this->actingAs($this->management, 'sanctum')->getJson('/api/v1/settlements/queue')
+            ->assertOk()->assertJsonPath('data.0.outside_closing_point', false)
+            ->assertJsonPath('data.0.closing_distance_m', null);
+        Livewire::actingAs($this->management)->test(ListSettlements::class)
+            ->assertDontSee('Pernah Closing di luar titik');
+        Livewire::actingAs($this->management)->test(StaffActivity::class)
+            ->assertDontSee('Pernah Closing di luar titik')->assertDontSee('bsi-stat--alarm');
+        Livewire::actingAs($this->management)->test(CartSalesTodayWidget::class)
+            ->assertDontSee('1 ditandai');
     }
 
     public function test_backfill_is_idempotent_and_does_not_replace_management_setup(): void

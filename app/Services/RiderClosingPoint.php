@@ -33,8 +33,10 @@ class RiderClosingPoint
 
     public function check(array $point, array $gps): array
     {
-        if ($point['lat'] === null || $point['lng'] === null || ($gps['lat'] ?? null) === null
-            || ($gps['lng'] ?? null) === null || ($gps['unavailable'] ?? false)) {
+        if ($point['lat'] === null || $point['lng'] === null) {
+            return ['basis' => $point['basis'], 'distance_m' => null, 'outside' => false];
+        }
+        if (($gps['lat'] ?? null) === null || ($gps['lng'] ?? null) === null || ($gps['unavailable'] ?? false)) {
             return ['basis' => $point['basis'], 'distance_m' => null, 'outside' => true];
         }
         $a = ((float) $gps['lat'] - $point['lat']) * 111_320;

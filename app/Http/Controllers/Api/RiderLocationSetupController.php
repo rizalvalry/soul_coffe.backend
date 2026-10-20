@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\RiderLocationSetupService;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -30,7 +31,10 @@ class RiderLocationSetupController extends Controller
             'basis' => ['required', Rule::in(['kitchen', 'selling_location'])],
         ]);
         try {
-            $setup = $this->setups->save($request->user(), $rider, $data['location_id'] ?? null, $data['basis']);
+            $setup = $this->setups->save($request->user(), $rider, $data['location_id'] ?? null, $data['basis'],
+                $request->header('Idempotency-Key'));
+        } catch (HttpResponseException $e) {
+            throw $e;
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }

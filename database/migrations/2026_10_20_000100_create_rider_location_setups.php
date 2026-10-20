@@ -20,6 +20,15 @@ return new class extends Migration
             $table->index(['rider_id', 'superseded_at']);
         });
 
+        Schema::create('rider_location_setup_idempotency_keys', function (Blueprint $table): void {
+            $table->char('key_hash', 64)->primary();
+            $table->char('request_hash', 64);
+            $table->foreignId('rider_location_setup_id');
+            $table->foreign('rider_location_setup_id', 'rls_idem_setup_fk')
+                ->references('id')->on('rider_location_setups')->restrictOnDelete();
+            $table->timestamp('created_at')->useCurrent();
+        });
+
         Schema::table('staff_assignments', function (Blueprint $table): void {
             $table->boolean('location_setup_missing')->default(false);
         });
@@ -59,6 +68,7 @@ return new class extends Migration
     {
         // Refuse rollback before any schema change when setup history or location evidence exists.
         if (DB::table('rider_location_setups')->exists()
+            || DB::table('rider_location_setup_idempotency_keys')->exists()
             || DB::table('staff_assignments')->where('location_setup_missing', true)->exists()
             || DB::table('rider_closings')->where(function ($query): void {
                 $query->whereNotNull('closing_basis')
@@ -74,6 +84,7 @@ return new class extends Migration
         Schema::table('staff_assignments', function (Blueprint $table): void {
             $table->dropColumn('location_setup_missing');
         });
+        Schema::dropIfExists('rider_location_setup_idempotency_keys');
         Schema::dropIfExists('rider_location_setups');
     }
 };
