@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BadgeController;
 use App\Http\Controllers\Api\CartController;
+use App\Http\Controllers\Api\ClearingReceiptController;
 use App\Http\Controllers\Api\DeliveryIncidentController;
 use App\Http\Controllers\Api\DeviceController;
 use App\Http\Controllers\Api\LocationController;
@@ -193,6 +194,16 @@ Route::middleware(['auth:sanctum', RecoverOutboxAfterResponse::class])->group(fu
     Route::post('settlements', [SettlementController::class, 'store'])
         ->middleware('idempotent:require');
     Route::post('settlements/{settlement}/approve', [SettlementController::class, 'approve'])
+        ->middleware('idempotent:require');
+
+    Route::get('clearing-receipts', [ClearingReceiptController::class, 'index']);
+    Route::get('clearing-receipts/options', [ClearingReceiptController::class, 'options']);
+    Route::get('clearing-receipts/aging', [ClearingReceiptController::class, 'aging']);
+    Route::post('clearing-receipts', [ClearingReceiptController::class, 'store'])
+        ->middleware('idempotent:require');
+    Route::post('clearing-receipts/{receipt}/void', [ClearingReceiptController::class, 'void'])
+        ->middleware('idempotent:require');
+    Route::post('clearing-receipts/{receipt}/match', [ClearingReceiptController::class, 'match'])
         ->middleware('idempotent:require');
 
     // ── Absen (barista & staff) ────────────────────────────────────────────

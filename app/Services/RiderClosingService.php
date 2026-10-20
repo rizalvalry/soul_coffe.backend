@@ -487,6 +487,12 @@ class RiderClosingService
                 ? [$line('5-1100', $amount, 0), $line('1-1600', 0, $amount)]
                 : [$line('1-1600', $amount, 0), $line('5-1100', 0, $amount)]);
         }
+        $methodVariances = [
+            'cash_variance_minor' => $settlement->cash_minor - $closing->cash_minor,
+            'qris_variance_minor' => $settlement->qris_minor - $closing->qris_minor,
+            'transfer_variance_minor' => $settlement->transfer_minor - $closing->transfer_minor,
+        ];
+        $methodFlagged = collect($methodVariances)->contains(fn (int $value): bool => $value !== 0);
         $settlement->update([
             'expected_total_minor' => $closing->total_minor,
             'expected_cash_minor' => $closing->cash_minor,
@@ -497,6 +503,23 @@ class RiderClosingService
             'variance_reason' => trim(($settlement->variance_reason ? $settlement->variance_reason.' — ' : '').$reason),
             'expected_stale' => false,
             'stale_delta_minor' => 0,
+            'method_variance_flagged' => $methodFlagged,
+            ...$methodVariances,
         ]);
+        if ($methodFlagged) {
+            AuditLog::recordAction($actor, 'settlement.method_variance_flagged', $settlement, null, [
+                'closing_revision_id' => $revisionId, ...$methodVariances,
+            ]);
+            $recipientIds = User::query()->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT])
+                ->where('is_active', true)->orderBy('id')->pluck('id')->all();
+            $this->events->publish(
+                type: 'SettlementMethodVarianceFlagged', title: 'Selisih metode setoran perlu dicek',
+                body: sprintf('Setoran Coffee Bike %s berubah setelah koreksi Closing. Cek rincian metode ya.', $closing->cart?->code),
+                channels: array_map(fn (int $id): string => "user.{$id}", $recipientIds),
+                notifyUserIds: $recipientIds, status: $settlement->status, includeActorPush: true,
+                context: ['cart_id' => $closing->cart_id, 'operating_date' => $closing->operating_date->toDateString(),
+                    'source_id' => $settlement->id],
+            );
+        }
     }
 }

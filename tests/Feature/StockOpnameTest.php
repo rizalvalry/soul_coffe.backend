@@ -5,10 +5,11 @@ namespace Tests\Feature;
 use App\Enums\MovementType;
 use App\Enums\Role;
 use App\Enums\StockOpnameStatus;
+use App\Models\AuditLog;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\Product;
-use App\Models\StockOpname;
+use App\Models\StockLedger;
 use App\Models\User;
 use App\Services\StockLedgerService;
 use App\Services\StockOpnameService;
@@ -202,11 +203,13 @@ class StockOpnameTest extends TestCase
         $this->assertSame(StockOpnameStatus::APPLIED, $applied->status);
         $this->assertSame($this->admin->id, $applied->applied_by);
         $this->assertNotNull($applied->applied_at);
+        $this->assertSame(1, AuditLog::query()->where('action', 'stock_opname.applied')
+            ->where('subject_id', $opname->id)->count());
 
         $this->assertSame(45, $this->stockOf(StockLedgerService::KITCHEN, $this->kitchen->id, $this->coffee));
 
         $this->assertTrue(
-            \App\Models\StockLedger::query()
+            StockLedger::query()
                 ->where('movement_type', MovementType::OPNAME_ADJUSTMENT)
                 ->where('ref_type', 'stock_opname')
                 ->where('ref_id', $opname->id)
@@ -273,7 +276,7 @@ class StockOpnameTest extends TestCase
         $this->service()->apply($opname, $this->admin);
 
         $this->assertFalse(
-            \App\Models\StockLedger::query()
+            StockLedger::query()
                 ->where('movement_type', MovementType::OPNAME_ADJUSTMENT)
                 ->where('ref_id', $opname->id)
                 ->exists(),

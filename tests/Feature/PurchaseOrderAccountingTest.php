@@ -6,6 +6,7 @@ use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Models\Account;
 use App\Models\AccountingPeriod;
+use App\Models\AuditLog;
 use App\Models\CashAccount;
 use App\Models\CentralKitchen;
 use App\Models\JournalEntry;
@@ -76,6 +77,10 @@ class PurchaseOrderAccountingTest extends TestCase
     public function test_direct_and_credit_receipts_post_partial_integer_amounts_once(): void
     {
         $direct = $this->service->receive($this->order(), [$this->material->id => 7], $this->finance, 'DIRECT', $this->cash->id);
+        foreach (['purchase_order.created', 'purchase_order.ordered', 'purchase_order.received'] as $action) {
+            $this->assertSame(1, AuditLog::query()->where('action', $action)
+                ->where('subject_id', $direct->id)->count());
+        }
         $entry = JournalEntry::where('source_type', 'purchase_order')->where('source_id', $direct->id)->firstOrFail();
         $this->assertEntry($entry, '1-1700', '1-1100', 17500);
         $this->assertSame(17500, (int) StockLedger::where('ref_type', 'purchase_order')->where('ref_id', $direct->id)->sum('cost_minor'));
@@ -96,6 +101,8 @@ class PurchaseOrderAccountingTest extends TestCase
         $input = ['uuid' => '027da3fc-df49-4146-9840-1f1d82e7462d', 'paid_on' => today()->toDateString(),
             'cash_account_id' => $this->cash->id, 'amount_minor' => 10000];
         $first = $this->service->payDebt($po, $this->finance, $input);
+        $this->assertSame(1, AuditLog::query()->where('action', 'purchase_order.paid')
+            ->where('subject_id', $first->id)->count());
         $this->assertSame($first->id, $this->service->payDebt($po, $this->finance, $input)->id);
         $this->assertEntry(JournalEntry::where('source_type', 'purchase_order_payment')->where('source_id', $first->id)->firstOrFail(), '2-1400', '1-1100', 10000);
         $this->assertSame(15000, $po->unpaidMinor());

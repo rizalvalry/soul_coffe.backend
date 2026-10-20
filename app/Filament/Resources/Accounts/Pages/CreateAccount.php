@@ -4,8 +4,11 @@ namespace App\Filament\Resources\Accounts\Pages;
 
 use App\Filament\Resources\Accounts\AccountResource;
 use App\Models\Account;
+use App\Models\AuditLog;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 
@@ -24,9 +27,15 @@ class CreateAccount extends CreateRecord
             throw ValidationException::withMessages(['parent_id' => 'Akun induk harus aktif dan sejenis.']);
         }
 
-        return Account::query()->create([
-            ...$data,
-            'normal_balance' => in_array($data['type'], ['ASSET', 'COGS', 'EXPENSE'], true) ? 'DEBIT' : 'CREDIT',
-        ]);
+        return DB::transaction(function () use ($data): Account {
+            $account = Account::query()->create([
+                ...$data,
+                'normal_balance' => in_array($data['type'], ['ASSET', 'COGS', 'EXPENSE'], true) ? 'DEBIT' : 'CREDIT',
+            ]);
+            AuditLog::recordAction(Auth::user(), 'account.created', $account, null,
+                $account->only(['code', 'name', 'type', 'normal_balance', 'parent_id']));
+
+            return $account;
+        });
     }
 }
