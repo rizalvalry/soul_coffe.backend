@@ -22,6 +22,8 @@ class AccountSeeder extends Seeder
             ['2-1100', 'Utang Gaji', 'LIABILITY'],
             ['2-1200', 'Utang BPJS', 'LIABILITY'],
             ['2-1300', 'Utang PPh 21', 'LIABILITY'],
+            ['2-1500', 'Utang PBJT', 'LIABILITY'],
+            ['2-1600', 'Utang PPh Badan', 'LIABILITY'],
             ['3-1100', 'Modal Pemilik', 'EQUITY'],
             ['3-1200', 'Saldo Awal Ekuitas', 'EQUITY'],
             ['4-1100', 'Pendapatan Penjualan Coffee Bike', 'REVENUE'],
@@ -36,6 +38,7 @@ class AccountSeeder extends Seeder
             ['6-1600', 'Beban Keperluan Kantor', 'EXPENSE'],
             ['6-1700', 'Beban Fasilitas Karyawan', 'EXPENSE'],
             ['6-1800', 'Beban Lain-lain', 'EXPENSE'],
+            ['6-1950', 'Beban PPh Final', 'EXPENSE'],
             ['6-1990', 'Biaya Admin/MDR', 'EXPENSE'],
         ];
 
