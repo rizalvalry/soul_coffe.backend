@@ -233,6 +233,38 @@ class RiderClosingTest extends TestCase
         }
     }
 
+    public function test_approved_closing_method_correction_updates_flag_and_notifies_management(): void
+    {
+        $this->issue(10, MovementType::ALLOCATION_IN);
+        $management = User::factory()->role(Role::MANAGEMENT)->create();
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', [...$this->body(3, 0), 'qris' => 20000, 'transfer' => 0])
+            ->assertCreated();
+        $closing = RiderClosing::query()->sole();
+        $id = $this->actingAs($this->finance, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/settlements', [
+                'cart_id' => $this->cart->id, 'cash' => $closing->cash_minor,
+                'qris' => $closing->qris_minor, 'transfer' => 0,
+            ])->assertCreated()->assertJsonPath('data.method_variance_flagged', false)->json('data.id');
+        $this->actingAs($this->finance, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson("/api/v1/settlements/{$id}/approve", [
+                'lines' => [['product_id' => $this->product->id, 'qty_returned' => 3, 'qty_rejected' => 0]],
+            ])->assertOk();
+        $this->actingAs($management, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson("/api/v1/closings/{$closing->id}/corrections", [
+                ...$this->body(3, 0), 'qris' => 30000, 'transfer' => 0,
+                'reason' => 'Metode QRIS dikoreksi',
+            ])->assertOk();
+        $settlement = Settlement::query()->findOrFail($id);
+        $this->assertSame(0, $settlement->variance_minor);
+        $this->assertTrue($settlement->method_variance_flagged);
+        $this->assertSame(10000, $settlement->cash_variance_minor);
+        $this->assertSame(-10000, $settlement->qris_variance_minor);
+        $event = OutboxEvent::query()->where('name', 'SettlementMethodVarianceFlagged')->sole();
+        $this->assertSame(1, AppNotification::query()->where('event_id', $event->event_id)
+            ->where('user_id', $management->id)->count());
+    }
+
     public function test_day_gate_and_legacy_sale_are_respected(): void
     {
         $this->issue(10, MovementType::ALLOCATION_IN);

@@ -30,6 +30,12 @@ class Settlement extends Model
         'variance_minor',
         'variance_reason',
         'reconciled_by',
+        'recorded_by',
+        'self_approved',
+        'method_variance_flagged',
+        'cash_variance_minor',
+        'qris_variance_minor',
+        'transfer_variance_minor',
         'reconciled_at',
     ];
 
@@ -50,6 +56,11 @@ class Settlement extends Model
             'stale_delta_minor' => 'integer',
             'variance_minor' => 'integer',
             'reconciled_at' => 'datetime',
+            'self_approved' => 'boolean',
+            'method_variance_flagged' => 'boolean',
+            'cash_variance_minor' => 'integer',
+            'qris_variance_minor' => 'integer',
+            'transfer_variance_minor' => 'integer',
         ];
     }
 

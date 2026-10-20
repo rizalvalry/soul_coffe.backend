@@ -121,7 +121,7 @@ class ManagementReportService
             ->selectRaw('SUM(COALESCE(s.expected_cash_minor, 0)) AS expected_cash')
             ->selectRaw('SUM(COALESCE(s.expected_qris_minor, 0) + COALESCE(s.expected_transfer_minor, 0)) AS expected_noncash')
             ->selectRaw('SUM(s.cash_minor) AS paid_cash, SUM(s.qris_minor + s.transfer_minor) AS paid_noncash')
-            ->selectRaw('SUM(s.variance_minor) AS variance, SUM(CASE WHEN s.status = ? OR s.variance_minor <> 0 THEN 1 ELSE 0 END) AS flagged', ['VARIANCE_FLAGGED'])
+            ->selectRaw('SUM(s.variance_minor) AS variance, SUM(CASE WHEN s.status = ? OR s.variance_minor <> 0 OR s.method_variance_flagged = 1 THEN 1 ELSE 0 END) AS flagged', ['VARIANCE_FLAGGED'])
             ->get();
         $settlementRows = $settlements->map(fn ($row): array => [
             $row->code, $row->name, (int) $row->expected_cash, (int) $row->expected_noncash,
@@ -130,15 +130,27 @@ class ManagementReportService
 
         // The journal owns financial totals. These grouped, non-void sale lines explain their
         // operational product/cart mix using the cost and price snapshots pinned at sale time.
+        $closingStartedOn = (string) config('soul.closing_started_on', '2026-10-18');
         $cartProducts = DB::table('sale_lines as sl')
             ->join('sales as s', 's.id', '=', 'sl.sale_id')
             ->join('carts as c', 'c.id', '=', 's.cart_id')
             ->join('products as p', 'p.id', '=', 'sl.product_id')
             ->whereBetween('s.operating_date', [$fromDate, $toDate])
+            ->where('s.operating_date', '<', $closingStartedOn)
             ->whereNull('s.voided_at')
             ->groupBy('s.cart_id', 'sl.product_id', 'c.code', 'p.name')
             ->select('s.cart_id', 'sl.product_id', 'c.code as cart_code', 'p.name as product_name')
             ->selectRaw('SUM(sl.subtotal_minor) AS revenue, SUM(sl.qty * COALESCE(sl.unit_cost_minor, 0)) AS cogs')
+            ->get();
+        $closingProducts = DB::table('rider_closing_lines as rl')
+            ->join('rider_closings as rc', 'rc.id', '=', 'rl.rider_closing_id')
+            ->join('carts as c', 'c.id', '=', 'rc.cart_id')
+            ->join('products as p', 'p.id', '=', 'rl.product_id')
+            ->whereBetween('rc.operating_date', [$fromDate, $toDate])
+            ->where('rc.operating_date', '>=', $closingStartedOn)
+            ->groupBy('rc.cart_id', 'rl.product_id', 'c.code', 'p.name')
+            ->select('rc.cart_id', 'rl.product_id', 'c.code as cart_code', 'p.name as product_name')
+            ->selectRaw('SUM(rl.subtotal_minor) AS revenue, SUM(rl.qty_sold * rl.unit_cost_minor) AS cogs')
             ->get();
         $directProducts = DB::table('direct_sale_lines as dl')
             ->join('direct_sales as d', 'd.id', '=', 'dl.direct_sale_id')
@@ -152,7 +164,7 @@ class ManagementReportService
             ->get();
         $carts = [];
         $products = [];
-        foreach ($cartProducts as $row) {
+        foreach ($cartProducts->concat($closingProducts) as $row) {
             $cartKey = (int) $row->cart_id;
             $productKey = (int) $row->product_id;
             $carts[$cartKey] ??= ['name' => $row->cart_code, 'revenue' => 0, 'cogs' => 0];

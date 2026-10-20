@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\MovementType;
 use App\Enums\Role;
 use App\Enums\StockOpnameStatus;
+use App\Models\AuditLog;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\Product;
@@ -188,6 +189,12 @@ class StockOpnameService
             $locked->applied_by = $actor->id;
             $locked->applied_at = now();
             $locked->save();
+
+            AuditLog::recordAction($actor, 'stock_opname.applied', $locked,
+                ['status' => 'DRAFT'], ['status' => 'APPLIED', 'lines' => $locked->lines->map(fn ($line): array => [
+                    'product_id' => $line->product_id, 'system_qty_at_apply' => $line->system_qty_at_apply,
+                    'counted_qty' => $line->counted_qty, 'applied_delta' => $line->applied_delta,
+                ])->all()]);
 
             return $locked->fresh(['lines']);
         });

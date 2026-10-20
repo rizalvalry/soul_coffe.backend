@@ -21,6 +21,7 @@ use App\Filament\Resources\OfficeItems\Pages\CreateOfficeItem;
 use App\Filament\Resources\OfficeItems\Pages\EditOfficeItem;
 use App\Filament\Resources\OfficeItems\Pages\ListOfficeItems;
 use App\Models\Account;
+use App\Models\AuditLog;
 use App\Models\CashAccount;
 use App\Models\CashCategory;
 use App\Models\CashTransaction;
@@ -82,6 +83,8 @@ class CashTransactionTest extends TestCase
         $this->assertSame($transaction->id, $service->record($this->finance, $out)->id);
         $this->assertSame(1, CashTransaction::query()->count());
         $this->assertSame(1, JournalEntry::query()->where('purpose', 'CASH_TX')->count());
+        $this->assertSame(1, AuditLog::query()->where('action', 'cash_transaction.created')
+            ->where('subject_id', $transaction->id)->count());
 
         $in = $this->input('Pendapatan Lain-lain');
         $income = $service->record($this->finance, $in);
@@ -212,6 +215,8 @@ class CashTransactionTest extends TestCase
         $transaction = $service->record($this->finance, $this->input());
         $service->void($this->finance, $transaction, 'Salah catat');
         $this->assertSame('VOID', $transaction->fresh()->status);
+        $this->assertSame(1, AuditLog::query()->where('action', 'cash_transaction.voided')
+            ->where('subject_id', $transaction->id)->count());
         $this->assertSame(1, CashTransaction::query()->count());
         $this->assertSame(1, JournalEntry::query()->where('purpose', 'REVERSAL')->count());
         $this->assertSame(0, CashAccount::query()->where('name', 'Bank')->firstOrFail()->balanceMinor());

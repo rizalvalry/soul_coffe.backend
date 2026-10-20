@@ -2,12 +2,15 @@
 
 namespace App\Models;
 
+use App\Enums\Role;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use JsonException;
 
@@ -42,6 +45,22 @@ class AuditLog extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::updating(fn (): never => throw ValidationException::withMessages(['audit' => 'Audit yang sudah dicatat tidak bisa diubah.']));
+        static::deleting(fn (): never => throw ValidationException::withMessages(['audit' => 'Audit yang sudah dicatat tidak bisa dihapus.']));
+    }
+
+    public static function recordAction(User $actor, string $action, Model $subject, ?array $before = null, ?array $after = null): self
+    {
+        return self::query()->create([
+            'actor_id' => $actor->id, 'actor_role' => $actor->role->value,
+            'action' => $action, 'subject_type' => $subject::class, 'subject_id' => $subject->id,
+            'before_json' => $before, 'after_json' => $after,
+            'ip' => request()->ip(), 'device_id' => request()->header('X-Device-Id'),
+        ]);
+    }
+
     public function actor(): BelongsTo
     {
         return $this->belongsTo(User::class, 'actor_id');
@@ -56,6 +75,12 @@ class AuditLog extends Model
 
         $values = $side === 'before' ? ($this->before_json ?? []) : ($this->after_json ?? []);
         unset($values['_payroll_ciphertext']);
+
+        if ($this->subject_type === RiderClosing::class
+            && ! in_array(Auth::user()?->role, [Role::ADMINISTRATOR, Role::FINANCE], true)) {
+            unset($values['gps_lat'], $values['gps_lng'], $values['gps_unavailable'],
+                $values['closing_basis'], $values['closing_distance_m'], $values['outside_closing_point']);
+        }
 
         if (! in_array($this->subject_type, [EmployeeProfile::class, PayrollComponentEntry::class, PayrollRun::class], true)
             || ! Gate::allows('manage-payroll')) {

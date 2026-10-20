@@ -8,6 +8,7 @@ use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Filament\Pages\SetupLokasiRider;
 use App\Filament\Pages\StaffActivity;
+use App\Filament\Resources\AuditLogs\Pages\ViewAuditLog;
 use App\Filament\Resources\Settlements\Pages\ListSettlements;
 use App\Filament\Widgets\CartSalesTodayWidget;
 use App\Models\AppNotification;
@@ -366,21 +367,33 @@ class RiderLocationSetupTest extends TestCase
             ])->assertCreated()->assertJsonPath('data.outside_closing_point', true);
         PermissionMatrix::set(Role::FINANCE, PanelModule::SETTLEMENTS, ['view']);
         PermissionMatrix::set(Role::FINANCE, PanelModule::STAFF_ACTIVITY, ['view']);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::AUDIT_LOGS, ['view']);
+        $closingAudit = AuditLog::query()->where('action', 'rider_closing.recorded')->sole();
+        $this->assertTrue($closingAudit->after_json['outside_closing_point']);
 
         Auth::shouldUse('web');
         $this->assertNull(Auth::user());
         $this->assertSame(0, app(SalesActivityService::class)->dayTotals()['flagged']);
         $this->assertFalse(app(SettlementService::class)->queue()[0]['outside_closing_point']);
+        $this->assertArrayNotHasKey('outside_closing_point', $closingAudit->displayChanges('after'));
 
         foreach ([$this->admin, $this->finance] as $reader) {
             $this->actingAs($reader);
+            $this->assertTrue($closingAudit->displayChanges('after')['outside_closing_point']);
             $this->assertSame(1, app(SalesActivityService::class)->dayTotals()['flagged']);
             $this->assertSame(1, app(SalesActivityService::class)->perCart()[0]['flagged']);
             $this->assertTrue(app(SettlementService::class)->queue()[0]['outside_closing_point']);
             Livewire::actingAs($reader)->test(ListSettlements::class)->assertSee('Pernah Closing di luar titik');
             Livewire::actingAs($reader)->test(StaffActivity::class)->assertSee('Pernah Closing di luar titik');
+            $this->get(ViewAuditLog::getUrl(['record' => $closingAudit]))->assertSuccessful()
+                ->assertSee('outside_closing_point')->assertSee('closing_distance_m');
         }
         $this->actingAs($this->management);
+        $this->assertArrayNotHasKey('outside_closing_point', $closingAudit->displayChanges('after'));
+        $this->assertArrayNotHasKey('closing_distance_m', $closingAudit->displayChanges('after'));
+        $this->get(ViewAuditLog::getUrl(['record' => $closingAudit]))->assertSuccessful()
+            ->assertDontSee('outside_closing_point')->assertDontSee('closing_distance_m')
+            ->assertDontSee('gps_lat')->assertDontSee('gps_lng');
         $this->assertSame(0, app(SalesActivityService::class)->dayTotals()['flagged']);
         $this->assertSame(0, app(SalesActivityService::class)->perCart()[0]['flagged']);
         $this->assertNull(app(SalesActivityService::class)->perCart()[0]['closing_location_warning']);

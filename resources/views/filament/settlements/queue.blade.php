@@ -36,9 +36,15 @@
                             <span class="rounded-full bg-red-100 px-2 py-1 text-red-800">Selisih Tutup Coffee Bike</span>
                         @endif
                         @if ($row['settlement_status'] === 'VARIANCE_FLAGGED')
-                            <span class="rounded-full bg-red-100 px-2 py-1 font-semibold text-red-800">VARIANCE_FLAGGED</span>
+                            <span class="rounded-full bg-red-100 px-2 py-1 font-semibold text-red-800">Selisih total</span>
                         @else
                             {{ $row['settlement_status'] ?? 'Belum setor' }}
+                        @endif
+                        @if ($row['method_variance_flagged'])
+                            <span class="rounded-full bg-amber-100 px-2 py-1 font-semibold text-amber-800">Selisih metode</span>
+                        @endif
+                        @if ($row['self_approved'])
+                            <span class="rounded-full bg-amber-100 px-2 py-1 font-semibold text-amber-800">Disetujui sendiri</span>
                         @endif
                         @if ($row['expected_stale'])
                             <span class="rounded-full bg-amber-100 px-2 py-1 font-semibold text-amber-800">Ekspektasi berubah</span>

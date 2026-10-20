@@ -554,14 +554,14 @@ class SettlementTest extends TestCase
         $pushNotifier = $this->mock(PushNotifier::class);
         $pushNotifier
             ->shouldReceive('notifyUsers')
-            ->once()
+            ->twice()
             ->withArgs(function (array $ids, string $title, string $body, array $data, ?int $excludeUserId) use ($recipients): bool {
                 sort($ids);
                 sort($recipients);
 
                 return $ids === $recipients
                     && $excludeUserId === null
-                    && $data['type'] === 'SettlementVarianceFlagged'
+                    && in_array($data['type'], ['SettlementVarianceFlagged', 'SettlementMethodVarianceFlagged'], true)
                     && $data['status'] === 'VARIANCE_FLAGGED'
                     && $title !== '' && str_contains($body, 'Coffee Bike 0018');
             });
@@ -906,6 +906,73 @@ class SettlementTest extends TestCase
         ]);
         $this->asFinance()->getJson('/api/v1/settlements/queue')->assertOk()
             ->assertJsonPath('data.0.arrived_at', null);
+    }
+
+    public function test_matching_total_with_swapped_methods_is_flagged_without_blocking_approval(): void
+    {
+        $this->issue(10);
+        $this->sell(2);
+        $management = User::factory()->role(Role::MANAGEMENT)->create();
+        $id = $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', [
+                'cart_id' => $this->cart->id, 'cash' => 0, 'qris' => 40000, 'transfer' => 0,
+            ])->assertCreated()->assertJsonPath('data.status', 'SUBMITTED')
+            ->assertJsonPath('data.variance', 0)
+            ->assertJsonPath('data.method_variance_flagged', true)
+            ->assertJsonPath('data.cash_variance_minor', -40000)
+            ->assertJsonPath('data.qris_variance_minor', 40000)->json('data.id');
+
+        $this->assertSame($this->finance->id, Settlement::query()->findOrFail($id)->recorded_by);
+        $this->assertSame(1, AuditLog::query()->where('action', 'settlement.method_variance_flagged')->count());
+        $event = OutboxEvent::query()->where('name', 'SettlementMethodVarianceFlagged')->sole();
+        $this->assertContains("user.{$management->id}", $event->payload_json['channels']);
+        $this->assertSame(1, AppNotification::query()->where('event_id', $event->event_id)
+            ->where('user_id', $management->id)->count());
+
+        $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson("/api/v1/settlements/{$id}/approve", ['lines' => $this->returnAll()])->assertOk();
+        $journal = JournalEntry::query()->where('source_type', 'settlement')->where('purpose', 'SETTLEMENT')->sole();
+        $this->assertSame(40000, (int) $journal->lines()->sum('debit_minor'));
+        $this->assertSame(40000, (int) $journal->lines()->sum('credit_minor'));
+    }
+
+    public function test_self_approval_is_audited_and_notified_but_other_approver_is_not_flagged(): void
+    {
+        $this->issue(10);
+        $this->sell(1);
+        $management = User::factory()->role(Role::MANAGEMENT)->create();
+        $id = $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', [
+                'cart_id' => $this->cart->id, 'cash' => 20000, 'qris' => 0, 'transfer' => 0,
+            ])->assertCreated()->assertJsonPath('data.method_variance_flagged', false)->json('data.id');
+        $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson("/api/v1/settlements/{$id}/approve", ['lines' => $this->returnAll()])
+            ->assertOk()->assertJsonPath('data.self_approved', true);
+        $this->assertSame(1, AuditLog::query()->where('action', 'settlement.approved')->count());
+        $event = OutboxEvent::query()->where('name', 'SettlementSelfApproved')->sole();
+        $this->assertContains("user.{$management->id}", $event->payload_json['channels']);
+        $this->assertSame(1, AppNotification::query()->where('event_id', $event->event_id)
+            ->where('user_id', $management->id)->count());
+    }
+
+    public function test_rerecord_changes_recorder_and_different_approver_has_no_self_approval_flag(): void
+    {
+        $this->issue(10);
+        $this->sell(1);
+        $management = User::factory()->role(Role::MANAGEMENT)->create();
+        $id = $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', [
+                'cart_id' => $this->cart->id, 'cash' => 20000, 'qris' => 0, 'transfer' => 0,
+            ])->assertCreated()->json('data.id');
+        $this->actingAs($management, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', [
+                'cart_id' => $this->cart->id, 'cash' => 20000, 'qris' => 0, 'transfer' => 0,
+            ])->assertCreated();
+        $this->assertSame($management->id, Settlement::query()->findOrFail($id)->recorded_by);
+        $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson("/api/v1/settlements/{$id}/approve", ['lines' => $this->returnAll()])
+            ->assertOk()->assertJsonPath('data.self_approved', false);
+        $this->assertSame(0, OutboxEvent::query()->where('name', 'SettlementSelfApproved')->count());
     }
 
     public function test_approval_posts_balanced_revenue_and_cogs_once_for_under_deposit(): void

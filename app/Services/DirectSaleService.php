@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\MovementType;
 use App\Enums\Role;
 use App\Models\Account;
+use App\Models\AuditLog;
 use App\Models\Cart;
 use App\Models\DirectSale;
 use App\Models\DirectSaleLine;
@@ -150,7 +151,7 @@ class DirectSaleService
                 $cashCode = match ($paymentMethod) {
                     'cash' => '1-1100',
                     'qris' => '1-1400',
-                    'transfer' => '1-1300',
+                    'transfer' => '1-1400',
                     default => throw new RuntimeException('Metode pembayaran tidak valid.'),
                 };
                 $accountIds = Account::query()->whereIn('code', [$cashCode, '4-1200', '5-1100', '1-1600'])
@@ -177,6 +178,11 @@ class DirectSaleService
                     ]);
                 }
             }
+
+            AuditLog::recordAction($actor, 'direct_sale.created', $directSale, null, [
+                'cart_id' => $cart->id, 'payment_method' => $paymentMethod,
+                'total_amount_minor' => $totalAmount,
+            ]);
 
             return $directSale->load('lines');
         });
@@ -249,6 +255,9 @@ class DirectSaleService
             $locked->voided_by = $actor->id;
             $locked->void_reason = $reason;
             $locked->save();
+
+            AuditLog::recordAction($actor, 'direct_sale.voided', $locked,
+                ['voided_at' => null], ['voided_at' => $locked->voided_at?->toIso8601String(), 'reason' => $reason]);
 
             return $locked->fresh(['lines']);
         });
