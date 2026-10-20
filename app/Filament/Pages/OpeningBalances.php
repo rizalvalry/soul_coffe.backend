@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use App\Enums\Role;
 use App\Filament\Resources\Journals\JournalResource;
 use App\Models\Account;
+use App\Models\FixedAsset;
 use App\Models\JournalEntry;
 use App\Services\JournalService;
 use App\Services\Menu\MenuLabels;
@@ -79,6 +80,10 @@ class OpeningBalances extends Page
                         )->all())->searchable()->required(),
                     TextInput::make('debit_minor')->label('Debit (Rp)')->numeric()->minValue(0),
                     TextInput::make('credit_minor')->label('Kredit (Rp)')->numeric()->minValue(0),
+                    Select::make('memo')->label('Aset saldo awal (kalau baris ini buat aset)')
+                        ->options(fn (): array => FixedAsset::query()->where('acquisition_mode', 'OPENING')
+                            ->orderBy('name')->get()->mapWithKeys(fn (FixedAsset $asset): array => ['ASSET:'.$asset->uuid => $asset->name.' · '.$asset->uuid])->all())
+                        ->searchable(),
                 ])->columns(['default' => 1, 'md' => 3])->minItems(2)
                     ->addActionLabel('Tambah Baris')->reorderable(false)->columnSpanFull(),
             ]),

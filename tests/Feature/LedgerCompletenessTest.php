@@ -10,28 +10,155 @@ use App\Models\AuditLog;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\JournalEntry;
+use App\Models\Location;
 use App\Models\Product;
 use App\Models\ProductPriceVersion;
 use App\Models\RawMaterial;
-use App\Models\StockLedger;
+use App\Models\Recipe;
+use App\Models\Supplier;
 use App\Models\User;
 use App\Services\AccountingPeriodService;
+use App\Services\AttendanceService;
+use App\Services\CentralStockService;
 use App\Services\DailyAllowanceService;
 use App\Services\InventoryJournalService;
 use App\Services\JournalService;
 use App\Services\ProductionService;
+use App\Services\PurchaseOrderService;
 use App\Services\RecipeService;
 use App\Services\Reporting\InventoryAccountingReportService;
 use App\Services\StockLedgerService;
 use App\Services\StockOpnameService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class LedgerCompletenessTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_real_po_production_closing_settlement_and_opname_keep_moving_average_balanced(): void
+    {
+        config(['outbox.publish_mode' => 'queue']);
+        $barista = User::factory()->role(Role::BARISTA)->create();
+        $finance = User::factory()->role(Role::FINANCE)->create();
+        $rider = User::factory()->role(Role::STAFF)->create();
+        $kitchen = CentralKitchen::create(['name' => 'Dapur Siklus', 'address' => 'Jalan Uji',
+            'open_at' => '05:00', 'close_at' => '20:00', 'is_active' => true]);
+        $barista->update(['kitchen_id' => $kitchen->id]);
+        $cart = Cart::create(['code' => 'CYCLE052', 'status' => 'active', 'kitchen_id' => $kitchen->id]);
+        $location = Location::create(['name' => 'Titik Siklus', 'lat' => -6.18, 'lng' => 106.88]);
+        $product = Product::create(['code' => 'CYCLE052', 'name' => 'Kopi Siklus', 'unit' => 'cup',
+            'is_sellable' => true, 'sort_order' => 1, 'is_active' => true]);
+        ProductPriceVersion::create(['product_id' => $product->id, 'cost_price_minor' => 1000,
+            'sell_price_minor' => 5000, 'effective_from' => now()->subDay()]);
+        $raw = RawMaterial::create(['code' => 'RAW-CYCLE052', 'name' => 'Bahan Siklus',
+            'unit' => 'pcs', 'is_active' => true, 'sort_order' => 1]);
+        $supplier = Supplier::create(['code' => 'SUP-CYCLE052', 'name' => 'Pemasok Siklus', 'is_active' => true]);
+        app(RecipeService::class)->create($product->id,
+            [['raw_material_id' => $raw->id, 'qty_per_unit' => 1]], $barista);
+        $orders = app(PurchaseOrderService::class);
+        $po = $orders->create($supplier->id, $kitchen->id,
+            [['raw_material_id' => $raw->id, 'qty_ordered' => 10, 'unit_cost_minor' => 1200]], $finance);
+        $orders->receive($orders->markOrdered($po, $finance), [], $finance);
+        $production = app(ProductionService::class)->brew($kitchen->id, [$product->id => 10], $barista);
+        $this->assertSame(1200, $production->lines->first()->recipe_cost_minor);
+        $attendance = app(AttendanceService::class);
+        $attendance->clockIn($barista);
+        $attendance->openStaffWindow($barista);
+        $attendance->clockIn($rider);
+        app(CentralStockService::class)->handToCart($barista, $cart, $rider, [$product->id => 8], 0,
+            locationId: $location->id);
+        $this->actingAs($rider, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/me/closing', [
+                'lines' => [['product_id' => $product->id, 'qty_remaining' => 2, 'qty_wasted' => 1]],
+                'qris' => 0, 'transfer' => 0, 'gps_lat' => -6.18, 'gps_lng' => 106.88,
+            ])->assertCreated();
+        $gap = app(InventoryAccountingReportService::class)->inventoryGap(today());
+        $this->assertSame(4800, $gap[0]['physical_minor']);
+        $this->assertSame(4800, $gap[0]['book_minor']);
+        $this->assertSame(0, $gap[1]['gap_minor']);
+        $settlementId = $this->actingAs($finance, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', ['cart_id' => $cart->id, 'cash' => 25000,
+                'qris' => 0, 'transfer' => 0])->assertCreated()->json('data.id');
+        $this->actingAs($finance, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements/'.$settlementId.'/approve', [
+                'lines' => [['product_id' => $product->id, 'qty_returned' => 2, 'qty_rejected' => 0]],
+            ])->assertOk();
+        $opname = app(StockOpnameService::class)->create(StockLedgerService::KITCHEN, $kitchen->id,
+            [['product_id' => $product->id, 'counted_qty' => 3]], 'Hitung fisik siklus', $finance);
+        app(StockOpnameService::class)->apply($opname, $finance);
+        $gap = app(InventoryAccountingReportService::class)->inventoryGap(today());
+        $this->assertSame(3600, $gap[0]['physical_minor']);
+        $this->assertSame(3600, $gap[0]['book_minor']);
+        $this->assertSame(0, $gap[1]['gap_minor']);
+        $this->assertSame((int) DB::table('journal_lines')->sum('debit_minor'),
+            (int) DB::table('journal_lines')->sum('credit_minor'));
+    }
+
+    public function test_production_void_checks_original_batch_even_when_newer_stock_remains(): void
+    {
+        $barista = User::factory()->role(Role::BARISTA)->create();
+        $finance = User::factory()->role(Role::FINANCE)->create();
+        $kitchen = CentralKitchen::create(['name' => 'Dapur Batch', 'address' => 'Jalan Uji',
+            'open_at' => '05:00', 'close_at' => '20:00', 'is_active' => true]);
+        $cart = Cart::create(['code' => 'BATCH052', 'status' => 'active', 'kitchen_id' => $kitchen->id]);
+        $product = Product::create(['code' => 'BATCH052', 'name' => 'Kopi Batch', 'unit' => 'cup',
+            'is_sellable' => true, 'sort_order' => 1, 'is_active' => true]);
+        ProductPriceVersion::create(['product_id' => $product->id, 'cost_price_minor' => 1000,
+            'sell_price_minor' => 5000, 'effective_from' => now()->subDay()]);
+        $first = app(ProductionService::class)->brew($kitchen->id, [$product->id => 5], $barista);
+        app(ProductionService::class)->brew($kitchen->id, [$product->id => 5], $barista);
+        $ledger = app(StockLedgerService::class);
+        $ledger->transfer(StockLedgerService::KITCHEN, $kitchen->id, StockLedgerService::CART, $cart->id,
+            $product->id, MovementType::ALLOCATION_OUT, MovementType::ALLOCATION_IN, 5,
+            $barista->id, $kitchen->id, 'batch_test', 1);
+        $this->assertSame(0, $ledger->remainingProductionBatch($kitchen->id, $product->id, $first->id));
+        try {
+            app(ProductionService::class)->void($first, 'Produksi salah', $finance);
+            $this->fail('Voiding an already transferred batch was accepted.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('production', $exception->errors());
+        }
+        $ledger->transfer(StockLedgerService::CART, $cart->id, StockLedgerService::KITCHEN, $kitchen->id,
+            $product->id, MovementType::RETURN_OUT, MovementType::RETURN_IN, 5,
+            $barista->id, $kitchen->id, 'batch_return', 1);
+        $this->assertSame(5, $ledger->remainingProductionBatch($kitchen->id, $product->id, $first->id));
+        app(ProductionService::class)->void($first, 'Produksi salah', $finance);
+        $this->assertSame(5, $ledger->stockFor(StockLedgerService::KITCHEN, $kitchen->id, $product->id));
+        $this->assertGreaterThan(0, app(InventoryAccountingReportService::class)->inventoryGap(today())[0]['fallback_rows']);
+    }
+
+    public function test_null_recipe_cost_uses_product_hpp_fallback_and_posts_production_journal(): void
+    {
+        $barista = User::factory()->role(Role::BARISTA)->create();
+        $finance = User::factory()->role(Role::FINANCE)->create();
+        $kitchen = CentralKitchen::create(['name' => 'Dapur HPP', 'address' => 'Jalan Uji',
+            'open_at' => '05:00', 'close_at' => '20:00', 'is_active' => true]);
+        $product = Product::create(['code' => 'HPP052', 'name' => 'Kopi HPP', 'unit' => 'cup',
+            'is_sellable' => true, 'sort_order' => 1, 'is_active' => true]);
+        ProductPriceVersion::create(['product_id' => $product->id, 'cost_price_minor' => 1000,
+            'sell_price_minor' => 5000, 'effective_from' => now()->subDay()]);
+        $raw = RawMaterial::create(['code' => 'RAW-HPP052', 'name' => 'Bahan HPP',
+            'unit' => 'pcs', 'is_active' => true, 'sort_order' => 1]);
+        app(StockLedgerService::class)->post(StockLedgerService::RAW_MATERIAL_STORE, $kitchen->id, null,
+            MovementType::PURCHASE_IN, 1, $finance->id, $kitchen->id, rawMaterialId: $raw->id, costMinor: 1200);
+        $recipe = app(RecipeService::class)->create($product->id,
+            [['raw_material_id' => $raw->id, 'qty_per_unit' => 1]], $barista);
+        Recipe::query()->whereKey($recipe->id)->update(['computed_cost_minor' => null]);
+
+        $production = app(ProductionService::class)->brew($kitchen->id, [$product->id => 1], $barista);
+
+        $this->assertNull($production->lines->first()->recipe_cost_minor);
+        $this->assertDatabaseHas('stock_ledger', ['ref_type' => 'production', 'ref_id' => $production->id,
+            'movement_type' => MovementType::PRODUCTION_IN->value, 'cost_minor' => 1000, 'cost_fallback' => true]);
+        $this->assertDatabaseHas('journal_entries', ['source_type' => 'production', 'source_id' => $production->id,
+            'purpose' => 'TRANSFER']);
+        $this->assertSame(1000, (int) DB::table('journal_lines as l')->join('accounts as a', 'a.id', '=', 'l.account_id')
+            ->where('a.code', '1-1600')->sum('l.debit_minor'));
+    }
 
     public function test_receipt_production_waste_and_opname_match_physical_stock_and_balance(): void
     {
@@ -77,8 +204,14 @@ class LedgerCompletenessTest extends TestCase
         $rider = User::factory()->role(Role::STAFF)->create();
         $cart = Cart::create(['code' => 'T052', 'status' => 'active']);
         $allowance = app(DailyAllowanceService::class)->forCart($cart);
-        app(DailyAllowanceService::class)->recordGiven($allowance, $rider, $finance);
-        app(DailyAllowanceService::class)->recordGiven($allowance, $rider, $finance);
+        $service = app(DailyAllowanceService::class);
+        $this->assertSame(50000, $service->recordGiven($allowance, $rider, $finance));
+        $this->assertSame(0, $service->recordGiven($allowance, $rider, $finance));
+        $secondCart = Cart::create(['code' => 'T052-B', 'status' => 'active']);
+        $secondAllowance = $service->forCart($secondCart);
+        $this->assertSame(0, $service->recordGiven($secondAllowance, $rider, $finance));
+        $this->assertSame(50000, $service->totalForCart($cart));
+        $this->assertSame(0, $service->totalForCart($secondCart));
         $this->assertSame(1, JournalEntry::query()->where('source_type', 'daily_allowance')->count());
         $this->assertSame(50000, (int) DB::table('journal_lines as l')->join('accounts as a', 'a.id', '=', 'l.account_id')
             ->where('a.code', '6-1700')->sum('l.debit_minor'));
@@ -137,12 +270,12 @@ class LedgerCompletenessTest extends TestCase
             'sell_price_minor' => 5000, 'effective_from' => now()->subDay()]);
         $raw = RawMaterial::create(['code' => 'RAWVAR', 'name' => 'Bahan Uji', 'unit' => 'pcs', 'is_active' => true, 'sort_order' => 1]);
         app(StockLedgerService::class)->post(StockLedgerService::RAW_MATERIAL_STORE, $kitchen->id, null,
-            MovementType::PURCHASE_IN, 10, $barista->id, $kitchen->id, rawMaterialId: $raw->id, costMinor: 12000);
+            MovementType::PURCHASE_IN, 10, $barista->id, $kitchen->id, rawMaterialId: $raw->id, costMinor: 11010);
         app(RecipeService::class)->create($product->id, [['raw_material_id' => $raw->id, 'qty_per_unit' => 1]], $barista);
         app(RecipeService::class)->refreshCostsForRawMaterials([$raw->id], $kitchen->id);
         $row = app(InventoryAccountingReportService::class)->costVariance(today())[0];
-        $this->assertSame(200, $row['difference_minor']);
-        $this->assertSame(20, $row['difference_percent']);
+        $this->assertSame(101, $row['difference_minor']);
+        $this->assertSame(10, $row['difference_percent']);
         $this->assertTrue($row['flagged']);
     }
 

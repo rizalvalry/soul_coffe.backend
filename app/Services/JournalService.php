@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Account;
 use App\Models\AccountingPeriod;
 use App\Models\AuditLog;
+use App\Models\FixedAsset;
 use App\Models\JournalEntry;
 use App\Models\PayrollRun;
 use App\Models\User;
@@ -20,9 +21,34 @@ use Illuminate\Validation\ValidationException;
 /** The only application writer for posted accounting entries and lines. */
 class JournalService
 {
+    public function isAccountingDate(string $date): bool
+    {
+        $opening = JournalEntry::query()->where('source_type', 'opening_balance')->where('purpose', 'OPENING')
+            ->whereDoesntHave('reversal')->first();
+
+        return ! $opening || $date >= $opening->entry_date->toDateString();
+    }
+
     public function postOpening(string $date, array $lines): JournalEntry
     {
         Validator::make(['entry_date' => $date], ['entry_date' => ['required', 'date_format:Y-m-d']])->validate();
+        $assetAccountId = Account::query()->where('code', '1-1800')->value('id');
+        $seenAssets = [];
+        foreach ($lines as $index => $line) {
+            $memo = (string) ($line['memo'] ?? '');
+            if (! str_starts_with($memo, 'ASSET:')) {
+                continue;
+            }
+            $uuid = substr($memo, 6);
+            $asset = FixedAsset::query()->where('uuid', $uuid)->where('acquisition_mode', 'OPENING')->first();
+            if (! $asset || isset($seenAssets[$uuid]) || $asset->acquired_on->toDateString() > $date
+                || (int) ($line['account_id'] ?? 0) !== (int) $assetAccountId
+                || (int) ($line['debit_minor'] ?? 0) !== (int) $asset->cost_minor
+                || (int) ($line['credit_minor'] ?? 0) !== 0) {
+                throw ValidationException::withMessages(["lines.$index.memo" => 'Pilih aset saldo awal dan isi debit sesuai harga perolehannya ya.']);
+            }
+            $seenAssets[$uuid] = true;
+        }
 
         return DB::transaction(function () use ($date, $lines): JournalEntry {
             // One shared chart row serializes opening submissions across dates and operators.

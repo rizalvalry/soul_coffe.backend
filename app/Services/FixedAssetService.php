@@ -50,7 +50,13 @@ class FixedAssetService
             $uuid = $data['uuid'] ?? (string) Str::uuid();
             $existing = FixedAsset::query()->where('uuid', $uuid)->first();
             if ($existing) {
-                if ($existing->name !== $data['name'] || $existing->cost_minor !== (int) $data['cost_minor']) {
+                foreach (['name', 'category_id', 'acquired_on', 'cost_minor', 'useful_life_months',
+                    'residual_minor', 'location', 'cart_id', 'acquisition_mode', 'funding_account_id'] as $field) {
+                    $recorded = $field === 'acquired_on' ? $existing->acquired_on->toDateString() : $existing->$field;
+                    $requested = $field === 'funding_account_id' ? $funding?->id : ($data[$field] ?? null);
+                    if ((string) ($recorded ?? '') === (string) ($requested ?? '')) {
+                        continue;
+                    }
                     throw ValidationException::withMessages(['uuid' => 'Aset dengan kunci ini sudah dicatat berbeda.']);
                 }
 
@@ -93,6 +99,7 @@ class FixedAssetService
                         if ($locked->status !== 'ACTIVE') {
                             return;
                         }
+                        $this->assertOpeningPosted($locked, $date);
                         $elapsed = ((int) $start->year - (int) $locked->acquired_on->year) * 12
                             + (int) $start->month - (int) $locked->acquired_on->month;
                         if ($elapsed < 0 || $elapsed >= $locked->useful_life_months) {
@@ -137,13 +144,21 @@ class FixedAssetService
             $this->journals->assertOpenDate($date);
             $locked = FixedAsset::query()->whereKey($asset->id)->lockForUpdate()->firstOrFail();
             if ($locked->status === 'DISPOSED') {
-                if ($locked->disposed_on?->toDateString() === $date && $locked->disposal_proceeds_minor === $proceeds) {
+                if ($locked->disposed_on?->toDateString() === $date
+                    && $locked->disposal_proceeds_minor === $proceeds
+                    && $locked->disposal_account_id === ($proceeds > 0 ? $cashAccountId : null)) {
                     return $locked;
                 }
                 throw ValidationException::withMessages(['asset' => 'Aset ini sudah dilepas dengan rincian berbeda.']);
             }
             if ($date < $locked->acquired_on->toDateString()) {
                 throw ValidationException::withMessages(['date' => 'Tanggal pelepasan tidak boleh sebelum perolehan.']);
+            }
+            $this->assertOpeningPosted($locked, $date);
+            $lastDepreciation = JournalEntry::query()->where('source_type', 'fixed_asset_depreciation')
+                ->where('source_id', $locked->id)->max('entry_date');
+            if ($lastDepreciation !== null && $date < Carbon::parse($lastDepreciation)->toDateString()) {
+                throw ValidationException::withMessages(['date' => 'Tanggal pelepasan harus setelah penyusutan terakhir yang sudah diposting ya.']);
             }
             $cash = $proceeds > 0 ? Account::query()->findOrFail($cashAccountId) : null;
             if ($cash && (! $cash->is_active || ! in_array($cash->code, ['1-1100', '1-1200', '1-1300'], true))) {
@@ -182,6 +197,22 @@ class FixedAssetService
     {
         return ['account_id' => Account::query()->where('code', $code)->firstOrFail()->id,
             'debit_minor' => $debit, 'credit_minor' => $credit];
+    }
+
+    private function assertOpeningPosted(FixedAsset $asset, string $date): void
+    {
+        if ($asset->acquisition_mode !== 'OPENING') {
+            return;
+        }
+        $accountId = Account::query()->where('code', '1-1800')->firstOrFail()->id;
+        $posted = JournalEntry::query()->where('source_type', 'opening_balance')->where('purpose', 'OPENING')
+            ->whereDate('entry_date', '<=', $date)->whereDoesntHave('reversal')
+            ->whereHas('lines', fn ($query) => $query->where('account_id', $accountId)
+                ->where('memo', 'ASSET:'.$asset->uuid)->where('debit_minor', $asset->cost_minor))
+            ->exists();
+        if (! $posted) {
+            throw ValidationException::withMessages(['asset' => 'Posting dulu jurnal saldo awal aset ini dengan memo ASSET:'.$asset->uuid.' ya.']);
+        }
     }
 
     private function audit(User $actor, FixedAsset $asset, string $action, array $after): void

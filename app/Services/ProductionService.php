@@ -3,20 +3,20 @@
 namespace App\Services;
 
 use App\Enums\MovementType;
-use App\Models\CentralKitchen;
 use App\Models\Account;
+use App\Models\AuditLog;
+use App\Models\CentralKitchen;
+use App\Models\JournalEntry;
 use App\Models\Production;
 use App\Models\ProductionLine;
-use App\Models\JournalEntry;
-use App\Models\StockLedger;
-use App\Models\AuditLog;
 use App\Models\RawMaterial;
 use App\Models\Recipe;
+use App\Models\StockLedger;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 /**
@@ -78,7 +78,9 @@ class ProductionService
         }
 
         return DB::transaction(function () use ($kitchen, $rows, $recipeByProduct, $demand, $actor): Production {
-            $this->journals->assertOpenDate(today()->toDateString());
+            if ($this->journals->isAccountingDate(today()->toDateString())) {
+                $this->journals->assertOpenDate(today()->toDateString());
+            }
             if ($demand !== []) {
                 $locked = $this->ledger->lockAndProjectRawMaterials(
                     StockLedgerService::RAW_MATERIAL_STORE,
@@ -110,10 +112,17 @@ class ProductionService
 
             // Unchanged: the finished-product side of the brew, exactly as it worked before
             // Phase 2 (PRODUCTION_IN per product, its own audit log entry and notification).
-            $this->centralStock->brewIntoShowcase($actor, $kitchen, $rows);
+            $costByProduct = [];
+            foreach ($rows as $productId => $qty) {
+                if ($recipeByProduct[$productId]?->computed_cost_minor !== null) {
+                    $costByProduct[$productId] = (int) $recipeByProduct[$productId]->computed_cost_minor * $qty;
+                }
+            }
+            $this->centralStock->brewIntoShowcase($actor, $kitchen, $rows, $production->id, $costByProduct);
 
+            $consumedCost = 0;
             foreach ($demand as $rawMaterialId => $qty) {
-                $this->ledger->post(
+                $movement = $this->ledger->post(
                     locationType: StockLedgerService::RAW_MATERIAL_STORE,
                     locationId: $kitchen->id,
                     productId: null,
@@ -125,11 +134,12 @@ class ProductionService
                     refId: $production->id,
                     rawMaterialId: $rawMaterialId,
                 );
+                $consumedCost += (int) $movement->cost_minor;
             }
 
-            $cost = $production->lines()->get()->sum(fn (ProductionLine $line): int =>
-                (int) ($line->recipe_cost_minor ?? 0) * (int) $line->qty_brewed);
-            if ($cost > 0) {
+            $cost = (int) StockLedger::query()->where('ref_type', 'production')->where('ref_id', $production->id)
+                ->where('movement_type', MovementType::PRODUCTION_IN)->sum('cost_minor');
+            if ($cost > 0 && $this->journals->isAccountingDate($production->produced_at->toDateString())) {
                 $finished = Account::query()->where('code', '1-1600')->firstOrFail();
                 $raw = Account::query()->where('code', '1-1700')->firstOrFail();
                 $this->journals->post([
@@ -140,6 +150,20 @@ class ProductionService
                 ], [
                     ['account_id' => $finished->id, 'debit_minor' => $cost, 'credit_minor' => 0],
                     ['account_id' => $raw->id, 'debit_minor' => 0, 'credit_minor' => $cost],
+                ]);
+            }
+            if ($consumedCost !== $cost && $this->journals->isAccountingDate($production->produced_at->toDateString())) {
+                $difference = $consumedCost - $cost;
+                $raw = Account::query()->where('code', '1-1700')->firstOrFail();
+                $variance = Account::query()->where('code', '6-1910')->firstOrFail();
+                $this->journals->post([
+                    'entry_date' => $production->produced_at->toDateString(),
+                    'description' => 'Selisih biaya bahan produksi #'.$production->id,
+                    'source_type' => 'production', 'source_id' => $production->id,
+                    'purpose' => 'COST_VARIANCE', 'posted_by' => $actor->id,
+                ], [
+                    ['account_id' => $variance->id, 'debit_minor' => max(0, $difference), 'credit_minor' => max(0, -$difference)],
+                    ['account_id' => $raw->id, 'debit_minor' => max(0, -$difference), 'credit_minor' => max(0, $difference)],
                 ]);
             }
 
@@ -161,17 +185,19 @@ class ProductionService
                 return $locked;
             }
             $ids = $locked->lines->pluck('product_id')->all();
-            $stock = $this->ledger->lockAndProject(StockLedgerService::KITCHEN, $locked->kitchen_id, $ids);
+            $this->ledger->lockAndProject(StockLedgerService::KITCHEN, $locked->kitchen_id, $ids);
             foreach ($locked->lines as $line) {
-                if (($stock[$line->product_id] ?? 0) < $line->qty_brewed) {
+                if ($this->ledger->remainingProductionBatch($locked->kitchen_id, $line->product_id, $locked->id) < $line->qty_brewed) {
                     throw ValidationException::withMessages(['production' => 'Cups produksi ini sudah keluar dari dapur. Catat koreksi stok terpisah ya.']);
                 }
             }
+            $voidCost = 0;
             foreach ($locked->lines as $line) {
-                $this->ledger->post(StockLedgerService::KITCHEN, $locked->kitchen_id,
+                $movement = $this->ledger->post(StockLedgerService::KITCHEN, $locked->kitchen_id,
                     $line->product_id, MovementType::ADJUSTMENT, -$line->qty_brewed,
                     $actor->id, $locked->kitchen_id, 'production_void', $locked->id,
                     note: $reason);
+                $voidCost += (int) $movement->cost_minor;
             }
             $consumed = StockLedger::query()->where('ref_type', 'production')->where('ref_id', $locked->id)
                 ->where('movement_type', MovementType::RECIPE_CONSUME_OUT)->get();
@@ -179,12 +205,32 @@ class ProductionService
                 $this->ledger->post(StockLedgerService::RAW_MATERIAL_STORE, $locked->kitchen_id,
                     null, MovementType::ADJUSTMENT, -(int) $row->qty_delta, $actor->id,
                     $locked->kitchen_id, 'production_void', $locked->id,
-                    rawMaterialId: $row->raw_material_id, note: $reason);
+                    rawMaterialId: $row->raw_material_id, costMinor: (int) $row->cost_minor, note: $reason);
             }
             $journal = JournalEntry::query()->where('source_type', 'production')
                 ->where('source_id', $locked->id)->where('purpose', 'TRANSFER')->first();
             if ($journal) {
                 $this->journals->reverse($journal, $reason);
+            }
+            $variance = JournalEntry::query()->where('source_type', 'production')
+                ->where('source_id', $locked->id)->where('purpose', 'COST_VARIANCE')->first();
+            if ($variance) {
+                $this->journals->reverse($variance, $reason);
+            }
+            $originalCost = (int) StockLedger::query()->where('ref_type', 'production')->where('ref_id', $locked->id)
+                ->where('movement_type', MovementType::PRODUCTION_IN)->sum('cost_minor');
+            if ($voidCost !== $originalCost) {
+                $difference = $originalCost - $voidCost;
+                $finished = Account::query()->where('code', '1-1600')->firstOrFail();
+                $expense = Account::query()->where('code', '6-1910')->firstOrFail();
+                $this->journals->post([
+                    'entry_date' => today()->toDateString(), 'description' => 'Selisih batal produksi #'.$locked->id,
+                    'source_type' => 'production_void', 'source_id' => $locked->id,
+                    'purpose' => 'COST_VARIANCE', 'posted_by' => $actor->id,
+                ], [
+                    ['account_id' => $finished->id, 'debit_minor' => max(0, $difference), 'credit_minor' => max(0, -$difference)],
+                    ['account_id' => $expense->id, 'debit_minor' => max(0, -$difference), 'credit_minor' => max(0, $difference)],
+                ]);
             }
             $locked->update(['voided_at' => now(), 'voided_by' => $actor->id, 'void_reason' => $reason]);
             AuditLog::query()->create(['actor_id' => $actor->id, 'actor_role' => $actor->role->value,

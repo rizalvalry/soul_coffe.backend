@@ -13,6 +13,7 @@ use App\Services\Menu\MenuLabels;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
@@ -23,6 +24,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Str;
 use UnitEnum;
 
 class FixedAssetResource extends Resource
@@ -72,6 +74,7 @@ class FixedAssetResource extends Resource
     public static function form(Schema $schema): Schema
     {
         return $schema->components([
+            Hidden::make('uuid')->default(fn (): string => (string) Str::uuid())->required(),
             TextInput::make('name')->label('Nama aset')->required()->maxLength(255),
             Select::make('category_id')->label('Kategori')->options(fn (): array => FixedAssetCategory::query()
                 ->where('is_active', true)->orderBy('name')->pluck('name', 'id')->all())->required()->searchable(),
@@ -99,6 +102,7 @@ class FixedAssetResource extends Resource
         return $table->modifyQueryUsing(fn ($query) => $query->with(['category', 'cart']))
             ->defaultSort('acquired_on', 'desc')->columns([
                 TextColumn::make('name')->label('Aset')->searchable(),
+                TextColumn::make('uuid')->label('ID saldo awal')->copyable()->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('category.name')->label('Kategori'),
                 TextColumn::make('acquired_on')->label('Perolehan')->date('d M Y'),
                 TextColumn::make('cost_minor')->label('Harga (Rp)')->formatStateUsing(fn (int $state): string => number_format($state, 0, ',', '.')),

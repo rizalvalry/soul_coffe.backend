@@ -2,9 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\Account;
 use App\Models\Cart;
 use App\Models\DailyCartAllowance;
-use App\Models\Account;
 use App\Models\JournalEntry;
 use App\Models\User;
 use Illuminate\Support\Carbon;
@@ -110,24 +110,28 @@ class DailyAllowanceService
         return $allowance;
     }
 
-    public function recordGiven(DailyCartAllowance $allowance, User $rider, User $actor): void
+    public function recordGiven(DailyCartAllowance $allowance, User $rider, User $actor): int
     {
         if ($allowance->amount_minor <= 0) {
-            return;
+            return 0;
         }
-        DB::transaction(function () use ($allowance, $rider, $actor): void {
+
+        return DB::transaction(function () use ($allowance, $rider, $actor): int {
             User::query()->whereKey($rider->id)->lockForUpdate()->firstOrFail();
+            if (! app(JournalService::class)->isAccountingDate($allowance->operating_date->toDateString())) {
+                return $allowance->amount_minor;
+            }
             app(JournalService::class)->assertOpenDate($allowance->operating_date->toDateString());
             $purpose = 'DAY_'.$allowance->operating_date->format('Ymd').'_R'.$rider->id;
             $existing = JournalEntry::query()->where('source_type', 'daily_allowance')
                 ->where('source_id', $allowance->id)->where('purpose', $purpose)->first();
             if ($existing) {
-                return;
+                return 0;
             }
             $already = JournalEntry::query()->where('source_type', 'daily_allowance')
                 ->where('purpose', $purpose)->first();
             if ($already) {
-                return;
+                return 0;
             }
             $expense = Account::query()->where('code', '6-1700')->firstOrFail();
             $cash = Account::query()->where('code', '1-1100')->firstOrFail();
@@ -141,6 +145,8 @@ class DailyAllowanceService
                 ['account_id' => $expense->id, 'debit_minor' => $allowance->amount_minor, 'credit_minor' => 0],
                 ['account_id' => $cash->id, 'debit_minor' => 0, 'credit_minor' => $allowance->amount_minor],
             ]);
+
+            return $allowance->amount_minor;
         });
     }
 
@@ -153,6 +159,8 @@ class DailyAllowanceService
         return (int) DailyCartAllowance::query()
             ->where('cart_id', $cart->id)
             ->whereDate('operating_date', ($operatingDate ?? Carbon::today())->toDateString())
+            ->whereIn('id', JournalEntry::query()->select('source_id')->where('source_type', 'daily_allowance')
+                ->whereDoesntHave('reversal'))
             ->sum('amount_minor');
     }
 }

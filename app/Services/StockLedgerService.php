@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\MovementType;
+use App\Models\Product;
 use App\Models\StockLedger;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -83,22 +84,60 @@ class StockLedgerService
 
         return DB::transaction(function () use ($locationType, $locationId, $productId, $movementType, $delta, $costMinor,
             $refType, $refId, $note, $occurredAt, $actorId, $kitchenId, $rawMaterialId): StockLedger {
+            $lock = ['location_type' => $locationType, 'location_id' => $locationId,
+                'catalogue_type' => $productId === null ? 'raw' : 'product',
+                'catalogue_id' => $productId ?? $rawMaterialId];
+            DB::table('stock_valuation_locks')->insertOrIgnore($lock);
+            $state = DB::table('stock_valuation_locks')->where($lock)->lockForUpdate()->first();
+            $at = $occurredAt ?? now();
+            if ($state->initialized) {
+                $onHand = (int) $state->quantity;
+                $value = (int) $state->value_minor;
+            } else {
+                [$onHand, $value] = $this->valuation($locationType, $locationId, $productId, $rawMaterialId);
+            }
+            $fallback = false;
+            if ($costMinor === null && $movementType === MovementType::SALE_VOID_IN && $refId !== null) {
+                $originalType = str_replace('_void', '', (string) $refType);
+                $costMinor = (int) StockLedger::query()->where('location_type', $locationType)
+                    ->where('location_id', $locationId)->where('product_id', $productId)
+                    ->where('movement_type', MovementType::SALE_OUT)->where('ref_type', $originalType)
+                    ->where('ref_id', $refId)->sum('cost_minor');
+            }
+            if ($costMinor === null) {
+                $fallbackUnit = $this->fallbackUnitCost($productId, $rawMaterialId, $kitchenId, $at);
+                if ($onHand > 0 && $value > 0) {
+                    $covered = min(abs($delta), $onHand);
+                    $costMinor = $covered === $onHand ? $value
+                        : intdiv($value * $covered + intdiv($onHand, 2), $onHand);
+                    $costMinor += (abs($delta) - $covered) * $fallbackUnit;
+                } else {
+                    $costMinor = abs($delta) * $fallbackUnit;
+                    $fallback = true;
+                }
+            }
             $movement = StockLedger::create([
-            'location_type' => $locationType,
-            'location_id' => $locationId,
-            'product_id' => $productId,
-            'raw_material_id' => $rawMaterialId,
-            'movement_type' => $movementType,
-            'qty_delta' => $delta,
-            'cost_minor' => $costMinor,
-            'ref_type' => $refType,
-            'ref_id' => $refId,
-            'note' => $note,
-            // A late Finance recognition belongs to the original operating day for settlement.
-            // The decision table retains the actual posting time and decision maker.
-            'created_at' => $occurredAt ?? now(),
-            'actor_id' => $actorId,
-            'kitchen_id' => $kitchenId,
+                'location_type' => $locationType,
+                'location_id' => $locationId,
+                'product_id' => $productId,
+                'raw_material_id' => $rawMaterialId,
+                'movement_type' => $movementType,
+                'qty_delta' => $delta,
+                'cost_minor' => $costMinor,
+                'cost_fallback' => $fallback,
+                'ref_type' => $refType,
+                'ref_id' => $refId,
+                'note' => $note,
+                // A late Finance recognition belongs to the original operating day for settlement.
+                // The decision table retains the actual posting time and decision maker.
+                'created_at' => $at,
+                'actor_id' => $actorId,
+                'kitchen_id' => $kitchenId,
+            ]);
+            DB::table('stock_valuation_locks')->where('id', $state->id)->update([
+                'quantity' => $onHand + $delta,
+                'value_minor' => $value + ($delta < 0 ? -$costMinor : $costMinor),
+                'initialized' => true,
             ]);
             app(InventoryJournalService::class)->postMovement($movement);
 
@@ -131,9 +170,53 @@ class StockLedgerService
             $fromType, $fromId, $toType, $toId, $productId,
             $outType, $inType, $qty, $actorId, $kitchenId, $refType, $refId
         ): void {
-            $this->post($fromType, $fromId, $productId, $outType, $qty, $actorId, $kitchenId, $refType, $refId);
-            $this->post($toType, $toId, $productId, $inType, $qty, $actorId, $kitchenId, $refType, $refId);
+            $out = $this->post($fromType, $fromId, $productId, $outType, $qty, $actorId, $kitchenId, $refType, $refId);
+            $this->post($toType, $toId, $productId, $inType, $qty, $actorId, $kitchenId,
+                $refType, $refId, costMinor: $out->cost_minor);
         });
+    }
+
+    /** @return array{int,int,int} Quantity, carrying value in rupiah, fallback row count. */
+    public function valuation(string $locationType, int $locationId, ?int $productId,
+        ?int $rawMaterialId = null, ?Carbon $at = null): array
+    {
+        $query = StockLedger::query()->where('location_type', $locationType)->where('location_id', $locationId)
+            ->where('product_id', $productId)->where('raw_material_id', $rawMaterialId);
+        if ($at) {
+            $query->where('created_at', '<=', $at);
+        }
+        $rows = $query->orderBy('id')->get(['qty_delta', 'cost_minor', 'cost_fallback', 'created_at', 'kitchen_id']);
+        $qty = 0;
+        $value = 0;
+        $fallbackRows = 0;
+        foreach ($rows as $row) {
+            $delta = (int) $row->qty_delta;
+            $cost = $row->cost_minor;
+            if ($cost === null) {
+                $cost = abs($delta) * $this->fallbackUnitCost($productId, $rawMaterialId,
+                    (int) $row->kitchen_id, $row->created_at);
+                $fallbackRows++;
+            } elseif ($row->cost_fallback) {
+                $fallbackRows++;
+            }
+            $qty += $delta;
+            $value += $delta < 0 ? -(int) $cost : (int) $cost;
+        }
+
+        return [$qty, $value, $fallbackRows];
+    }
+
+    private function fallbackUnitCost(?int $productId, ?int $rawMaterialId, int $kitchenId, Carbon $at): int
+    {
+        if ($productId !== null) {
+            return (int) (Product::query()->find($productId)?->priceVersionAt($at)?->cost_price_minor ?? 0);
+        }
+        $receipt = StockLedger::query()->where('location_type', self::RAW_MATERIAL_STORE)
+            ->where('location_id', $kitchenId)->where('raw_material_id', $rawMaterialId)
+            ->where('movement_type', MovementType::PURCHASE_IN)->where('created_at', '<=', $at)
+            ->whereNotNull('cost_minor')->orderByDesc('created_at')->orderByDesc('id')->first();
+
+        return $receipt && $receipt->qty_delta > 0 ? intdiv((int) $receipt->cost_minor, (int) $receipt->qty_delta) : 0;
     }
 
     public function stockFor(string $locationType, int $locationId, int $productId): int
@@ -141,6 +224,86 @@ class StockLedgerService
         $this->assertLocationType($locationType);
 
         return StockLedger::projectedStock($locationType, $locationId, $productId);
+    }
+
+    /** FIFO allocation of kitchen removals gives each production a real remaining batch. */
+    public function remainingProductionBatch(int $kitchenId, int $productId, int $productionId): int
+    {
+        $lots = [];
+        $inTransit = [];
+        $sold = [];
+        $rows = StockLedger::query()->where('kitchen_id', $kitchenId)->where('product_id', $productId)
+            ->orderBy('id')->get(['location_type', 'location_id', 'qty_delta', 'movement_type', 'ref_type', 'ref_id']);
+        foreach ($rows as $row) {
+            $delta = (int) $row->qty_delta;
+            $location = $row->location_type.':'.$row->location_id;
+            $key = $row->ref_type.':'.$row->ref_id;
+            if ($delta > 0) {
+                if (in_array($row->movement_type, [MovementType::ALLOCATION_IN, MovementType::REFILL_IN,
+                    MovementType::RETURN_IN, MovementType::SALE_VOID_IN], true)) {
+                    $source = $row->movement_type === MovementType::SALE_VOID_IN ? $sold : $inTransit;
+                    $sourceKey = $row->movement_type === MovementType::SALE_VOID_IN
+                        ? str_replace('_void', '', (string) $row->ref_type).':'.$row->ref_id : $key;
+                    $remaining = $delta;
+                    foreach ($source[$sourceKey] ?? [] as $lot) {
+                        $taken = min($remaining, $lot['qty']);
+                        $lots[$location][] = ['production_id' => $lot['production_id'], 'qty' => $taken];
+                        $remaining -= $taken;
+                        if ($remaining === 0) {
+                            break;
+                        }
+                    }
+                    if ($remaining > 0) {
+                        $lots[$location][] = ['production_id' => null, 'qty' => $remaining];
+                    }
+                } else {
+                    $lots[$location][] = ['production_id' => $row->movement_type === MovementType::PRODUCTION_IN
+                        && $row->ref_type === 'production' ? (int) $row->ref_id : null, 'qty' => $delta];
+                }
+
+                continue;
+            }
+            $needed = -$delta;
+            $lots[$location] ??= [];
+            if ($row->ref_type === 'production_void') {
+                foreach ($lots[$location] as &$lot) {
+                    if ($lot['production_id'] !== (int) $row->ref_id) {
+                        continue;
+                    }
+                    $taken = min($needed, $lot['qty']);
+                    $lot['qty'] -= $taken;
+                    $needed -= $taken;
+                    if ($needed === 0) {
+                        break;
+                    }
+                }
+                unset($lot);
+
+                continue;
+            }
+            $takenLots = [];
+            foreach ($lots[$location] as &$lot) {
+                $taken = min($needed, $lot['qty']);
+                if ($taken > 0) {
+                    $takenLots[] = ['production_id' => $lot['production_id'], 'qty' => $taken];
+                }
+                $lot['qty'] -= $taken;
+                $needed -= $taken;
+                if ($needed === 0) {
+                    break;
+                }
+            }
+            unset($lot);
+            if (in_array($row->movement_type, [MovementType::ALLOCATION_OUT, MovementType::REFILL_OUT,
+                MovementType::RETURN_OUT], true)) {
+                $inTransit[$key] = $takenLots;
+            } elseif ($row->movement_type === MovementType::SALE_OUT) {
+                $sold[$key] = $takenLots;
+            }
+        }
+
+        return array_sum(array_map(fn (array $lot): int => $lot['production_id'] === $productionId ? $lot['qty'] : 0,
+            $lots[self::KITCHEN.':'.$kitchenId] ?? []));
     }
 
     /**

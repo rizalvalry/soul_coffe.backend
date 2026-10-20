@@ -207,7 +207,6 @@ class RiderClosingService
                 ->pluck('qty', 'product_id');
             $before = $closing ? $this->snapshot($closing) : null;
             $oldLines = $closing?->lines->keyBy('product_id') ?? collect();
-            $oldWasteMinor = $oldLines->sum(fn ($line): int => (int) $line->qty_wasted * (int) $line->unit_cost_minor);
             $rows = [];
             $total = 0;
             $cogs = 0;
@@ -287,9 +286,16 @@ class RiderClosingService
                 $old = $oldLines->get($id);
                 foreach (['qty_sale_posted', 'qty_waste_posted'] as $field) {
                     if ($old && $old->$field > 0) {
+                        $priorType = $field === 'qty_waste_posted' ? MovementType::WASTE_OUT : MovementType::SALE_OUT;
+                        $prior = StockLedger::query()->where('location_type', StockLedgerService::CART)
+                            ->where('location_id', $cart->id)->where('product_id', $id)
+                            ->where('ref_type', 'rider_closing')->where('ref_id', $closing->id)
+                            ->where('movement_type', $priorType)->orderByDesc('id')->first();
                         $this->ledger->post(StockLedgerService::CART, $cart->id, $id, MovementType::ADJUSTMENT,
-                            (int) $old->$field, $actor->id, (int) $cart->kitchen_id, 'rider_closing_compensation', $closing->id,
-                            note: 'Kompensasi Closing sebelum revisi.');
+                            (int) $old->$field, $actor->id, (int) $cart->kitchen_id,
+                            $field === 'qty_waste_posted' ? 'rider_closing_waste_compensation' : 'rider_closing_sale_compensation',
+                            $closing->id, costMinor: $prior?->cost_minor,
+                            note: 'Kompensasi Closing sebelum revisi; standard_cost_minor='.(int) $old->unit_cost_minor);
                     }
                 }
                 $netCorrection = (int) ($old?->qty_sale_posted ?? 0)
@@ -312,11 +318,13 @@ class RiderClosingService
                 }
                 if ($row['qty_sale_posted'] > 0) {
                     $this->ledger->post(StockLedgerService::CART, $cart->id, $id, MovementType::SALE_OUT,
-                        $row['qty_sale_posted'], $actor->id, (int) $cart->kitchen_id, 'rider_closing', $closing->id);
+                        $row['qty_sale_posted'], $actor->id, (int) $cart->kitchen_id, 'rider_closing', $closing->id,
+                        note: 'standard_cost_minor='.$row['unit_cost_minor']);
                 }
                 if ($row['qty_waste_posted'] > 0) {
                     $this->ledger->post(StockLedgerService::CART, $cart->id, $id, MovementType::WASTE_OUT,
-                        $row['qty_waste_posted'], $actor->id, (int) $cart->kitchen_id, 'rider_closing', $closing->id);
+                        $row['qty_waste_posted'], $actor->id, (int) $cart->kitchen_id, 'rider_closing', $closing->id,
+                        note: 'standard_cost_minor='.$row['unit_cost_minor']);
                 }
                 $onHand = $this->ledger->stockFor(StockLedgerService::CART, $cart->id, $id);
                 if ($disposed && ! $old && $onHand > 0) {
@@ -347,8 +355,6 @@ class RiderClosingService
                 'snapshot_json' => json_encode($this->snapshot($closing), JSON_THROW_ON_ERROR),
                 'created_at' => now(),
             ]);
-            app(InventoryJournalService::class)->postClosingRevision($revisionId, $date->toDateString(),
-                $oldWasteMinor, $closing->lines->all(), $actor->id);
             $this->rememberKey($keyHash, $requestHash, $closing->id);
             AuditLog::query()->create([
                 'actor_id' => $actor->id, 'actor_role' => $actor->role->value,
@@ -467,8 +473,7 @@ class RiderClosingService
     private function correctApprovedSettlement(Settlement $settlement, RiderClosing $closing, User $actor, string $reason, int $revisionId): void
     {
         $revenueDelta = $closing->total_minor - $settlement->expected_total_minor;
-        $cogsDelta = $closing->cogs_minor - (int) $settlement->expected_cogs_minor;
-        $accounts = Account::query()->whereIn('code', ['4-1100', '6-1100', '5-1100', '1-1600'])->pluck('id', 'code');
+        $accounts = Account::query()->whereIn('code', ['4-1100', '6-1100'])->pluck('id', 'code');
         $line = static fn (string $code, int $debit, int $credit): array => [
             'account_id' => $accounts[$code], 'debit_minor' => $debit,
             'credit_minor' => $credit, 'cart_id' => $closing->cart_id,
@@ -483,12 +488,6 @@ class RiderClosingService
             $this->journals->post([...$header, 'purpose' => 'SETTLEMENT_CORRECTION'], $revenueDelta > 0
                 ? [$line('6-1100', $amount, 0), $line('4-1100', 0, $amount)]
                 : [$line('4-1100', $amount, 0), $line('6-1100', 0, $amount)]);
-        }
-        if ($cogsDelta !== 0) {
-            $amount = abs($cogsDelta);
-            $this->journals->post([...$header, 'purpose' => 'SETTLEMENT_COGS_CORRECTION'], $cogsDelta > 0
-                ? [$line('5-1100', $amount, 0), $line('1-1600', 0, $amount)]
-                : [$line('1-1600', $amount, 0), $line('5-1100', 0, $amount)]);
         }
         $settlement->update([
             'expected_total_minor' => $closing->total_minor,

@@ -877,8 +877,8 @@ class SettlementTest extends TestCase
 
         $revenue = JournalEntry::query()->where('source_type', 'settlement')->where('source_id', $id)
             ->where('purpose', 'SETTLEMENT')->with('lines.account')->sole();
-        $cogs = JournalEntry::query()->where('source_type', 'settlement')->where('source_id', $id)
-            ->where('purpose', 'SETTLEMENT_COGS')->with('lines.account')->sole();
+        $cogs = JournalEntry::query()->where('source_type', 'stock_ledger')
+            ->where('purpose', 'SALE_COGS')->with('lines.account')->sole();
         $this->assertSame(40000, $revenue->lines->sum('debit_minor'));
         $this->assertSame(40000, $revenue->lines->sum('credit_minor'));
         $this->assertSame(16000, $cogs->lines->sum('debit_minor'));
@@ -886,10 +886,10 @@ class SettlementTest extends TestCase
         $this->assertEqualsCanonicalizing(['1-1200', '1-1400', '4-1100', '6-1100'], $revenue->lines->pluck('account.code')->all());
         $this->assertEqualsCanonicalizing(['5-1100', '1-1600'], $cogs->lines->pluck('account.code')->all());
         $this->assertTrue($revenue->lines->every(fn ($line): bool => $line->cart_id === $this->cart->id));
-        $this->assertSame(2, JournalEntry::query()->where('source_type', 'settlement')->where('source_id', $id)->count());
+        $this->assertSame(1, JournalEntry::query()->where('source_type', 'settlement')->where('source_id', $id)->count());
         $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson("/api/v1/settlements/{$id}/approve", [])->assertStatus(422);
-        $this->assertSame(2, JournalEntry::query()->where('source_type', 'settlement')->where('source_id', $id)->count());
+        $this->assertSame(1, JournalEntry::query()->where('source_type', 'settlement')->where('source_id', $id)->count());
     }
 
     public function test_late_sale_and_preapproval_void_mark_snapshot_stale_and_rerecord_resets_it(): void
@@ -989,8 +989,8 @@ class SettlementTest extends TestCase
         $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson("/api/v1/settlements/{$id}/approve", ['lines' => $this->returnAll()])->assertOk();
         $this->assertSame(16000, Settlement::query()->findOrFail($id)->expected_cogs_minor);
-        $this->assertSame(16000, (int) JournalEntry::query()->where('source_type', 'settlement')
-            ->where('source_id', $id)->where('purpose', 'SETTLEMENT_COGS')->sole()->lines()->sum('debit_minor'));
+        $this->assertSame(16000, (int) JournalEntry::query()->where('source_type', 'stock_ledger')
+            ->where('purpose', 'SALE_COGS')->with('lines')->get()->sum(fn (JournalEntry $entry): int => $entry->lines->sum('debit_minor')));
         $this->assertSame(1, AuditLog::query()->where('action', 'settlement.rerecorded')->count());
     }
 

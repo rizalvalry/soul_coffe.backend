@@ -120,7 +120,7 @@ class DirectSaleTest extends TestCase
         return app(DirectSaleService::class);
     }
 
-    public function test_direct_sale_posts_revenue_and_snapshot_cogs_then_reverses_both_on_void(): void
+    public function test_direct_sale_posts_revenue_and_moving_cost_then_reverses_both_on_void(): void
     {
         $this->stockCart($this->assignedCart, 10);
         $sale = $this->service()->record($this->finance, $this->assignedCart->id,
@@ -128,8 +128,10 @@ class DirectSaleTest extends TestCase
 
         $revenue = JournalEntry::query()->where('source_type', 'direct_sale')
             ->where('source_id', $sale->id)->where('purpose', 'DIRECT_SALE')->firstOrFail();
-        $cogs = JournalEntry::query()->where('source_type', 'direct_sale')
-            ->where('source_id', $sale->id)->where('purpose', 'DIRECT_SALE_COGS')->firstOrFail();
+        $movementId = StockLedger::query()->where('ref_type', 'direct_sale')
+            ->where('ref_id', $sale->id)->where('movement_type', MovementType::SALE_OUT)->firstOrFail()->id;
+        $cogs = JournalEntry::query()->where('source_type', 'stock_ledger')
+            ->where('source_id', $movementId)->where('purpose', 'SALE_COGS')->firstOrFail();
         $this->assertSame(['1-1300' => [40000, 0], '4-1200' => [0, 40000]],
             $revenue->lines()->with('account')->get()->mapWithKeys(fn ($line): array => [$line->account->code => [$line->debit_minor, $line->credit_minor]])->all());
         $this->assertSame(['5-1100' => [20000, 0], '1-1600' => [0, 20000]],

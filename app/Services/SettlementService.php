@@ -733,12 +733,6 @@ class SettlementService
         if ($settlement->expected_cogs_minor === null) {
             throw new RuntimeException('Setoran lama belum memiliki snapshot HPP. Catat ulang setoran sebelum menyetujui.');
         }
-        $cogs = (int) $settlement->expected_cogs_minor;
-        if ($cogs > 0) {
-            $this->journals->post([...$header, 'purpose' => 'SETTLEMENT_COGS', 'description' => 'HPP '.$header['description']], [
-                $line('5-1100', $cogs, 0),
-                $line('1-1600', 0, $cogs),
-            ]);
-        }
+        // SALE_OUT already posted moving-average HPP when cups left stock.
     }
 }

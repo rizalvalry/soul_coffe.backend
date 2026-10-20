@@ -2,7 +2,6 @@
 
 namespace App\Services\Reporting;
 
-use App\Enums\MovementType;
 use App\Models\Product;
 use App\Models\StockLedger;
 use App\Services\RecipeService;
@@ -12,7 +11,8 @@ use Illuminate\Support\Facades\DB;
 
 class InventoryAccountingReportService
 {
-    public function __construct(private readonly RecipeService $recipes) {}
+    public function __construct(private readonly RecipeService $recipes,
+        private readonly StockLedgerService $ledger) {}
 
     public function costVariance(Carbon $month): array
     {
@@ -30,7 +30,8 @@ class InventoryAccountingReportService
                 return [
                     'product' => $product->name, 'standard_minor' => $standard,
                     'recipe_minor' => $recipe, 'difference_minor' => $delta,
-                    'difference_percent' => $percent, 'flagged' => $percent !== null && $percent > $threshold,
+                    'difference_percent' => $percent,
+                    'flagged' => $delta !== null && $standard > 0 && abs($delta) * 100 > $threshold * $standard,
                 ];
             })->all();
     }
@@ -40,27 +41,21 @@ class InventoryAccountingReportService
         $at = $start->copy()->endOfDay();
         $finished = 0;
         $raw = 0;
+        $finishedFallback = 0;
+        $rawFallback = 0;
         $stocks = StockLedger::query()->where('created_at', '<=', $at)
             ->select('location_type', 'location_id', 'product_id', 'raw_material_id')
             ->selectRaw('SUM(qty_delta) AS quantity')
             ->groupBy('location_type', 'location_id', 'product_id', 'raw_material_id')->get();
         foreach ($stocks as $stock) {
-            $quantity = (int) $stock->quantity;
-            if ($quantity === 0) {
-                continue;
-            }
+            [, $value, $fallback] = $this->ledger->valuation($stock->location_type,
+                (int) $stock->location_id, $stock->product_id, $stock->raw_material_id, $at);
             if ($stock->product_id !== null) {
-                $unit = Product::query()->find($stock->product_id)?->priceVersionAt($at)?->cost_price_minor;
-                $finished += $quantity * (int) ($unit ?? 0);
+                $finished += $value;
+                $finishedFallback += $fallback;
             } elseif ($stock->location_type === StockLedgerService::RAW_MATERIAL_STORE) {
-                $receipt = StockLedger::query()->where('location_type', StockLedgerService::RAW_MATERIAL_STORE)
-                    ->where('location_id', $stock->location_id)->where('raw_material_id', $stock->raw_material_id)
-                    ->where('movement_type', MovementType::PURCHASE_IN)->where('created_at', '<=', $at)
-                    ->whereNotNull('cost_minor')->orderByDesc('created_at')->orderByDesc('id')->first();
-                if ($receipt && $receipt->qty_delta > 0) {
-                    $unit = intdiv((int) $receipt->cost_minor + intdiv((int) $receipt->qty_delta, 2), (int) $receipt->qty_delta);
-                    $raw += $quantity * $unit;
-                }
+                $raw += $value;
+                $rawFallback += $fallback;
             }
         }
         $book = DB::table('journal_lines as l')->join('journal_entries as e', 'e.id', '=', 'l.entry_id')
@@ -71,9 +66,11 @@ class InventoryAccountingReportService
             ->selectRaw('SUM(l.debit_minor) - SUM(l.credit_minor) AS balance')->pluck('balance', 'code');
 
         return [
-            ['account' => '1-1600', 'physical_minor' => $finished, 'book_minor' => (int) ($book['1-1600'] ?? 0),
+            ['account' => '1-1600', 'physical_minor' => $finished, 'fallback_rows' => $finishedFallback,
+                'book_minor' => (int) ($book['1-1600'] ?? 0),
                 'gap_minor' => $finished - (int) ($book['1-1600'] ?? 0)],
-            ['account' => '1-1700', 'physical_minor' => $raw, 'book_minor' => (int) ($book['1-1700'] ?? 0),
+            ['account' => '1-1700', 'physical_minor' => $raw, 'fallback_rows' => $rawFallback,
+                'book_minor' => (int) ($book['1-1700'] ?? 0),
                 'gap_minor' => $raw - (int) ($book['1-1700'] ?? 0)],
         ];
     }

@@ -14,9 +14,9 @@
     </x-filament::section>
     <x-filament::section heading="Stok fisik vs buku besar per tanggal mulai">
         <p class="mb-3">Selisih historis tidak diisi otomatis. Akuntan bisa buat jurnal penyesuaian manual dari angka ini.</p>
-        <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Akun</th><th>Stok fisik × biaya</th><th>Saldo buku</th><th>Selisih</th></tr></thead><tbody>
+        <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Akun</th><th>Stok fisik × biaya</th><th>Saldo buku</th><th>Selisih</th><th>Biaya fallback</th></tr></thead><tbody>
         @foreach ($report['gap'] as $row)
-            <tr class="border-t"><td>{{ $row['account'] }}</td><td>Rp {{ number_format($row['physical_minor'], 0, ',', '.') }}</td><td>Rp {{ number_format($row['book_minor'], 0, ',', '.') }}</td><td>Rp {{ number_format($row['gap_minor'], 0, ',', '.') }}</td></tr>
+            <tr class="border-t"><td>{{ $row['account'] }}</td><td>Rp {{ number_format($row['physical_minor'], 0, ',', '.') }}</td><td>Rp {{ number_format($row['book_minor'], 0, ',', '.') }}</td><td>Rp {{ number_format($row['gap_minor'], 0, ',', '.') }}</td><td>{{ $row['fallback_rows'] }} baris</td></tr>
         @endforeach
         </tbody></table></div>
     </x-filament::section>
