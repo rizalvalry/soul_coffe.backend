@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use JsonException;
 
@@ -40,6 +41,22 @@ class AuditLog extends Model
             'before_json' => 'array',
             'after_json' => 'array',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::updating(fn (): never => throw ValidationException::withMessages(['audit' => 'Audit yang sudah dicatat tidak bisa diubah.']));
+        static::deleting(fn (): never => throw ValidationException::withMessages(['audit' => 'Audit yang sudah dicatat tidak bisa dihapus.']));
+    }
+
+    public static function recordAction(User $actor, string $action, Model $subject, ?array $before = null, ?array $after = null): self
+    {
+        return self::query()->create([
+            'actor_id' => $actor->id, 'actor_role' => $actor->role->value,
+            'action' => $action, 'subject_type' => $subject::class, 'subject_id' => $subject->id,
+            'before_json' => $before, 'after_json' => $after,
+            'ip' => request()->ip(), 'device_id' => request()->header('X-Device-Id'),
+        ]);
     }
 
     public function actor(): BelongsTo

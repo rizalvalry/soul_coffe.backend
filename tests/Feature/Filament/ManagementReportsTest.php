@@ -312,6 +312,60 @@ class ManagementReportsTest extends TestCase
         $this->assertGreaterThanOrEqual(2, min($levels));
     }
 
+    public function test_mixed_legacy_and_closing_period_reconciles_product_and_bike_to_journals(): void
+    {
+        config(['soul.closing_started_on' => '2026-10-18']);
+        $this->sale($this->cart, $this->coffee, '2026-10-17', 1, 10000, 4000);
+        // A legacy APK sale already included in Closing must never be counted twice.
+        $this->sale($this->cart, $this->coffee, '2026-10-18', 1, 10000, 4000);
+        $closingId = DB::table('rider_closings')->insertGetId([
+            'operating_date' => '2026-10-18', 'cart_id' => $this->cart->id, 'rider_id' => $this->rider->id,
+            'total_minor' => 20000, 'cogs_minor' => 8000,
+            'cash_minor' => 20000, 'qris_minor' => 0, 'transfer_minor' => 0,
+            'closed_at' => '2026-10-18 18:00:00', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('rider_closing_lines')->insert([
+            'rider_closing_id' => $closingId, 'product_id' => $this->coffee->id,
+            'qty_in' => 2, 'qty_carry' => 0, 'qty_remaining' => 0, 'qty_wasted' => 0,
+            'qty_sold' => 2, 'qty_sale_posted' => 1, 'qty_waste_posted' => 0,
+            'unit_price_minor' => 10000, 'unit_cost_minor' => 4000, 'subtotal_minor' => 20000,
+        ]);
+        $this->directSale($this->coffee, '2026-10-18', 5000, 2000);
+
+        $this->postJournal('2026-10-17', '1-1200', '4-1100', 10000, 601);
+        $this->postJournal('2026-10-17', '5-1100', '1-1600', 4000, 602);
+        $this->postJournal('2026-10-18', '1-1200', '4-1100', 20000, 603);
+        $this->postJournal('2026-10-18', '5-1100', '1-1600', 8000, 604);
+        $this->postJournal('2026-10-18', '1-1100', '4-1200', 5000, 605);
+        $this->postJournal('2026-10-18', '5-1100', '1-1600', 2000, 606);
+
+        $report = app(ManagementReportService::class)->build(Carbon::parse('2026-10-17'), Carbon::parse('2026-10-18'));
+        $this->assertSame(35000, $report['summary']['revenue_minor']);
+        $this->assertSame(14000, $report['summary']['cogs_minor']);
+        foreach (['margin_gerobak', 'margin_produk'] as $section) {
+            $rows = $report['sections'][$section]['rows'];
+            $this->assertCount(1, $rows);
+            $this->assertSame(35000, array_sum(array_column($rows, 1)));
+            $this->assertSame(14000, array_sum(array_column($rows, 2)));
+        }
+    }
+
+    public function test_method_only_variance_is_counted_in_settlement_report(): void
+    {
+        Settlement::query()->create([
+            'operating_date' => '2026-10-20', 'cart_id' => $this->cart->id, 'staff_id' => $this->rider->id,
+            'status' => 'SUBMITTED', 'expected_cash_minor' => 10000,
+            'expected_qris_minor' => 5000, 'expected_transfer_minor' => 0,
+            'expected_total_minor' => 15000, 'cash_minor' => 15000, 'qris_minor' => 0,
+            'transfer_minor' => 0, 'declared_total_minor' => 15000, 'variance_minor' => 0,
+            'method_variance_flagged' => true,
+        ]);
+
+        $report = app(ManagementReportService::class)->build(Carbon::parse('2026-10-20'), Carbon::parse('2026-10-20'));
+        $this->assertSame(0, $report['sections']['setoran']['rows'][0][6]);
+        $this->assertSame(1, $report['sections']['setoran']['rows'][0][7]);
+    }
+
     private function postJournal(string $date, string $debitCode, string $creditCode, int $amount, int $id): JournalEntry
     {
         return app(JournalService::class)->post([
