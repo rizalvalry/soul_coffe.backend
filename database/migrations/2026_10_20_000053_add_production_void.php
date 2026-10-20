@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -17,7 +18,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (\Illuminate\Support\Facades\DB::table('productions')->whereNotNull('voided_at')->exists()) {
+        if (DB::table('productions')->whereNotNull('voided_at')->exists()) {
             throw new RuntimeException('Data pembatalan produksi harus disimpan sebelum rollback.');
         }
         Schema::table('productions', function (Blueprint $table): void {

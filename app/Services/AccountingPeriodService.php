@@ -2,10 +2,10 @@
 
 namespace App\Services;
 
+use App\Enums\Role;
 use App\Models\AccountingPeriod;
 use App\Models\AuditLog;
 use App\Models\User;
-use App\Enums\Role;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
