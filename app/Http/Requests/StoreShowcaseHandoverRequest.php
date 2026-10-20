@@ -48,9 +48,8 @@ class StoreShowcaseHandoverRequest extends FormRequest
             // barista deliberately changed it, which is recorded as an override.
             'allowance_amount' => ['nullable', 'integer', 'min:0'],
 
-            // Only needed for a cart that has never had a location before; otherwise it is
-            // inherited from wherever the cart last stood.
-            'location_id' => ['nullable', 'integer', Rule::exists('locations', 'id')],
+            // Legacy APK compatibility only. Management's active setup determines the location.
+            'location_id' => ['nullable', 'integer'],
 
             'operating_date' => ['nullable', 'date'],
         ];

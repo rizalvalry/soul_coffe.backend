@@ -213,6 +213,7 @@ class ShowcaseStockController extends Controller implements HasMiddleware
             ->where('role', Role::STAFF)
             ->where('is_active', true)
             ->orderBy('name')
+            ->with(['locationSetups' => fn ($query) => $query->whereNull('superseded_at')->with('location:id,name')->latest('id')])
             ->get(['id', 'name', 'phone_e164']);
 
         $assignments = StaffAssignment::query()
@@ -230,6 +231,11 @@ class ShowcaseStockController extends Controller implements HasMiddleware
                 'phone' => $user->phone_e164,
                 'assigned_cart_id' => $assignments->get($user->id)?->cart_id,
                 'assigned_cart_code' => $assignments->get($user->id)?->cart?->code,
+                'location_setup' => $user->locationSetups->first() ? [
+                    'location_id' => $user->locationSetups->first()->location_id,
+                    'location_name' => $user->locationSetups->first()->location?->name,
+                    'basis' => $user->locationSetups->first()->basis,
+                ] : null,
             ])->all(),
         ]);
     }

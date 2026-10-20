@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\AbsenExemptionMode;
 use App\Enums\Role;
 use App\Models\AttendanceExemption;
+use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\StaffAssignment;
 use App\Models\User;
@@ -82,15 +83,25 @@ class AbsenGeofence
                 ->first()
             : null;
 
+        $lastAssignment = $user->role === Role::STAFF && ! $assignment
+            ? StaffAssignment::query()->with(['cart', 'location'])->where('user_id', $user->id)
+                ->where('source', 'hand_to_cart')->orderByDesc('operating_date')->latest('id')->first()
+            : null;
+        $cartId = $assignment?->cart_id ?? $lastAssignment?->cart_id
+            ?? $user->employeeProfile?->default_cart_id;
+        $setup = $user->role === Role::STAFF ? app(RiderLocationSetupService::class)->active($user) : null;
+
         // The exemption is granted to a gerobak code, which is how the request framed it: the
         // cart is what is trading somewhere unusual, and whoever is rostered to it that day
         // inherits the permission.
-        if ($assignment?->cart_id) {
-            $exemption = AttendanceExemption::query()
-                ->where('cart_id', $assignment->cart_id)
+        if ($cartId) {
+            $exemptions = AttendanceExemption::query()
+                ->with('cart')->where('cart_id', $cartId)
                 ->activeOn($date)
                 ->latest('effective_from')
-                ->first();
+                ->get();
+
+            $exemption = $exemptions->first(fn (AttendanceExemption $row): bool => $row->mode === AbsenExemptionMode::ANYWHERE);
 
             if ($exemption?->mode === AbsenExemptionMode::ANYWHERE) {
                 return [
@@ -104,8 +115,11 @@ class AbsenGeofence
                 ];
             }
 
-            if ($exemption?->mode === AbsenExemptionMode::SELLING_LOCATION && $assignment->location?->lat !== null) {
-                $location = $assignment->location;
+            $exemption = $exemptions->first(fn (AttendanceExemption $row): bool => $row->mode === AbsenExemptionMode::SELLING_LOCATION);
+            $sellingPoint = collect([$setup?->location, $assignment?->location, $lastAssignment?->location])
+                ->first(fn ($location): bool => $location?->lat !== null && $location?->lng !== null);
+            if ($exemption?->mode === AbsenExemptionMode::SELLING_LOCATION && $sellingPoint?->lat !== null && $sellingPoint->lng !== null) {
+                $location = $sellingPoint;
 
                 return [
                     'enforced' => true,
@@ -119,6 +133,20 @@ class AbsenGeofence
                     'exemption_reason' => $exemption->reason,
                 ];
             }
+        }
+
+        if ($setup?->basis === 'selling_location' && $setup->location?->lat !== null && $setup->location->lng !== null) {
+            $location = $setup->location;
+
+            return [
+                'enforced' => true,
+                'basis' => 'selling_location',
+                'lat' => (float) $location->lat,
+                'lng' => (float) $location->lng,
+                'radius_m' => (int) ($location->geofence_m ?: config('soul.absen_geofence_m', 10)),
+                'label' => $location->name,
+                'exemption_reason' => null,
+            ];
         }
 
         $kitchen = $this->kitchenFor($user, $assignment);
