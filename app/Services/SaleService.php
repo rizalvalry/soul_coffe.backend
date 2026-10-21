@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\MovementType;
+use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Models\AuditLog;
 use App\Models\Cart;
@@ -14,6 +15,7 @@ use App\Models\Settlement;
 use App\Models\StaffAssignment;
 use App\Models\StockLedger;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -424,12 +426,12 @@ class SaleService
      */
     private function assertMayVoid(Sale $sale, User $actor): void
     {
-        if ($actor->role->grants(Role::FINANCE)) {
+        if (PermissionMatrix::can($actor, PanelModule::SALE_CORRECTIONS, 'edit')) {
             return;
         }
 
         if ($actor->role !== Role::STAFF || $actor->id !== $sale->staff_id) {
-            throw new RuntimeException('Anda tidak berhak membatalkan transaksi ini.');
+            abort(403, 'Kamu tidak punya akses buat membatalkan transaksi ini.');
         }
 
         $windowMinutes = (int) config('soul.sale_void_window_minutes', 10);

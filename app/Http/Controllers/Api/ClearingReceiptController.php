@@ -17,7 +17,7 @@ class ClearingReceiptController extends Controller implements HasMiddleware
 
     public static function middleware(): array
     {
-        return [new Middleware('role:FINANCE,MANAGEMENT')];
+        return [new Middleware('permission:clearing,view')];
     }
 
     public function index(): JsonResponse

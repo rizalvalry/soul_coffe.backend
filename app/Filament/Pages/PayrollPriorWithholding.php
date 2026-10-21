@@ -2,11 +2,12 @@
 
 namespace App\Filament\Pages;
 
-use App\Enums\Role;
+use App\Enums\PanelModule;
 use App\Models\AuditLog;
 use App\Models\PayrollPriorWithholding as Prior;
 use App\Models\PayrollRun;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use App\Services\Menu\MenuLabels;
 use BackedEnum;
 use Filament\Forms\Components\Select;
@@ -44,7 +45,7 @@ class PayrollPriorWithholding extends Page implements HasTable
 
     public static function canAccess(): bool
     {
-        return Auth::user()?->is_active && (Auth::user()?->role->grants(Role::FINANCE) ?? false);
+        return PermissionMatrix::can(Auth::user(), PanelModule::PAYROLL_PRIOR_WITHHOLDING, 'view');
     }
 
     public static function getNavigationGroup(): string|UnitEnum|null
@@ -85,7 +86,7 @@ class PayrollPriorWithholding extends Page implements HasTable
 
     public function save(): void
     {
-        abort_unless(self::canAccess(), 403);
+        abort_unless(PermissionMatrix::can(Auth::user(), PanelModule::PAYROLL_PRIOR_WITHHOLDING, 'edit'), 403);
         $data = $this->validate([
             'input.user_id' => ['required', 'integer', 'exists:users,id', 'exists:employee_profiles,user_id,payroll_active,1'],
             'input.year' => ['required', 'integer', 'between:2020,2100'],

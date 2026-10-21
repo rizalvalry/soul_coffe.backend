@@ -3,7 +3,6 @@
 namespace App\Filament\Resources\DailyTargets;
 
 use App\Enums\PanelModule;
-use App\Enums\Role;
 use App\Filament\Concerns\MatrixGoverned;
 use App\Filament\Resources\DailyTargets\Pages\CreateDailyTarget;
 use App\Filament\Resources\DailyTargets\Pages\EditDailyTarget;
@@ -11,6 +10,7 @@ use App\Filament\Resources\DailyTargets\Pages\ListDailyTargets;
 use App\Filament\Resources\DailyTargets\Schemas\DailyTargetForm;
 use App\Filament\Resources\DailyTargets\Tables\DailyTargetsTable;
 use App\Models\DailyTarget;
+use App\Services\Access\PermissionMatrix;
 use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
@@ -48,22 +48,22 @@ class DailyTargetResource extends Resource
     // RIDER_COMMISSIONS has its own matrix grant, separate from these old stock targets.
     public static function canViewAny(): bool
     {
-        return Auth::user()?->role === Role::ADMINISTRATOR;
+        return PermissionMatrix::can(Auth::user(), PanelModule::DAILY_TARGETS, 'view');
     }
 
     public static function canCreate(): bool
     {
-        return static::canViewAny();
+        return PermissionMatrix::can(Auth::user(), PanelModule::DAILY_TARGETS, 'create');
     }
 
     public static function canEdit(mixed $record): bool
     {
-        return static::canViewAny();
+        return PermissionMatrix::can(Auth::user(), PanelModule::DAILY_TARGETS, 'edit');
     }
 
     public static function canDelete(mixed $record): bool
     {
-        return static::canViewAny();
+        return PermissionMatrix::can(Auth::user(), PanelModule::DAILY_TARGETS, 'delete');
     }
 
     public static function form(Schema $schema): Schema

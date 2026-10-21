@@ -45,6 +45,7 @@ class EmployeeProfilePanelTest extends TestCase
 
     public function test_payroll_is_encrypted_and_hidden_from_finance(): void
     {
+        PermissionMatrix::set(Role::FINANCE, PanelModule::PAYROLL, []);
         $profile = $this->profile();
         $raw = DB::table('employee_profiles')->where('id', $profile->id)->first();
         $this->assertNotSame('7800000', $raw->base_salary_minor);
@@ -103,6 +104,7 @@ class EmployeeProfilePanelTest extends TestCase
         $this->get(ViewAuditLog::getUrl(['record' => $audit]))->assertSuccessful()
             ->assertSee('7800000')->assertSee('8100000');
 
+        PermissionMatrix::set(Role::FINANCE, PanelModule::PAYROLL, []);
         $this->actingAs(User::factory()->role(Role::FINANCE)->create());
         $this->assertSame('[redacted]', $audit->displayChanges('before')['base_salary_minor']);
         $this->assertSame('[redacted]', $audit->displayChanges('after')['base_salary_minor']);

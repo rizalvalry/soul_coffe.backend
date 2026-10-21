@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\MovementType;
+use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Models\Account;
 use App\Models\AccountingPeriod;
@@ -19,6 +20,7 @@ use App\Models\StaffAssignment;
 use App\Models\StaffLocationPing;
 use App\Models\StockLedger;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -78,7 +80,7 @@ class SettlementService
     {
         $date = ($date ?? Carbon::today())->startOfDay();
         $viewerRole = Auth::user()?->role;
-        $showClosingLocation = in_array($viewerRole, [Role::ADMINISTRATOR, Role::FINANCE], true);
+        $showClosingLocation = PermissionMatrix::can(Auth::user(), PanelModule::CLOSING_LOCATION_EVIDENCE, 'view');
 
         $assignmentRows = StaffAssignment::query()
             ->with(['cart:id,code,kitchen_id', 'cart.kitchen:id,lat,lng,geofence_m', 'user:id,name', 'location:id,name', 'kitchen:id,lat,lng,geofence_m'])
@@ -328,7 +330,7 @@ class SettlementService
         ?string $varianceReason = null,
         ?Carbon $date = null,
     ): Settlement {
-        if (! $finance->role->grants(Role::FINANCE)) {
+        if (! PermissionMatrix::can($finance, PanelModule::SETTLEMENTS, 'edit')) {
             throw new RuntimeException('Hanya Finance atau Administrator yang menerima setoran.');
         }
 
@@ -448,11 +450,7 @@ class SettlementService
                     'device_id' => null,
                 ]);
 
-                $recipientIds = User::query()
-                    ->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT])
-                    ->where('is_active', true)
-                    ->orderBy('id')
-                    ->pluck('id')->all();
+                $recipientIds = PermissionMatrix::usersWith(PanelModule::SETTLEMENTS, 'edit');
 
                 $this->events->publish(
                     type: 'SettlementVarianceFlagged',
@@ -477,8 +475,7 @@ class SettlementService
                     'cart_id' => $cart->id, 'operating_date' => $date->toDateString(),
                     ...$methodVariances,
                 ]);
-                $recipientIds = User::query()->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT])
-                    ->where('is_active', true)->orderBy('id')->pluck('id')->all();
+                $recipientIds = PermissionMatrix::usersWith(PanelModule::SETTLEMENTS, 'edit');
                 $this->events->publish(
                     type: 'SettlementMethodVarianceFlagged',
                     title: 'Selisih metode setoran perlu dicek',
@@ -529,8 +526,7 @@ class SettlementService
             'after_json' => ['expected_stale' => true, 'stale_delta_minor' => $settlement->stale_delta_minor],
             'ip' => request()->ip(), 'device_id' => null,
         ]);
-        $recipientIds = User::query()->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT])
-            ->where('is_active', true)->pluck('id')->all();
+        $recipientIds = PermissionMatrix::usersWith(PanelModule::SETTLEMENTS, 'edit');
         $this->events->publish(
             type: 'SettlementExpectedStale', title: 'Ekspektasi setoran berubah',
             body: sprintf('Ekspektasi Coffee Bike %s berubah setelah setoran dicatat.%s',
@@ -550,7 +546,7 @@ class SettlementService
      */
     public function approve(Settlement $settlement, User $finance, array $disposition, ?string $note = null): Settlement
     {
-        if (! $finance->role->grants(Role::FINANCE)) {
+        if (! PermissionMatrix::can($finance, PanelModule::SETTLEMENTS, 'edit')) {
             throw new RuntimeException('Hanya Finance atau Administrator yang menyetujui setoran.');
         }
 

@@ -2,10 +2,12 @@
 
 namespace App\Policies;
 
+use App\Enums\PanelModule;
 use App\Enums\RefillStatus;
 use App\Enums\Role;
 use App\Models\RefillRequest;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 
 /**
  * Who may act, per docs/02 §2.1 and the §6.1 transition table's "Actor" column.
@@ -30,7 +32,7 @@ class RefillRequestPolicy
             return false;
         }
 
-        if ($user->role->grants(Role::FINANCE)) {
+        if (PermissionMatrix::can($user, PanelModule::REFILL_APPROVAL, 'view')) {
             return true;
         }
 
@@ -51,12 +53,12 @@ class RefillRequestPolicy
     public function approve(User $user, RefillRequest $refill): bool
     {
         // Finance approval also belongs to Management and Administrator through role inheritance.
-        return $user->is_active && $user->role->grants(Role::FINANCE);
+        return PermissionMatrix::can($user, PanelModule::REFILL_APPROVAL, 'edit');
     }
 
     public function reject(User $user, RefillRequest $refill): bool
     {
-        return $user->is_active && $user->role->grants(Role::FINANCE);
+        return PermissionMatrix::can($user, PanelModule::REFILL_APPROVAL, 'edit');
     }
 
     public function cancel(User $user, RefillRequest $refill): bool

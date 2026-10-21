@@ -231,7 +231,10 @@ class SaleVoidTest extends TestCase
 
         $outbox = OutboxEvent::query()->where('name', 'SaleVoided')->sole();
         $payload = $outbox->payload_json;
-        $this->assertSame(['role.ADMINISTRATOR', 'role.FINANCE', 'role.MANAGEMENT'], $payload['channels']);
+        $this->assertEqualsCanonicalizing([
+            'role.ADMINISTRATOR', 'role.FINANCE', 'role.MANAGEMENT',
+            'user.'.$admin->id, 'user.'.$this->finance->id, 'user.'.$management->id,
+        ], $payload['channels']);
         $this->assertSame($this->cart->id, $payload['cart_id']);
         $this->assertSame(Carbon::today()->toDateString(), $payload['operating_date']);
         $this->assertSame($sale->id, $payload['source_id']);

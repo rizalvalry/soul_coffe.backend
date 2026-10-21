@@ -287,9 +287,9 @@ class LedgerCompletenessTest extends TestCase
             $this->assertSame(422, $exception->status);
         }
         app(AccountingPeriodService::class)->setStatus(today()->year, today()->month, 'OPEN', $managerA, 'Koreksi saldo awal');
-        $this->assertEqualsCanonicalizing([$managerA->id, $managerB->id],
+        $this->assertEqualsCanonicalizing([$finance->id, $managerA->id, $managerB->id, $administrator->id],
             AppNotification::query()->where('type', 'AccountingPeriodReopened')->pluck('user_id')->all());
-        $this->assertFalse(AppNotification::query()->where('type', 'AccountingPeriodReopened')
+        $this->assertTrue(AppNotification::query()->where('type', 'AccountingPeriodReopened')
             ->where('user_id', $administrator->id)->exists());
         $audit = AuditLog::query()->where('action', 'accounting_period.reopened')->firstOrFail();
         $this->assertSame('Koreksi saldo awal', $audit->after_json['reason']);

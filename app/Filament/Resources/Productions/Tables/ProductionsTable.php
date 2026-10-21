@@ -2,9 +2,10 @@
 
 namespace App\Filament\Resources\Productions\Tables;
 
-use App\Enums\Role;
+use App\Enums\PanelModule;
 use App\Models\Production;
 use App\Models\ProductionLine;
+use App\Services\Access\PermissionMatrix;
 use App\Services\ProductionService;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Textarea;
@@ -49,7 +50,7 @@ class ProductionsTable
 
                 TextColumn::make('cost')
                     ->label('Estimasi HPP Bahan Baku')
-                    ->visible(fn (): bool => Auth::user()?->role->grants(Role::FINANCE) ?? false)
+                    ->visible(fn (): bool => PermissionMatrix::can(Auth::user(), PanelModule::INVENTORY_COSTS, 'edit'))
                     ->state(fn (Production $record): int => $record->lines
                         ->sum(fn (ProductionLine $line): int => ($line->recipe_cost_minor ?? 0) * $line->qty_brewed))
                     ->money('IDR', 0),

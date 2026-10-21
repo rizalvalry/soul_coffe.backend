@@ -2,8 +2,9 @@
 
 namespace App\Filament\Resources\Products\Tables;
 
-use App\Enums\Role;
+use App\Enums\PanelModule;
 use App\Models\Product;
+use App\Services\Access\PermissionMatrix;
 use App\Services\PendingStockCostService;
 use Filament\Actions\Action;
 use Filament\Actions\EditAction;
@@ -60,13 +61,13 @@ class ProductsTable
                 // current price has to be resolved per record (R10).
                 TextColumn::make('cost_price')
                     ->label('HPP')
-                    ->visible(fn (): bool => Auth::user()?->role->grants(Role::FINANCE) ?? false)
+                    ->visible(fn (): bool => PermissionMatrix::can(Auth::user(), PanelModule::INVENTORY_COSTS, 'edit'))
                     ->state(fn (Product $record): ?int => $record->currentPriceVersion()?->cost_price_minor)
                     ->money('IDR', 0)
                     ->placeholder('belum diisi'),
                 TextColumn::make('pending_cost_status')
                     ->label('Biaya stok')
-                    ->visible(fn (): bool => Auth::user()?->role->grants(Role::FINANCE) ?? false)
+                    ->visible(fn (): bool => PermissionMatrix::can(Auth::user(), PanelModule::INVENTORY_COSTS, 'edit'))
                     ->state(fn (Product $record): string => $record->pending_cost_count > 0
                         ? $record->pending_cost_count.' gerak perlu dinilai'
                             .($record->currentPriceVersion()?->cost_price_minor > 0 ? '' : ' · HPP belum diisi')

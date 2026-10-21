@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Filament;
 
+use App\Enums\MovementType;
 use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Enums\StockOpnameStatus;
@@ -11,6 +12,7 @@ use App\Filament\Resources\StockOpnames\StockOpnameResource;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\Product;
+use App\Models\StockOpname;
 use App\Models\User;
 use App\Services\Access\PermissionMatrix;
 use App\Services\StockLedgerService;
@@ -64,7 +66,7 @@ class StockOpnamePanelTest extends TestCase
             locationType: StockLedgerService::KITCHEN,
             locationId: $this->kitchen->id,
             productId: $this->coffee->id,
-            movementType: \App\Enums\MovementType::PRODUCTION_IN,
+            movementType: MovementType::PRODUCTION_IN,
             qty: 50,
             actorId: $this->admin->id,
             kitchenId: $this->kitchen->id,
@@ -87,8 +89,8 @@ class StockOpnamePanelTest extends TestCase
             ->set('reason', 'Hitungan sore')
             ->call('submit');
 
-        $this->assertSame(1, \App\Models\StockOpname::query()->count());
-        $opname = \App\Models\StockOpname::query()->firstOrFail();
+        $this->assertSame(1, StockOpname::query()->count());
+        $opname = StockOpname::query()->firstOrFail();
         $this->assertSame(StockOpnameStatus::DRAFT, $opname->status);
         $this->assertSame(-5, $opname->lines->firstOrFail()->variance_qty);
     }
@@ -101,10 +103,11 @@ class StockOpnamePanelTest extends TestCase
     public function test_only_a_role_with_the_create_ability_reaches_the_entry_page(): void
     {
         $finance = User::factory()->role(Role::FINANCE)->create();
+        PermissionMatrix::set(Role::FINANCE, PanelModule::STOCK_OPNAME_ACTIONS, ['view']);
 
         $this->actingAs($finance)->get(StockOpnameEntry::getUrl())->assertForbidden();
 
-        PermissionMatrix::set(Role::FINANCE, PanelModule::STOCK_OPNAME, ['view', 'create']);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::STOCK_OPNAME_ACTIONS, ['view', 'edit']);
         PermissionMatrix::forget();
 
         $this->actingAs($finance)->get(StockOpnameEntry::getUrl())->assertSuccessful();
@@ -140,14 +143,14 @@ class StockOpnamePanelTest extends TestCase
     {
         $finance = User::factory()->role(Role::FINANCE)->create();
 
-        PermissionMatrix::set(Role::FINANCE, PanelModule::STOCK_OPNAME, ['view']);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::STOCK_OPNAME_ACTIONS, ['view']);
         PermissionMatrix::forget();
 
         Livewire::actingAs($finance)
             ->test(ListStockOpnames::class)
             ->assertDontSee('Buat Stock Opname');
 
-        PermissionMatrix::set(Role::FINANCE, PanelModule::STOCK_OPNAME, ['view', 'create']);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::STOCK_OPNAME_ACTIONS, ['view', 'edit']);
         PermissionMatrix::forget();
 
         Livewire::actingAs($finance)
@@ -166,7 +169,7 @@ class StockOpnamePanelTest extends TestCase
         );
 
         $finance = User::factory()->role(Role::FINANCE)->create();
-        PermissionMatrix::set(Role::FINANCE, PanelModule::STOCK_OPNAME, ['view']);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::STOCK_OPNAME_ACTIONS, ['view']);
         PermissionMatrix::forget();
 
         Livewire::actingAs($finance)
@@ -183,7 +186,7 @@ class StockOpnamePanelTest extends TestCase
             locationType: StockLedgerService::KITCHEN,
             locationId: $this->kitchen->id,
             productId: $this->coffee->id,
-            movementType: \App\Enums\MovementType::PRODUCTION_IN,
+            movementType: MovementType::PRODUCTION_IN,
             qty: 50,
             actorId: $this->admin->id,
             kitchenId: $this->kitchen->id,

@@ -2,10 +2,12 @@
 
 namespace App\Filament\Pages;
 
+use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Models\Location;
 use App\Models\RiderLocationSetup;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use App\Services\Menu\MenuLabels;
 use App\Services\RiderLocationSetupService;
 use BackedEnum;
@@ -46,7 +48,7 @@ class SetupLokasiRider extends Page implements HasTable
 
     public static function canAccess(): bool
     {
-        return Auth::user()?->role->grants(Role::FINANCE) ?? false;
+        return PermissionMatrix::can(Auth::user(), PanelModule::RIDER_LOCATION_SETUP, 'view');
     }
 
     public function table(Table $table): Table
@@ -80,7 +82,7 @@ class SetupLokasiRider extends Page implements HasTable
             ])
             ->recordActions([
                 Action::make('setup')->label('Atur setup')
-                    ->visible(fn (): bool => Auth::user()?->role->grants(Role::MANAGEMENT) ?? false)
+                    ->visible(fn (): bool => PermissionMatrix::can(Auth::user(), PanelModule::RIDER_LOCATION_SETUP, 'edit'))
                     ->fillForm(fn (User $record): array => [
                         'location_id' => $this->active($record)?->location_id,
                         'basis' => $this->active($record)?->basis ?? 'kitchen',
@@ -94,7 +96,7 @@ class SetupLokasiRider extends Page implements HasTable
                             ->required(),
                     ])
                     ->action(function (User $record, array $data): void {
-                        abort_unless(Auth::user()?->role->grants(Role::MANAGEMENT) ?? false, 403);
+                        abort_unless(PermissionMatrix::can(Auth::user(), PanelModule::RIDER_LOCATION_SETUP, 'edit'), 403);
                         try {
                             app(RiderLocationSetupService::class)->save(Auth::user(), $record,
                                 $data['location_id'] ? (int) $data['location_id'] : null, $data['basis']);

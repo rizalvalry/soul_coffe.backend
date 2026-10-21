@@ -105,23 +105,16 @@ class EmployeePrivacyTest extends TestCase
         $this->assertFalse(UserResource::canDeleteAny());
     }
 
-    public function test_management_can_provision_and_edit_management_users(): void
+    public function test_management_can_edit_users_without_assigning_new_account_access(): void
     {
         PermissionMatrix::set(Role::MANAGEMENT, PanelModule::USERS, ['view', 'create', 'edit']);
         $actor = User::factory()->role(Role::MANAGEMENT)->create();
+        $created = User::factory()->role(Role::MANAGEMENT)->create();
         $this->actingAs($actor);
 
-        Livewire::test(CreateUser::class)
-            ->fillForm([
-                'name' => 'Management Uji Baru',
-                'phone_e164' => '081298760098',
-                'role' => Role::MANAGEMENT->value,
-                'password' => 'rahasia123',
-            ])
-            ->call('create')
-            ->assertHasNoFormErrors();
-        $created = User::query()->where('phone_e164', '081298760098')->firstOrFail();
-        $this->assertSame(Role::MANAGEMENT, $created->role);
+        $this->assertFalse(UserResource::canCreate());
+        $this->get(CreateUser::getUrl())->assertForbidden();
+        Livewire::test(CreateUser::class)->assertForbidden();
 
         Livewire::test(EditUser::class, ['record' => $created->id])
             ->fillForm(['name' => 'Management Uji Diubah'])
@@ -251,10 +244,12 @@ class EmployeePrivacyTest extends TestCase
         $this->assertSame('Bank Admin', $employee->fresh()->bank_name);
         $employee->refresh()->update(['bank_name' => 'Bank Uji']);
 
+        PermissionMatrix::set(Role::FINANCE, PanelModule::PAYROLL, []);
         foreach ([Role::FINANCE, Role::BARISTA, Role::RIDER, Role::STAFF, Role::CONTENT_CREATOR] as $role) {
             PermissionMatrix::set($role, PanelModule::USERS, ['view', 'edit']);
             $viewer = User::factory()->role($role)->create();
             $this->actingAs($viewer);
+            $this->assertFalse(PermissionMatrix::can($viewer, PanelModule::PAYROLL, 'edit'), $role->value);
 
             $this->get(ListUsers::getUrl())->assertSuccessful()
                 ->assertSee('****0001')->assertSee('****4567')

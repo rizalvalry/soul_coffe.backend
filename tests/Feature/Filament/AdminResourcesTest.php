@@ -152,6 +152,7 @@ class AdminResourcesTest extends TestCase
     {
         $cart = Cart::query()->firstOrFail();
         $finance = User::factory()->role(Role::FINANCE)->create();
+        PermissionMatrix::set(Role::FINANCE, PanelModule::CARTS, []);
         $this->actingAs($finance);
 
         $this->assertFalse(StaffAssignmentsRelationManager::canViewForRecord($cart, ViewCart::class));

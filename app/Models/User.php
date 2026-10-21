@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\Role;
 use App\Services\Access\PermissionMatrix;
+use App\Services\EventPublisher;
 use Database\Factories\UserFactory;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Models\Contracts\HasName;
@@ -14,6 +15,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable implements FilamentUser, HasName
@@ -91,6 +93,7 @@ class User extends Authenticatable implements FilamentUser, HasName
             'password' => 'hashed',
             'role' => Role::class,
             'is_active' => 'boolean',
+            'is_super_admin' => 'boolean',
             'roster_onboarding' => 'boolean',
             'login_pin_locked_until' => 'datetime',
             'monthly_libur_quota' => 'integer',
@@ -105,7 +108,54 @@ class User extends Authenticatable implements FilamentUser, HasName
     protected static function booted(): void
     {
         static::created(fn (self $user) => $user->auditSensitiveChanges(true));
-        static::updated(fn (self $user) => $user->auditSensitiveChanges(false));
+        static::saving(function (self $user): void {
+            if ($user->is_super_admin && $user->role !== Role::ADMINISTRATOR) {
+                throw ValidationException::withMessages(['role' => 'Super Administrator harus punya role Administrator.']);
+            }
+
+            $wasSuper = (bool) $user->getRawOriginal('is_super_admin');
+            $actor = Auth::user();
+            if ($user->exists && $user->isDirty('role') && $actor !== null
+                && ! PermissionMatrix::canManagePermissions($actor)) {
+                abort(403);
+            }
+            if ($user->exists && ($wasSuper || $user->isDirty('is_super_admin')) && $actor !== null
+                && ! $actor->is_super_admin) {
+                abort(403);
+            }
+
+            if ($user->exists && $wasSuper && ($user->isDirty('is_super_admin') || $user->isDirty('is_active'))
+                && (! $user->is_super_admin || ! $user->is_active)
+                && self::query()->where('role', Role::ADMINISTRATOR->value)
+                    ->where('is_super_admin', true)->where('is_active', true)->count() <= 1) {
+                throw ValidationException::withMessages(['is_super_admin' => 'Super Administrator terakhir harus tetap aktif ya.']);
+            }
+        });
+        static::updated(function (self $user): void {
+            $user->auditSensitiveChanges(false);
+            if ($user->wasChanged('role') || $user->wasChanged('is_active') || $user->wasChanged('is_super_admin')) {
+                app(EventPublisher::class)->publish('AccessChanged', 'Hak akses diperbarui',
+                    'Menu kamu sudah diperbarui ya.', ['user.'.$user->id]);
+            }
+            if (! $user->wasChanged('is_super_admin') && ! ($user->wasChanged('is_active')
+                && ((bool) $user->getRawOriginal('is_super_admin') || $user->is_super_admin))) {
+                return;
+            }
+            $actor = Auth::user();
+            AuditLog::query()->create([
+                'actor_id' => $actor?->id,
+                'actor_role' => $actor?->role?->value ?? 'SYSTEM',
+                'action' => 'super_admin.status_changed',
+                'subject_type' => self::class,
+                'subject_id' => $user->id,
+                'before_json' => [
+                    'is_super_admin' => (bool) $user->getRawOriginal('is_super_admin'),
+                    'is_active' => (bool) $user->getRawOriginal('is_active'),
+                ],
+                'after_json' => ['is_super_admin' => $user->is_super_admin, 'is_active' => $user->is_active],
+                'ip' => request()?->ip(),
+            ]);
+        });
     }
 
     public static function maskSensitiveValue(?string $value): ?string
@@ -166,7 +216,7 @@ class User extends Authenticatable implements FilamentUser, HasName
 
         // ADMINISTRATOR runs the panel; CONTENT_CREATOR is let in for the news feed alone, which
         // is hardcoded rather than matrix-driven (see NewsPostResource).
-        if (in_array($this->role, [Role::ADMINISTRATOR, Role::CONTENT_CREATOR], true)) {
+        if ($this->is_super_admin) {
             return true;
         }
 
@@ -178,7 +228,7 @@ class User extends Authenticatable implements FilamentUser, HasName
         // Panel access is still not the authorisation. Each resource re-checks the matrix in its
         // own `canViewAny()`, so being through the door never implies sight of a refill, a price,
         // or a settlement.
-        return PermissionMatrix::hasAnyModule($this->role);
+        return PermissionMatrix::hasAnyAccess($this);
     }
 
     public function getFilamentName(): string
@@ -197,6 +247,11 @@ class User extends Authenticatable implements FilamentUser, HasName
     public function staffAssignments(): HasMany
     {
         return $this->hasMany(StaffAssignment::class, 'user_id');
+    }
+
+    public function permissions(): HasMany
+    {
+        return $this->hasMany(UserPermission::class);
     }
 
     public function locationSetups(): HasMany

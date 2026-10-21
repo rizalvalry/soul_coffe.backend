@@ -81,7 +81,7 @@ class CentralStock extends Page
             Action::make('stockAdjustment')
                 ->label('Penyesuaian Stok')
                 ->icon('heroicon-o-pencil-square')
-                ->visible(fn (): bool => PermissionMatrix::can(Auth::user(), static::panelModule(), 'edit'))
+                ->visible(fn (): bool => PermissionMatrix::can(Auth::user(), PanelModule::STOCK_ADJUSTMENTS, 'edit'))
                 ->modalHeading('Penyesuaian Stok')
                 ->modalDescription('Memposting koreksi ke buku besar stok. Bukan mengubah angka pada tabel — selisih dihitung dari stok sistem saat ini.')
                 ->modalSubmitActionLabel('Posting Penyesuaian')

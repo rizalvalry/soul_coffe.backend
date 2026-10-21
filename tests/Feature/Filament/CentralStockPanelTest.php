@@ -68,9 +68,10 @@ class CentralStockPanelTest extends TestCase
 
     // ── Modul tidak lagi read-only ───────────────────────────────────────
 
-    public function test_the_module_is_no_longer_read_only(): void
+    public function test_listing_is_read_only_and_adjustments_have_a_separate_permission(): void
     {
-        $this->assertFalse(PanelModule::CENTRAL_STOCK->isReadOnly());
+        $this->assertTrue(PanelModule::CENTRAL_STOCK->isReadOnly());
+        $this->assertFalse(PanelModule::STOCK_ADJUSTMENTS->isReadOnly());
     }
 
     // ── Akses halaman ────────────────────────────────────────────────────
@@ -88,6 +89,7 @@ class CentralStockPanelTest extends TestCase
     public function test_a_role_without_the_view_ability_is_refused(): void
     {
         $finance = User::factory()->role(Role::FINANCE)->create();
+        PermissionMatrix::set(Role::FINANCE, PanelModule::CENTRAL_STOCK, []);
 
         $this->actingAs($finance)->get(CentralStock::getUrl())->assertForbidden();
     }
@@ -98,7 +100,7 @@ class CentralStockPanelTest extends TestCase
     {
         $finance = User::factory()->role(Role::FINANCE)->create();
 
-        PermissionMatrix::set(Role::FINANCE, PanelModule::CENTRAL_STOCK, ['view']);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::STOCK_ADJUSTMENTS, ['view']);
         PermissionMatrix::forget();
 
         Livewire::actingAs($finance)
@@ -110,7 +112,7 @@ class CentralStockPanelTest extends TestCase
     {
         $finance = User::factory()->role(Role::FINANCE)->create();
 
-        PermissionMatrix::set(Role::FINANCE, PanelModule::CENTRAL_STOCK, ['view', 'edit']);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::STOCK_ADJUSTMENTS, ['view', 'edit']);
         PermissionMatrix::forget();
 
         Livewire::actingAs($finance)

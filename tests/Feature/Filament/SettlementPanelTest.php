@@ -125,6 +125,7 @@ class SettlementPanelTest extends TestCase
     public function test_finance_reads_it_through_the_matrix_and_a_rider_does_not(): void
     {
         $finance = User::factory()->role(Role::FINANCE)->create();
+        PermissionMatrix::set(Role::FINANCE, PanelModule::SETTLEMENTS, []);
 
         $this->actingAs($finance)->get(SettlementResource::getUrl())->assertForbidden();
 
@@ -137,13 +138,14 @@ class SettlementPanelTest extends TestCase
         $this->actingAs($rider)->get(SettlementResource::getUrl())->assertForbidden();
     }
 
-    public function test_management_inherits_finance_access_to_the_settlement_resource(): void
+    public function test_management_access_is_independent_of_finance_template(): void
     {
         $management = User::factory()->role(Role::MANAGEMENT)->create();
+        PermissionMatrix::set(Role::MANAGEMENT, PanelModule::SETTLEMENTS, []);
 
         $this->actingAs($management)->get(SettlementResource::getUrl())->assertForbidden();
 
-        PermissionMatrix::set(Role::FINANCE, PanelModule::SETTLEMENTS, ['view']);
+        PermissionMatrix::set(Role::MANAGEMENT, PanelModule::SETTLEMENTS, ['view']);
 
         $this->actingAs($management)
             ->get(SettlementResource::getUrl())
@@ -152,7 +154,7 @@ class SettlementPanelTest extends TestCase
 
         PermissionMatrix::set(Role::FINANCE, PanelModule::SETTLEMENTS, []);
 
-        $this->actingAs($management)->get(SettlementResource::getUrl())->assertForbidden();
+        $this->actingAs($management)->get(SettlementResource::getUrl())->assertSuccessful();
     }
 
     public function test_the_module_exposes_record_and_approve_permissions(): void

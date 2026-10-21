@@ -2,10 +2,11 @@
 
 namespace App\Http\Resources;
 
+use App\Enums\PanelModule;
 use App\Enums\RefillStatus;
-use App\Enums\Role;
 use App\Models\RefillRequest;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Storage;
@@ -33,7 +34,7 @@ class RefillRequestResource extends JsonResource
     public function toArray(Request $request): array
     {
         $viewer = $request->user();
-        $canSeeCost = $viewer && $viewer->role->grants(Role::FINANCE);
+        $canSeeCost = PermissionMatrix::can($viewer, PanelModule::INVENTORY_COSTS, 'view');
 
         $data = [
             'id' => $this->id,

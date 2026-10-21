@@ -108,11 +108,12 @@ class RiderLocationSetupTest extends TestCase
             $this->actingAs($reader)->get(SetupLokasiRider::getUrl())
                 ->assertOk()->assertSee('Setup Lokasi Rider');
         }
-        foreach ([$this->barista, $this->rider] as $blocked) {
+        foreach ([$this->rider] as $blocked) {
             $this->actingAs($blocked)->get(SetupLokasiRider::getUrl())->assertForbidden();
         }
+        $this->actingAs($this->barista)->get(SetupLokasiRider::getUrl())->assertOk();
         Livewire::actingAs($this->finance)->test(SetupLokasiRider::class)
-            ->assertTableActionHidden('setup', $this->rider);
+            ->assertTableActionVisible('setup', $this->rider);
         Livewire::actingAs($this->management)->test(SetupLokasiRider::class)
             ->assertTableActionVisible('setup', $this->rider)
             ->callTableAction('setup', $this->rider, [
@@ -135,7 +136,7 @@ class RiderLocationSetupTest extends TestCase
             $this->actingAs($reader, 'sanctum')->getJson('/api/v1/rider-location-setups')->assertOk()
                 ->assertJsonPath('data.0.id', $this->rider->id);
         }
-        foreach ([$this->barista, $this->finance,
+        foreach ([$this->barista,
             $this->rider, User::factory()->role(Role::RIDER)->create(),
             User::factory()->role(Role::CONTENT_CREATOR)->create()] as $blocked) {
             $this->writeAs($blocked, $this->point->id, 'selling_location')->assertForbidden();
@@ -254,7 +255,7 @@ class RiderLocationSetupTest extends TestCase
         $this->assertSame($this->point->id, $assignment->location_id);
         $this->assertTrue(AppNotification::query()->where('type', 'RiderLocationSetupMissing')
             ->where('user_id', $this->management->id)->exists());
-        $this->assertFalse(AppNotification::query()->where('type', 'RiderLocationSetupMissing')
+        $this->assertTrue(AppNotification::query()->where('type', 'RiderLocationSetupMissing')
             ->where('user_id', $this->admin->id)->exists());
     }
 
@@ -397,6 +398,7 @@ class RiderLocationSetupTest extends TestCase
             $this->get(ViewAuditLog::getUrl(['record' => $closingAudit]))->assertSuccessful()
                 ->assertSee('outside_closing_point')->assertSee('closing_distance_m');
         }
+        PermissionMatrix::set(Role::MANAGEMENT, PanelModule::CLOSING_LOCATION_EVIDENCE, []);
         $this->actingAs($this->management);
         $this->assertArrayNotHasKey('outside_closing_point', $closingAudit->displayChanges('after'));
         $this->assertArrayNotHasKey('closing_distance_m', $closingAudit->displayChanges('after'));

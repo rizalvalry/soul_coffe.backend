@@ -56,10 +56,11 @@ class RefillFlowTest extends TestCase
         $refill = $this->submitRefill();
         $original = OutboxEvent::query()->where('name', 'RefillRequestSubmitted')->sole();
 
-        $this->assertContains('role.ADMINISTRATOR', $original->payload_json['channels']);
+        $this->assertContains('user.'.$this->admin->id, $original->payload_json['channels']);
+        $this->assertNotContains('role.ADMINISTRATOR', $original->payload_json['channels']);
         $this->assertSame($refill->id, $original->payload_json['refill_request_id']);
         $this->assertFalse(OutboxEvent::query()->where('name', 'AdministratorDataChanged')->exists());
-        $this->assertFalse(AppNotification::query()->where('event_id', $original->event_id)
+        $this->assertTrue(AppNotification::query()->where('event_id', $original->event_id)
             ->where('user_id', $this->admin->id)->exists());
     }
 

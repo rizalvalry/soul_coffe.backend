@@ -39,7 +39,7 @@ class SettlementController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('role:FINANCE,MANAGEMENT,ADMINISTRATOR'),
+            new Middleware('permission:settlements,view'),
         ];
     }
 

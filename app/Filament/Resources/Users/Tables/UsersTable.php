@@ -2,8 +2,10 @@
 
 namespace App\Filament\Resources\Users\Tables;
 
+use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use Filament\Actions\EditAction;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
@@ -29,10 +31,10 @@ class UsersTable
                     ->sortable(),
                 TextColumn::make('national_id')
                     ->label('No. KTP')
-                    ->formatStateUsing(fn (?string $state): ?string => (Auth::user()?->role->grants(Role::MANAGEMENT) ?? false) ? $state : User::maskSensitiveValue($state)),
+                    ->formatStateUsing(fn (?string $state): ?string => PermissionMatrix::can(Auth::user(), PanelModule::PAYROLL, 'edit') ? $state : User::maskSensitiveValue($state)),
                 TextColumn::make('bank_account_number')
                     ->label('No. Rekening')
-                    ->formatStateUsing(fn (?string $state): ?string => (Auth::user()?->role->grants(Role::MANAGEMENT) ?? false) ? $state : User::maskSensitiveValue($state)),
+                    ->formatStateUsing(fn (?string $state): ?string => PermissionMatrix::can(Auth::user(), PanelModule::PAYROLL, 'edit') ? $state : User::maskSensitiveValue($state)),
                 TextColumn::make('phone_e164')
                     ->label('Nomor HP')
                     ->searchable()
@@ -40,7 +42,7 @@ class UsersTable
                 TextColumn::make('role')
                     ->label('Role')
                     ->badge()
-                    ->formatStateUsing(fn (Role $state): string => $state->label())
+                    ->formatStateUsing(fn (Role $state, User $record): string => $record->is_super_admin ? 'Super Administrator' : $state->label())
                     ->sortable(),
                 TextColumn::make('kitchen.name')
                     ->label('Dapur')

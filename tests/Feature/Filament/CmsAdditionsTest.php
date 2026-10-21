@@ -64,6 +64,7 @@ class CmsAdditionsTest extends TestCase
     public function test_central_stock_can_be_granted_to_another_role(): void
     {
         $finance = User::factory()->role(Role::FINANCE)->create();
+        PermissionMatrix::set(Role::FINANCE, PanelModule::CENTRAL_STOCK, []);
         $this->actingAs($finance);
 
         $this->assertFalse(CentralStock::canAccess());
@@ -104,9 +105,7 @@ class CmsAdditionsTest extends TestCase
 
     public function test_the_full_profile_saves_when_it_is_filled_in(): void
     {
-        $management = User::factory()->role(Role::MANAGEMENT)->create();
-        PermissionMatrix::set(Role::MANAGEMENT, PanelModule::USERS, ['view', 'create', 'edit']);
-        $this->actingAs($management);
+        $this->actingAs($this->admin);
 
         Livewire::test(CreateUser::class)
             ->fillForm([
@@ -289,6 +288,8 @@ class CmsAdditionsTest extends TestCase
         $finance = User::factory()->role(Role::FINANCE)->create();
         $this->actingAs($finance);
 
+        PermissionMatrix::set(Role::FINANCE, PanelModule::AI_SETTINGS, []);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::DASHBOARD, []);
         $this->assertFalse(ManageAiSettings::canAccess());
         $this->assertFalse(OperationsOverviewWidget::canView());
 

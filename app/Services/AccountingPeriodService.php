@@ -2,10 +2,11 @@
 
 namespace App\Services;
 
-use App\Enums\Role;
+use App\Enums\PanelModule;
 use App\Models\AccountingPeriod;
 use App\Models\AuditLog;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -115,7 +116,7 @@ class AccountingPeriodService
             ]);
 
             if ($status === 'OPEN') {
-                $recipients = User::query()->where('role', Role::MANAGEMENT)->where('is_active', true)->pluck('id')->all();
+                $recipients = PermissionMatrix::usersWith(PanelModule::ACCOUNTING_PERIODS, 'edit');
                 app(EventPublisher::class)->publish(
                     'AccountingPeriodReopened', 'Periode akuntansi dibuka lagi',
                     sprintf('Periode %04d-%02d dibuka lagi. Alasan: %s', $year, $month, $reason),

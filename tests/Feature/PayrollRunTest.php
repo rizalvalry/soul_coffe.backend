@@ -87,6 +87,15 @@ class PayrollRunTest extends TestCase
         $this->rates();
     }
 
+    public function test_view_only_prior_withholding_account_cannot_save(): void
+    {
+        $viewer = User::factory()->role(Role::BARISTA)->create();
+        PermissionMatrix::set(Role::BARISTA, PanelModule::PAYROLL_PRIOR_WITHHOLDING, ['view']);
+        $this->actingAs($viewer)->get(PayrollPriorWithholding::getUrl())->assertOk();
+        Livewire::test(PayrollPriorWithholding::class)->call('save')->assertForbidden();
+        $this->assertSame(0, PayrollPriorWithholdingRecord::query()->count());
+    }
+
     private function rates(bool $verified = true): void
     {
         DB::table('payroll_settings')->insert([
@@ -503,6 +512,7 @@ class PayrollRunTest extends TestCase
 
     public function test_excel_name_is_text_and_cms_export_requires_management(): void
     {
+        PermissionMatrix::set(Role::FINANCE, PanelModule::PAYROLL, []);
         $this->employee->update(['name' => '=1+1']);
         $run = app(PayrollRunService::class)->create('2026-10', $this->manager);
         $bytes = Excel::raw(new PayrollRunExport($run), ExcelFormat::XLSX);
@@ -701,6 +711,7 @@ class PayrollRunTest extends TestCase
 
     public function test_payment_must_be_cancelled_before_run_and_wrong_role_gets_403(): void
     {
+        PermissionMatrix::set(Role::FINANCE, PanelModule::PAYROLL, []);
         $service = app(PayrollRunService::class);
         $run = $service->create('2026-10', $this->manager);
         $service->approve($run, $this->manager);
@@ -760,6 +771,7 @@ class PayrollRunTest extends TestCase
         $this->assertSame('payroll_run_accrual_retry', $second->source_type);
         $this->assertSame($first->reversal->id, $second->source_id);
         $this->assertSame(2, JournalEntry::query()->where('purpose', 'PAYROLL_ACCRUAL')->count());
+        PermissionMatrix::set(Role::FINANCE, PanelModule::PAYROLL, []);
         $this->actingAs(User::factory()->role(Role::FINANCE)->create());
         $this->assertArrayNotHasKey('approved_items', $archive->displayChanges('before'));
         $this->actingAs($this->manager);
@@ -884,6 +896,7 @@ class PayrollRunTest extends TestCase
         $this->assertFalse($reversal->lines()->where('memo', 'like', '%rahasia%')->exists());
         $audit = AuditLog::query()->where('action', 'payroll_run_cancelled')->firstOrFail();
         $this->assertSame($reason, $audit->displayChanges('after')['reason']);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::PAYROLL, []);
         $this->actingAs(User::factory()->role(Role::FINANCE)->create());
         $this->assertArrayNotHasKey('reason', $audit->displayChanges('after'));
         $this->assertStringNotContainsString($reason, json_encode($audit->after_json));
@@ -1046,6 +1059,7 @@ class PayrollRunTest extends TestCase
 
     public function test_other_roles_get_403_for_configuration_verification_runs_and_cross_employee_slips(): void
     {
+        PermissionMatrix::set(Role::FINANCE, PanelModule::PAYROLL, []);
         $run = app(PayrollRunService::class)->create('2026-10', $this->manager);
         $item = $run->items()->firstOrFail();
         $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create());
@@ -1074,6 +1088,7 @@ class PayrollRunTest extends TestCase
 
     public function test_finance_gets_403_on_payroll_write_actions(): void
     {
+        PermissionMatrix::set(Role::FINANCE, PanelModule::PAYROLL, []);
         $run = app(PayrollRunService::class)->create('2026-10', $this->manager);
         $page = Livewire::test(PayrollRuns::class)->set('selectedRunId', $run->id);
         $this->actingAs(User::factory()->role(Role::FINANCE)->create());

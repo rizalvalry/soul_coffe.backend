@@ -2,11 +2,13 @@
 
 namespace App\Services;
 
+use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Models\AuditLog;
 use App\Models\Location;
 use App\Models\RiderLocationSetup;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -39,7 +41,7 @@ class RiderLocationSetupService
 
     public function save(User $actor, User $rider, ?int $locationId, string $basis, ?string $idempotencyKey = null): RiderLocationSetup
     {
-        if (! $actor->role->grants(Role::MANAGEMENT) || ! $actor->is_active) {
+        if (! PermissionMatrix::can($actor, PanelModule::RIDER_LOCATION_SETUP, 'edit')) {
             abort(403);
         }
         if ($rider->role !== Role::STAFF || ! $rider->is_active) {

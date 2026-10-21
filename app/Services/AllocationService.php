@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\AllocationStatus;
 use App\Enums\MovementType;
+use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Models\AuditLog;
 use App\Models\Cart;
@@ -14,6 +15,7 @@ use App\Models\Location;
 use App\Models\Product;
 use App\Models\StaffAssignment;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -267,20 +269,18 @@ class AllocationService
                     notifyUserIds: [$allocation->staff_id],
                 );
             } else {
-                $escalationRecipients = User::query()
-                    ->whereIn('role', [Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR])
-                    ->pluck('id')
-                    ->all();
+                $escalationRecipients = PermissionMatrix::usersWith(PanelModule::ALLOCATIONS, 'edit');
 
                 $this->events->publish(
                     type: 'AllocationOverTarget',
                     title: 'Alokasi melebihi target',
                     body: sprintf(
-                        'Coffee Bike %s alokasi %d%% di atas target — menunggu approval Finance.',
+                        'Coffee Bike %s alokasi %d%% di atas target — menunggu approval tim yang pegang akses.',
                         $cart->code,
                         $overTargetPct,
                     ),
-                    channels: ['role.FINANCE', 'role.MANAGEMENT', 'role.ADMINISTRATOR', "kitchen.{$kitchenId}"],
+                    channels: [...array_map(fn (int $id): string => "user.{$id}", $escalationRecipients),
+                        "kitchen.{$kitchenId}"],
                     notifyUserIds: $escalationRecipients,
                 );
             }

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\IncidentStatus;
 use App\Enums\MovementType;
+use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Models\AppNotification;
 use App\Models\Cart;
@@ -17,6 +18,7 @@ use App\Models\RefillRequest;
 use App\Models\StaffAssignment;
 use App\Models\StockLedger;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use App\Services\AttendanceService;
 use App\Services\StockLedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -270,9 +272,12 @@ class DeliveryIncidentTest extends TestCase
         $this->assertSame(1, DeliveryIncident::query()->count());
     }
 
-    public function test_the_report_reaches_supervisors_the_kitchen_and_the_waiting_staff_only(): void
+    public function test_the_report_reaches_decision_holders_the_kitchen_and_the_waiting_staff_only(): void
     {
         $otherStaff = User::factory()->role(Role::STAFF)->create();
+        $holder = User::factory()->role(Role::CONTENT_CREATOR)->create();
+        PermissionMatrix::setForUser($this->admin, $this->finance, PanelModule::DELIVERY_INCIDENT_DECISIONS, []);
+        PermissionMatrix::setForUser($this->admin, $holder, PanelModule::DELIVERY_INCIDENT_DECISIONS, ['view', 'edit']);
         $refill = $this->pickedUpRefill(10);
 
         $this->report($refill, 3)->assertCreated();
@@ -283,7 +288,8 @@ class DeliveryIncidentTest extends TestCase
             ->all();
 
         $this->assertContains($this->admin->id, $notified);
-        $this->assertContains($this->finance->id, $notified);
+        $this->assertNotContains($this->finance->id, $notified);
+        $this->assertContains($holder->id, $notified);
         $this->assertContains($this->barista->id, $notified);
         $this->assertContains($this->rider->id, $notified);
         // The staff member waiting for this delivery is told — it is their cups.

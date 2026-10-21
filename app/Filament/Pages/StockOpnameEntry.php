@@ -74,7 +74,7 @@ class StockOpnameEntry extends Page
 
     public static function canAccess(): bool
     {
-        return PermissionMatrix::can(Auth::user(), PanelModule::STOCK_OPNAME, 'create');
+        return PermissionMatrix::can(Auth::user(), PanelModule::STOCK_OPNAME_ACTIONS, 'edit');
     }
 
     /** @return array<int, array{value: int, label: string}> */

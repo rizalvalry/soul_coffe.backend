@@ -2,12 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Events\SoulEvent;
 use App\Jobs\PublishOutboxEvent;
 use App\Models\AppNotification;
 use App\Models\OutboxEvent;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use App\Services\EventPublisher;
 use App\Services\Push\PushNotifier;
 use Illuminate\Contracts\Broadcasting\Broadcaster;
@@ -49,6 +51,25 @@ class BroadcastDeliveryTest extends TestCase
             ["user.{$this->staff->id}", 'role.BARISTA'],
             [$this->staff->id],
         );
+    }
+
+    public function test_actionable_events_reach_only_current_permission_holders(): void
+    {
+        $finance = User::factory()->role(Role::FINANCE)->create();
+        $other = User::factory()->role(Role::FINANCE)->create();
+        $super = User::factory()->role(Role::ADMINISTRATOR)->create(['is_super_admin' => true]);
+        PermissionMatrix::setForUser($super, $finance, PanelModule::SETTLEMENTS, []);
+
+        foreach (['SettlementExpectedStale', 'CartCloseOutVarianceFlagged'] as $type) {
+            $id = app(EventPublisher::class)->publish($type, 'Perlu dicek', 'Ada selisih',
+                ['role.FINANCE', 'role.MANAGEMENT']);
+            $channels = OutboxEvent::query()->where('event_id', $id)->sole()->payload_json['channels'];
+            $this->assertContains('user.'.$other->id, $channels);
+            $this->assertContains('user.'.$super->id, $channels);
+            $this->assertNotContains('user.'.$finance->id, $channels);
+            $this->assertNotContains('role.FINANCE', $channels);
+            $this->assertNotContains('role.MANAGEMENT', $channels);
+        }
     }
 
     /**
@@ -204,8 +225,10 @@ class BroadcastDeliveryTest extends TestCase
             $eventId = app(EventPublisher::class)->publish(
                 'SettlementRecorded', 'Setoran dicatat', 'Setoran baru', $channels, [$this->staff->id],
             );
-            $expected = in_array('role.ADMINISTRATOR', $channels, true)
-                ? $channels : [...$channels, 'role.ADMINISTRATOR'];
+            $expected = [...$channels, 'user.'.$admin->id];
+            if (! in_array('role.ADMINISTRATOR', $channels, true)) {
+                $expected[] = 'role.ADMINISTRATOR';
+            }
             $row = OutboxEvent::query()->where('event_id', $eventId)->sole();
 
             $this->assertSame($index + 1, OutboxEvent::query()->count());

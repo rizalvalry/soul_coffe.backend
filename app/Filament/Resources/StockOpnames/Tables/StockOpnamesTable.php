@@ -139,6 +139,6 @@ class StockOpnamesTable
 
     private static function mayOperate(): bool
     {
-        return PermissionMatrix::can(Auth::user(), PanelModule::STOCK_OPNAME, 'edit');
+        return PermissionMatrix::can(Auth::user(), PanelModule::STOCK_OPNAME_ACTIONS, 'edit');
     }
 }

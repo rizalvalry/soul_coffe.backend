@@ -73,10 +73,10 @@ class PinResetRequestPanelTest extends TestCase
         $this->assertNull(PinResetRequestResource::getNavigationBadge());
     }
 
-    public function test_a_non_administrator_gets_no_badge_and_no_access(): void
+    public function test_a_role_without_the_module_gets_no_badge_and_no_access(): void
     {
-        $finance = User::factory()->role(Role::FINANCE)->create();
-        $this->actingAs($finance);
+        $rider = User::factory()->role(Role::STAFF)->create();
+        $this->actingAs($rider);
 
         $this->assertNull(PinResetRequestResource::getNavigationBadge());
         $this->assertFalse(PinResetRequestResource::canViewAny());

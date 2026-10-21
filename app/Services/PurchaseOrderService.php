@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Enums\MovementType;
 use App\Enums\PanelModule;
 use App\Enums\PurchaseOrderStatus;
-use App\Enums\Role;
 use App\Models\Account;
 use App\Models\AuditLog;
 use App\Models\CashAccount;
@@ -358,7 +357,7 @@ class PurchaseOrderService
 
     private function assertMayOperate(User $actor): void
     {
-        if (! $actor->role->grants(Role::FINANCE)) {
+        if (! PermissionMatrix::can($actor, PanelModule::PURCHASE_ORDER_ACTIONS, 'edit')) {
             abort(403);
         }
     }

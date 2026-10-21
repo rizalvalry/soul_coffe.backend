@@ -2,10 +2,12 @@
 
 namespace Tests\Feature\Filament;
 
+use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Filament\Pages\ManageAiSettings;
 use App\Models\AiSetting;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
@@ -69,6 +71,15 @@ class ManageAiSettingsTest extends TestCase
         $setting = AiSetting::current();
         $this->assertSame('test-gemini-key', $setting->gemini_api_key);
         $this->assertSame('gemini-1.5-pro', $setting->gemini_model);
+    }
+
+    public function test_view_only_account_cannot_submit_ai_settings(): void
+    {
+        $user = $this->makeUser(Role::BARISTA);
+        PermissionMatrix::set(Role::BARISTA, PanelModule::AI_SETTINGS, ['view']);
+        $this->actingAs($user)->get(ManageAiSettings::getUrl())->assertOk();
+        Livewire::test(ManageAiSettings::class)->call('save')->assertForbidden();
+        $this->assertNull(AiSetting::current()->gemini_api_key);
     }
 
     /**

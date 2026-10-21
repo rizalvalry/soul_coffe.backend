@@ -1,9 +1,10 @@
 <?php
 
-use App\Enums\Role;
+use App\Enums\PanelModule;
 use App\Http\Controllers\NewsInlineImageController;
 use App\Models\CashTransaction;
 use App\Models\PayrollItem;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
@@ -20,7 +21,7 @@ Route::middleware(['web', 'auth'])
 
 Route::middleware('web')->get('/admin/cash-receipts/{transaction}', function (CashTransaction $transaction) {
     abort_unless(auth()->check(), 403);
-    abort_unless(auth()->user()?->is_active && auth()->user()?->role->grants(Role::FINANCE), 403);
+    abort_unless(PermissionMatrix::can(auth()->user(), PanelModule::CASH, 'view'), 403);
     abort_if($transaction->evidence_path === null
         || preg_match('~\Acash-evidence/[^/\\\\]+\z~D', $transaction->evidence_path) !== 1
         || str_contains($transaction->evidence_path, '..')

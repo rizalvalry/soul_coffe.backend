@@ -80,7 +80,9 @@ class ManagementReportsTest extends TestCase
 
         $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create())
             ->get(ManagementReports::getUrl())->assertOk();
-        foreach ([Role::FINANCE, Role::BARISTA, Role::RIDER, Role::STAFF, Role::CONTENT_CREATOR] as $role) {
+        $this->actingAs(User::factory()->role(Role::FINANCE)->create())
+            ->get(ManagementReports::getUrl())->assertOk();
+        foreach ([Role::BARISTA, Role::RIDER, Role::STAFF, Role::CONTENT_CREATOR] as $role) {
             $this->actingAs(User::factory()->role($role)->create())
                 ->get(ManagementReports::getUrl())->assertForbidden();
             $this->assertFalse(ManagementReports::canAccess());

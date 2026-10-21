@@ -2,8 +2,9 @@
 
 namespace App\Filament\Resources\Recipes\Tables;
 
-use App\Enums\Role;
+use App\Enums\PanelModule;
 use App\Models\Recipe;
+use App\Services\Access\PermissionMatrix;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
@@ -45,7 +46,7 @@ class RecipesTable
 
                 TextColumn::make('computed_cost_minor')
                     ->label('HPP Terhitung')
-                    ->visible(fn (): bool => Auth::user()?->role->grants(Role::FINANCE) ?? false)
+                    ->visible(fn (): bool => PermissionMatrix::can(Auth::user(), PanelModule::INVENTORY_COSTS, 'view'))
                     ->money('IDR', 0)
                     ->placeholder('belum diketahui'),
 

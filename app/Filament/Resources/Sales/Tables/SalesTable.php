@@ -197,6 +197,6 @@ class SalesTable
      */
     private static function mayVoid(): bool
     {
-        return PermissionMatrix::can(Auth::user(), PanelModule::SALES, 'edit');
+        return PermissionMatrix::can(Auth::user(), PanelModule::SALE_CORRECTIONS, 'edit');
     }
 }

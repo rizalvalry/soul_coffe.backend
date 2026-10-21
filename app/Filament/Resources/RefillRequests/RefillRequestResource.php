@@ -2,11 +2,12 @@
 
 namespace App\Filament\Resources\RefillRequests;
 
+use App\Enums\PanelModule;
 use App\Enums\RefillStatus;
-use App\Enums\Role;
 use App\Filament\Resources\RefillRequests\Pages\ListRefillRequests;
 use App\Filament\Resources\RefillRequests\Tables\RefillRequestsTable;
 use App\Models\RefillRequest;
+use App\Services\Access\PermissionMatrix;
 use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Support\Icons\Heroicon;
@@ -31,7 +32,7 @@ class RefillRequestResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return Auth::user()?->role->grants(Role::FINANCE) ?? false;
+        return PermissionMatrix::can(Auth::user(), PanelModule::REFILL_APPROVAL, 'view');
     }
 
     public static function canCreate(): bool

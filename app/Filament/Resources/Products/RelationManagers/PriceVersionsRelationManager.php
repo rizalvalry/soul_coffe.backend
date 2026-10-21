@@ -3,7 +3,6 @@
 namespace App\Filament\Resources\Products\RelationManagers;
 
 use App\Enums\PanelModule;
-use App\Enums\Role;
 use App\Services\Access\PermissionMatrix;
 use Filament\Actions\CreateAction;
 use Filament\Forms\Components\DateTimePicker;
@@ -103,7 +102,7 @@ class PriceVersionsRelationManager extends RelationManager
 
     private static function canViewCost(): bool
     {
-        return Auth::user()?->role->grants(Role::FINANCE) ?? false;
+        return PermissionMatrix::can(Auth::user(), PanelModule::INVENTORY_COSTS, 'edit');
     }
 
     private static function canCreatePriceVersion(): bool

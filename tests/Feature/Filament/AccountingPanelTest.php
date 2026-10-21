@@ -30,6 +30,21 @@ class AccountingPanelTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_independent_accounting_write_permissions_are_enforced(): void
+    {
+        $user = User::factory()->role(Role::FINANCE)->create();
+        PermissionMatrix::setForUser(User::factory()->role(Role::ADMINISTRATOR)->create(['is_super_admin' => true]),
+            $user, PanelModule::OPENING_BALANCES, ['view']);
+        PermissionMatrix::setForUser(User::query()->where('is_super_admin', true)->firstOrFail(),
+            $user, PanelModule::CHART_OF_ACCOUNTS, ['view']);
+        $this->actingAs($user);
+
+        $this->get(OpeningBalances::getUrl())->assertOk();
+        Livewire::test(OpeningBalances::class)->call('submit')->assertForbidden();
+        $this->assertFalse(AccountResource::canCreate());
+        $this->get(AccountResource::getUrl('create'))->assertForbidden();
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -106,6 +121,10 @@ class AccountingPanelTest extends TestCase
 
     public function test_finance_can_read_chart_journal_and_ledger_but_cannot_manage_them(): void
     {
+        PermissionMatrix::set(Role::FINANCE, PanelModule::CHART_OF_ACCOUNTS, ['view']);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::JOURNALS, ['view']);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::ACCOUNTING_PERIODS, []);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::OPENING_BALANCES, []);
         $this->actingAs(User::factory()->role(Role::FINANCE)->create());
         $this->get(AccountResource::getUrl())->assertSuccessful();
         $this->get(JournalResource::getUrl())->assertSuccessful();

@@ -4,6 +4,7 @@ namespace Tests\Feature\Filament;
 
 use App\Enums\Role;
 use App\Filament\Auth\Login;
+use App\Filament\Pages\SetupLokasiRider;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -37,11 +38,15 @@ class AdminPanelAccessTest extends TestCase
         $this->actingAs($admin)->get('/admin')->assertSuccessful();
     }
 
-    public function test_every_non_administrator_role_is_refused(): void
+    public function test_panel_entry_follows_configured_backoffice_access(): void
     {
-        foreach ([Role::FINANCE, Role::BARISTA, Role::RIDER, Role::STAFF] as $role) {
-            $user = $this->makeUser($role);
+        $this->actingAs($this->makeUser(Role::FINANCE))->get('/admin')->assertSuccessful();
+        $this->flushSession();
+        $this->actingAs(User::factory()->role(Role::BARISTA)->create())->get(SetupLokasiRider::getUrl())->assertSuccessful();
 
+        foreach ([Role::RIDER, Role::STAFF] as $role) {
+            $this->flushSession();
+            $user = $this->makeUser($role);
             $this->actingAs($user)->get('/admin')->assertForbidden();
         }
     }

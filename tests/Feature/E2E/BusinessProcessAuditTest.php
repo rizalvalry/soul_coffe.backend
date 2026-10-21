@@ -464,9 +464,9 @@ class BusinessProcessAuditTest extends TestCase
             }
             $this->actingAs($user)->get(ProductResource::getUrl())->assertOk();
             $this->actingAs($user)->get(CreateProduct::getUrl())
-                ->assertStatus($role === Role::ADMINISTRATOR ? 200 : 403);
+                ->assertStatus(PermissionMatrix::can($user, PanelModule::PRODUCTS, 'create') ? 200 : 403);
             $this->actingAs($user)->get(UserResource::getUrl())
-                ->assertStatus($role === Role::ADMINISTRATOR ? 200 : 403);
+                ->assertStatus(PermissionMatrix::can($user, PanelModule::USERS, 'view') ? 200 : 403);
             $this->actingAs($user)->get(AccountResource::getUrl())
                 ->assertStatus(in_array($role, [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT], true) ? 200 : 403);
             $body = $this->actingAs($user, 'sanctum')->getJson('/api/v1/products')->assertOk()->getContent();
@@ -503,7 +503,7 @@ class BusinessProcessAuditTest extends TestCase
                 $this->assertFalse($auth->invoke($history->instance())->allowed());
             }
             $this->actingAs($user)->get(PayrollConfiguration::getUrl())
-                ->assertStatus($role->grants(Role::MANAGEMENT) ? 200 : 403);
+                ->assertStatus(PermissionMatrix::can($user, PanelModule::PAYROLL, 'edit') ? 200 : 403);
         }
         PermissionMatrix::set(Role::BARISTA, PanelModule::PURCHASE_ORDERS, ['view', 'edit']);
         Livewire::actingAs($this->barista)->test(ListPurchaseOrders::class)

@@ -43,7 +43,6 @@ class SaleController extends Controller implements HasMiddleware
             // Void is reachable by rider (their own sale, inside the window) and by
             // Administrator/Finance (any time) — see SaleService::void() for the actual rule.
             // The role check here only decides who reaches the endpoint at all.
-            new Middleware('role:STAFF,ADMINISTRATOR,FINANCE', only: ['void']),
         ];
     }
 
@@ -101,6 +100,8 @@ class SaleController extends Controller implements HasMiddleware
         try {
             $voided = $this->sales->void($sale, $request->user(), $request->validated('reason'));
         } catch (HttpResponseException $e) {
+            throw $e;
+        } catch (HttpException $e) {
             throw $e;
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);

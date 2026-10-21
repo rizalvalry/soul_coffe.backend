@@ -2,11 +2,12 @@
 
 namespace App\Filament\Pages;
 
-use App\Enums\Role;
+use App\Enums\PanelModule;
 use App\Filament\Resources\Journals\JournalResource;
 use App\Models\Account;
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
+use App\Services\Access\PermissionMatrix;
 use App\Services\Menu\MenuLabels;
 use BackedEnum;
 use Filament\Forms\Components\Select;
@@ -48,7 +49,7 @@ class GeneralLedger extends Page implements HasTable
 
     public static function canAccess(): bool
     {
-        return Auth::user()?->role->grants(Role::FINANCE) ?? false;
+        return PermissionMatrix::can(Auth::user(), PanelModule::GENERAL_LEDGER, 'view');
     }
 
     public function updatedAccountId(): void

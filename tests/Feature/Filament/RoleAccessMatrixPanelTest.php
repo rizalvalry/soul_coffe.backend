@@ -6,6 +6,7 @@ use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Filament\Pages\Reports;
 use App\Filament\Pages\RoleAccessMatrix;
+use App\Models\OutboxEvent;
 use App\Models\RolePermission;
 use App\Models\User;
 use App\Services\Access\PermissionMatrix;
@@ -45,18 +46,35 @@ class RoleAccessMatrixPanelTest extends TestCase
         $this->assertFalse(RoleAccessMatrix::canAccess());
     }
 
-    public function test_administrator_is_not_offered_as_an_editable_role(): void
+    public function test_administrator_is_offered_as_an_editable_role(): void
     {
         $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create());
 
         $roles = Livewire::test(RoleAccessMatrix::class)->instance()->editableRoles();
 
-        $this->assertNotContains(Role::ADMINISTRATOR, $roles);
+        $this->assertContains(Role::ADMINISTRATOR, $roles);
         $this->assertContains(Role::FINANCE, $roles);
         $this->assertContains(Role::MANAGEMENT, $roles);
     }
 
-    public function test_management_inherited_grants_are_shown_and_cannot_be_revoked(): void
+    public function test_one_matrix_save_emits_one_access_refresh_for_many_changed_modules(): void
+    {
+        $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create());
+        $barista = User::factory()->role(Role::BARISTA)->create();
+        Livewire::test(RoleAccessMatrix::class)
+            ->set('role', Role::BARISTA->value)
+            ->set('grants.'.PanelModule::CARTS->value.'.view', true)
+            ->set('grants.'.PanelModule::SETTLEMENTS->value.'.view', true)
+            ->call('save')->assertHasNoErrors();
+
+        $events = OutboxEvent::query()->where('name', 'AccessChanged')->get();
+        $this->assertCount(1, $events);
+        $this->assertSame(['user.'.$barista->id], $events->first()->payload_json['channels']);
+        $this->assertTrue(PermissionMatrix::can($barista, PanelModule::CARTS, 'view'));
+        $this->assertTrue(PermissionMatrix::can($barista, PanelModule::SETTLEMENTS, 'view'));
+    }
+
+    public function test_management_grants_are_independent_and_can_be_revoked(): void
     {
         $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create());
         $management = User::factory()->role(Role::MANAGEMENT)->create();
@@ -66,13 +84,16 @@ class RoleAccessMatrixPanelTest extends TestCase
             ->set('role', Role::MANAGEMENT->value);
 
         $this->assertTrue($editor->get('grants.'.PanelModule::SETTLEMENTS->value.'.view'));
-        $this->assertTrue($editor->instance()->isInherited(PanelModule::SETTLEMENTS, 'view'));
+        $this->assertFalse($editor->instance()->isInherited(PanelModule::SETTLEMENTS, 'view'));
 
         $editor->set('grants.'.PanelModule::SETTLEMENTS->value.'.view', false)
+            ->set('grants.'.PanelModule::SETTLEMENTS->value.'.create', false)
+            ->set('grants.'.PanelModule::SETTLEMENTS->value.'.edit', false)
+            ->set('grants.'.PanelModule::SETTLEMENTS->value.'.delete', false)
             ->call('save')
             ->assertHasNoErrors();
 
-        $this->assertTrue(PermissionMatrix::can($management, PanelModule::SETTLEMENTS, 'view'));
+        $this->assertFalse(PermissionMatrix::can($management, PanelModule::SETTLEMENTS, 'view'));
         $this->assertDatabaseMissing('role_permissions', [
             'role' => Role::MANAGEMENT->value,
             'module' => PanelModule::SETTLEMENTS->value,
@@ -132,7 +153,8 @@ class RoleAccessMatrixPanelTest extends TestCase
         $this->assertSame(['view', 'edit'], PermissionMatrix::abilitiesFor(Role::BARISTA, PanelModule::CARTS));
         // The role that was on screen is the only one touched.
         $this->assertSame([], PermissionMatrix::abilitiesFor(Role::RIDER, PanelModule::CARTS));
-        $this->assertSame($admin->id, RolePermission::query()->first()->updated_by);
+        $this->assertSame($admin->id, RolePermission::query()
+            ->where('role', Role::BARISTA->value)->where('module', PanelModule::CARTS->value)->firstOrFail()->updated_by);
     }
 
     /** "Ubah tanpa Lihat" is a menu you can act on but never open — always a slip, so view is implied. */
@@ -163,7 +185,9 @@ class RoleAccessMatrixPanelTest extends TestCase
         Livewire::test(RoleAccessMatrix::class)
             ->set('role', Role::FINANCE->value)
             ->set('grants.'.PanelModule::CARTS->value.'.view', false)
+            ->set('grants.'.PanelModule::CARTS->value.'.create', false)
             ->set('grants.'.PanelModule::CARTS->value.'.edit', false)
+            ->set('grants.'.PanelModule::CARTS->value.'.delete', false)
             ->call('save');
 
         PermissionMatrix::forget();
@@ -196,7 +220,8 @@ class RoleAccessMatrixPanelTest extends TestCase
         $finance = User::factory()->role(Role::FINANCE)->create();
         $this->actingAs($finance);
 
-        // Signed in as Finance, with no grant yet: the page is closed.
+        PermissionMatrix::set(Role::FINANCE, PanelModule::REPORTS, []);
+        // A revoked Finance report grant closes the page.
         $this->assertFalse(Reports::canAccess());
 
         PermissionMatrix::set(Role::FINANCE, PanelModule::REPORTS, ['view']);

@@ -309,6 +309,7 @@ class TaxTest extends TestCase
         Livewire::test(TaxSettings::class)->call('openPbjtForm')->assertSet('showPbjtForm', true);
         $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create())
             ->get(TaxSettings::getUrl())->assertOk();
+        PermissionMatrix::set(Role::FINANCE, PanelModule::TAX_SETTINGS, []);
         $this->actingAs($this->management);
         foreach ([Role::FINANCE, Role::BARISTA, Role::RIDER, Role::STAFF, Role::CONTENT_CREATOR] as $role) {
             $component = Livewire::test(TaxSettings::class);

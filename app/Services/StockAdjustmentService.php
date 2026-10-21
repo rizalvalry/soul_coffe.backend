@@ -3,13 +3,14 @@
 namespace App\Services;
 
 use App\Enums\MovementType;
-use App\Enums\Role;
+use App\Enums\PanelModule;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\Product;
 use App\Models\RawMaterial;
 use App\Models\StockLedger;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -164,7 +165,7 @@ class StockAdjustmentService
 
     private function assertMayOperate(User $actor): void
     {
-        if (! $actor->role->grants(Role::FINANCE)) {
+        if (! PermissionMatrix::can($actor, PanelModule::STOCK_ADJUSTMENTS, 'edit')) {
             throw new RuntimeException('Hanya Administrator atau Finance yang dapat melakukan penyesuaian stok.');
         }
     }

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\MovementType;
+use App\Enums\PanelModule;
 use App\Enums\RefillStatus;
 use App\Enums\Role;
 use App\Models\Account;
@@ -15,6 +16,7 @@ use App\Models\Settlement;
 use App\Models\StaffAssignment;
 use App\Models\StockLedger;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -173,7 +175,7 @@ class RiderClosingService
             if ($closing && $closing->rider_id !== $rider->id) {
                 throw new RuntimeException('Coffee Bike ini sudah Closing atas nama Rider lain. Minta Finance cek dulu ya.');
             }
-            $financeActor = $actor->role->grants(Role::FINANCE);
+            $financeActor = PermissionMatrix::can($actor, PanelModule::SETTLEMENTS, 'edit');
             if ($settlement?->reconciled_at && ! $financeActor) {
                 throw new HttpResponseException(response()->json([
                     'code' => 'CLOSING_LOCKED',
@@ -487,8 +489,7 @@ class RiderClosingService
             $flagged = true;
         }
         if ($flagged) {
-            $recipients = User::query()->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE])
-                ->where('is_active', true)->pluck('id')->all();
+            $recipients = PermissionMatrix::usersWith(PanelModule::SETTLEMENTS, 'edit');
             $this->events->publish('CartCloseOutVarianceFlagged', 'Selisih Tutup Coffee Bike',
                 "Hitungan sisa Coffee Bike {$closing->cart?->code} beda dari Closing Rider. Cek di antrean setoran ya.",
                 ['role.ADMINISTRATOR', 'role.FINANCE'], $recipients,
@@ -571,8 +572,7 @@ class RiderClosingService
             AuditLog::recordAction($actor, 'settlement.method_variance_flagged', $settlement, null, [
                 'closing_revision_id' => $revisionId, ...$methodVariances,
             ]);
-            $recipientIds = User::query()->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT])
-                ->where('is_active', true)->orderBy('id')->pluck('id')->all();
+            $recipientIds = PermissionMatrix::usersWith(PanelModule::SETTLEMENTS, 'edit');
             $this->events->publish(
                 type: 'SettlementMethodVarianceFlagged', title: 'Selisih metode setoran perlu dicek',
                 body: sprintf('Setoran Coffee Bike %s berubah setelah koreksi Closing. Cek rincian metode ya.', $closing->cart?->code),

@@ -69,26 +69,23 @@ class TargetCommissionPanelTest extends TestCase
         $this->assertSame(1000, (int) DB::table('rider_commission_tiers')->orderBy('id')->value('amount_per_cup_minor'));
     }
 
-    public function test_other_roles_get_403_even_with_matrix_grant(): void
+    public function test_other_roles_can_open_target_commission_when_matrix_grants_it(): void
     {
         foreach ([Role::STAFF, Role::RIDER, Role::BARISTA, Role::CONTENT_CREATOR] as $role) {
             PermissionMatrix::set($role, PanelModule::RIDER_COMMISSIONS, ['view', 'edit']);
             $this->actingAs(User::factory()->role($role)->create());
-            $this->get(TargetCommission::getUrl())->assertForbidden();
-            $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create());
-            $page = Livewire::test(TargetCommission::class);
-            $this->actingAs(User::factory()->role($role)->create());
-            $page->call('saveTiers')->assertForbidden();
+            $this->get(TargetCommission::getUrl())->assertOk();
+            $this->assertTrue(TargetCommission::canAccess());
         }
     }
 
-    public function test_finance_grant_does_not_open_hidden_legacy_target_editor(): void
+    public function test_finance_template_opens_hidden_legacy_target_editor_by_url(): void
     {
         foreach ([Role::FINANCE, Role::MANAGEMENT] as $role) {
             $this->actingAs(User::factory()->role($role)->create());
-            $this->get(DailyTargetResource::getUrl('index'))->assertForbidden();
-            $this->get(DailyTargetResource::getUrl('create'))->assertForbidden();
-            $this->assertFalse(DailyTargetResource::canCreate());
+            $this->get(DailyTargetResource::getUrl('index'))->assertOk();
+            $this->get(DailyTargetResource::getUrl('create'))->assertOk();
+            $this->assertTrue(DailyTargetResource::canCreate());
         }
         $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create());
         $this->get(DailyTargetResource::getUrl('index'))->assertOk();

@@ -179,6 +179,7 @@ class ActivityAndSalesPanelTest extends TestCase
     public function test_a_role_without_the_sales_module_cannot_see_the_list(): void
     {
         $finance = User::factory()->role(Role::FINANCE)->create();
+        PermissionMatrix::set(Role::FINANCE, PanelModule::SALES, []);
 
         $this->actingAs($finance)->get(SaleResource::getUrl())->assertForbidden();
 
@@ -194,7 +195,7 @@ class ActivityAndSalesPanelTest extends TestCase
         $sale = $this->sale(9, 6);
 
         // Granted only "view" — the button must not even appear, let alone work.
-        PermissionMatrix::set(Role::FINANCE, PanelModule::SALES, ['view']);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::SALE_CORRECTIONS, ['view']);
         PermissionMatrix::forget();
 
         Livewire::actingAs($finance)
@@ -202,7 +203,7 @@ class ActivityAndSalesPanelTest extends TestCase
             ->assertTableActionHidden('void', $sale);
 
         // Granted "edit" as well — the button appears and voiding reverses the stock.
-        PermissionMatrix::set(Role::FINANCE, PanelModule::SALES, ['view', 'edit']);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::SALE_CORRECTIONS, ['view', 'edit']);
         PermissionMatrix::forget();
 
         Livewire::actingAs($finance)
@@ -333,6 +334,7 @@ class ActivityAndSalesPanelTest extends TestCase
     public function test_a_role_without_the_activity_module_cannot_open_the_page(): void
     {
         $finance = User::factory()->role(Role::FINANCE)->create();
+        PermissionMatrix::set(Role::FINANCE, PanelModule::STAFF_ACTIVITY, []);
 
         $this->actingAs($finance)->get(StaffActivity::getUrl())->assertForbidden();
 

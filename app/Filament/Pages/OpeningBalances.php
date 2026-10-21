@@ -2,11 +2,12 @@
 
 namespace App\Filament\Pages;
 
-use App\Enums\Role;
+use App\Enums\PanelModule;
 use App\Filament\Resources\Journals\JournalResource;
 use App\Models\Account;
 use App\Models\FixedAsset;
 use App\Models\JournalEntry;
+use App\Services\Access\PermissionMatrix;
 use App\Services\JournalService;
 use App\Services\Menu\MenuLabels;
 use BackedEnum;
@@ -20,7 +21,6 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Gate;
 use UnitEnum;
 
 class OpeningBalances extends Page
@@ -54,7 +54,7 @@ class OpeningBalances extends Page
 
     public static function canAccess(): bool
     {
-        return Auth::user()?->role->grants(Role::MANAGEMENT) ?? false;
+        return PermissionMatrix::can(Auth::user(), PanelModule::OPENING_BALANCES, 'view');
     }
 
     public function activeOpening(): ?JournalEntry
@@ -104,7 +104,7 @@ class OpeningBalances extends Page
 
     public function submit(): void
     {
-        Gate::authorize('manage-accounting-periods');
+        abort_unless(PermissionMatrix::can(Auth::user(), PanelModule::OPENING_BALANCES, 'edit'), 403);
         $entry = app(JournalService::class)->postOpening($this->entryDate, $this->lines);
         Notification::make()->success()->title('Saldo awal diposting')->body($entry->number)->send();
         $this->redirect(JournalResource::getUrl('view', ['record' => $entry]));

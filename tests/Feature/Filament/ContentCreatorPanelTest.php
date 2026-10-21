@@ -3,6 +3,7 @@
 namespace Tests\Feature\Filament;
 
 use App\Enums\Role;
+use App\Filament\Pages\SetupLokasiRider;
 use App\Filament\Resources\NewsPosts\NewsPostResource;
 use App\Models\NewsPost;
 use App\Models\User;
@@ -129,10 +130,13 @@ class ContentCreatorPanelTest extends TestCase
         }
     }
 
-    /** The operational roles gained nothing from this change. */
-    public function test_operational_roles_are_still_locked_out_of_the_panel(): void
+    public function test_panel_entry_follows_effective_module_access(): void
     {
-        foreach ([Role::FINANCE, Role::BARISTA, Role::RIDER, Role::STAFF] as $role) {
+        $this->actingAs($this->makeUser(Role::FINANCE))->get('/admin')->assertSuccessful();
+        $this->flushSession();
+        $this->actingAs(User::factory()->role(Role::BARISTA)->create())->get(SetupLokasiRider::getUrl())->assertSuccessful();
+        foreach ([Role::RIDER, Role::STAFF] as $role) {
+            $this->flushSession();
             $this->actingAs($this->makeUser($role))->get('/admin')->assertForbidden();
         }
     }

@@ -2,8 +2,9 @@
 
 namespace App\Services\Reporting;
 
-use App\Enums\Role;
+use App\Enums\PanelModule;
 use App\Models\RiderClosing;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -283,9 +284,7 @@ class SalesActivityService
 
     private function canSeeClosingLocation(): bool
     {
-        $role = Auth::user()?->role;
-
-        return in_array($role, [Role::ADMINISTRATOR, Role::FINANCE], true);
+        return PermissionMatrix::can(Auth::user(), PanelModule::CLOSING_LOCATION_EVIDENCE, 'view');
     }
 
     private function usesClosing(string $date): bool

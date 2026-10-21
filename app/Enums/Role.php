@@ -23,21 +23,6 @@ enum Role: string
      */
     case CONTENT_CREATOR = 'CONTENT_CREATOR';
 
-    /** The roles whose rights this role inherits, including its own. */
-    public function inheritedRoles(): array
-    {
-        return match ($this) {
-            self::ADMINISTRATOR => [self::ADMINISTRATOR, self::MANAGEMENT, self::FINANCE],
-            self::MANAGEMENT => [self::MANAGEMENT, self::FINANCE],
-            default => [$this],
-        };
-    }
-
-    public function grants(self $required): bool
-    {
-        return in_array($required, $this->inheritedRoles(), true);
-    }
-
     public function label(): string
     {
         return match ($this) {

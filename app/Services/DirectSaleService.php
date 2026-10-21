@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\MovementType;
+use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Models\Account;
 use App\Models\AuditLog;
@@ -13,6 +14,7 @@ use App\Models\JournalEntry;
 use App\Models\Product;
 use App\Models\Settlement;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -51,7 +53,7 @@ class DirectSaleService
         string $paymentMethod = 'cash',
         ?string $note = null,
     ): DirectSale {
-        if (! $actor->role->grants(Role::FINANCE)) {
+        if (! PermissionMatrix::can($actor, PanelModule::DIRECT_SALE_ACTIONS, 'edit')) {
             throw new RuntimeException('Hanya Finance atau Administrator yang mencatat penjualan langsung kantor.');
         }
 
@@ -201,7 +203,7 @@ class DirectSaleService
             throw new RuntimeException('Alasan pembatalan wajib diisi.');
         }
 
-        if (! $actor->role->grants(Role::FINANCE)) {
+        if (! PermissionMatrix::can($actor, PanelModule::DIRECT_SALE_ACTIONS, 'edit')) {
             throw new RuntimeException('Anda tidak berhak membatalkan transaksi ini.');
         }
 

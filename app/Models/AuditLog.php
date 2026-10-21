@@ -2,7 +2,8 @@
 
 namespace App\Models;
 
-use App\Enums\Role;
+use App\Enums\PanelModule;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -77,7 +78,7 @@ class AuditLog extends Model
         unset($values['_payroll_ciphertext']);
 
         if ($this->subject_type === RiderClosing::class
-            && ! in_array(Auth::user()?->role, [Role::ADMINISTRATOR, Role::FINANCE], true)) {
+            && ! PermissionMatrix::can(Auth::user(), PanelModule::CLOSING_LOCATION_EVIDENCE, 'view')) {
             unset($values['gps_lat'], $values['gps_lng'], $values['gps_unavailable'],
                 $values['closing_basis'], $values['closing_distance_m'], $values['outside_closing_point']);
         }

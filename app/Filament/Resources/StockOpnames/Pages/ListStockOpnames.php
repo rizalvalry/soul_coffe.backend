@@ -29,7 +29,7 @@ class ListStockOpnames extends ListRecords
                 ->label('Buat Stock Opname')
                 ->icon('heroicon-o-plus')
                 ->url(StockOpnameEntry::getUrl())
-                ->visible(fn (): bool => PermissionMatrix::can(Auth::user(), PanelModule::STOCK_OPNAME, 'create')),
+                ->visible(fn (): bool => PermissionMatrix::can(Auth::user(), PanelModule::STOCK_OPNAME_ACTIONS, 'edit')),
         ];
     }
 }

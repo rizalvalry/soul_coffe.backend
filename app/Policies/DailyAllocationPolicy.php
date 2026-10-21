@@ -2,9 +2,11 @@
 
 namespace App\Policies;
 
+use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Models\DailyAllocation;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 
 /**
  * Record-level authorisation for daily_allocations (docs/02 §2.1, Flow A).
@@ -20,7 +22,7 @@ class DailyAllocationPolicy
     /** Who may see the full rider-on-shift roster (the barista's allocation worksheet). */
     public function viewAny(User $user): bool
     {
-        return $user->is_active && ($user->role->grants(Role::FINANCE) || $user->role === Role::BARISTA);
+        return $user->is_active && (PermissionMatrix::can($user, PanelModule::ALLOCATIONS, 'view') || $user->role === Role::BARISTA);
     }
 
     /** Who may create an allocation. Requirement 1: barista-owned. */
@@ -36,7 +38,7 @@ class DailyAllocationPolicy
             return false;
         }
 
-        if ($user->role->grants(Role::FINANCE)) {
+        if (PermissionMatrix::can($user, PanelModule::ALLOCATIONS, 'view')) {
             return true;
         }
 

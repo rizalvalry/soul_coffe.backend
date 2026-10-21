@@ -2,8 +2,9 @@
 
 namespace App\Http\Resources;
 
-use App\Enums\Role;
+use App\Enums\PanelModule;
 use App\Models\Product;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Storage;
@@ -42,7 +43,7 @@ class ProductResource extends JsonResource
         ];
 
         $user = $request->user();
-        $canSeeCost = $user && $user->role->grants(Role::FINANCE);
+        $canSeeCost = PermissionMatrix::can($user, PanelModule::INVENTORY_COSTS, 'view');
 
         if ($canSeeCost) {
             $priceVersion = $product->relationLoaded('priceVersions')
