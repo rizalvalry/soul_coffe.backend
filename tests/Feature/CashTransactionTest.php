@@ -356,7 +356,7 @@ class CashTransactionTest extends TestCase
 
         Livewire::test(CreateCashAccount::class)->fillForm([
             'name' => 'Kas Setoran Uji',
-            'account_id' => Account::query()->where('code', '1-1200')->value('id'), 'is_active' => true,
+            'account_id' => Account::query()->where('code', '1-1400')->value('id'), 'is_active' => true,
         ])->call('create')->assertHasNoFormErrors();
         $cash = CashAccount::query()->where('name', 'Kas Setoran Uji')->firstOrFail();
         Livewire::test(EditCashAccount::class, ['record' => $cash->id])

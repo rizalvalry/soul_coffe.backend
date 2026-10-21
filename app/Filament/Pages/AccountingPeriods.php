@@ -3,6 +3,9 @@
 namespace App\Filament\Pages;
 
 use App\Enums\Role;
+use App\Filament\Resources\ClearingReceipts\ClearingReceiptResource;
+use App\Filament\Resources\FixedAssets\FixedAssetResource;
+use App\Filament\Resources\Settlements\SettlementResource;
 use App\Models\AccountingPeriod;
 use App\Services\AccountingPeriodService;
 use App\Services\Menu\MenuLabels;
@@ -60,8 +63,8 @@ class AccountingPeriods extends Page implements HasTable
     {
         return $schema->components([
             Section::make('Tutup periode bulanan')->schema([
-                TextInput::make('year')->label('Tahun')->numeric()->minValue(2000)->maxValue(9999)->required(),
-                Select::make('month')->label('Bulan')->options(array_combine(range(1, 12), range(1, 12)))->required(),
+                TextInput::make('year')->label('Tahun')->numeric()->minValue(2000)->maxValue(9999)->required()->live(onBlur: true),
+                Select::make('month')->label('Bulan')->options(array_combine(range(1, 12), range(1, 12)))->required()->live(),
             ])->columns(['default' => 1, 'md' => 2]),
         ]);
     }
@@ -74,6 +77,24 @@ class AccountingPeriods extends Page implements HasTable
     public function periods(): mixed
     {
         return AccountingPeriod::query()->orderByDesc('year')->orderByDesc('month')->limit(36)->get();
+    }
+
+    public function readiness(): array
+    {
+        abort_unless(self::canAccess(), 403);
+
+        return app(AccountingPeriodService::class)->closeReadiness($this->year, $this->month);
+    }
+
+    public function readinessUrl(string $code): string
+    {
+        return match ($code) {
+            'settlements_pending', 'rider_closings_missing' => SettlementResource::getUrl(),
+            'clearing_outstanding' => ClearingReceiptResource::getUrl(),
+            'stock_cost_pending' => PendingInventoryCosts::getUrl(),
+            'depreciation_unposted' => FixedAssetResource::getUrl(),
+            'cash_settlement_balance' => GeneralLedger::getUrl(),
+        };
     }
 
     public function table(Table $table): Table
