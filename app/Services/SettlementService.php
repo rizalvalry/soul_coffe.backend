@@ -328,7 +328,7 @@ class SettlementService
         ?string $varianceReason = null,
         ?Carbon $date = null,
     ): Settlement {
-        if (! in_array($finance->role, [Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR], true)) {
+        if (! $finance->role->grants(Role::FINANCE)) {
             throw new RuntimeException('Hanya Finance atau Administrator yang menerima setoran.');
         }
 
@@ -550,7 +550,7 @@ class SettlementService
      */
     public function approve(Settlement $settlement, User $finance, array $disposition, ?string $note = null): Settlement
     {
-        if (! in_array($finance->role, [Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR], true)) {
+        if (! $finance->role->grants(Role::FINANCE)) {
             throw new RuntimeException('Hanya Finance atau Administrator yang menyetujui setoran.');
         }
 

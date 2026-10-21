@@ -20,7 +20,7 @@ Route::middleware(['web', 'auth'])
 
 Route::middleware('web')->get('/admin/cash-receipts/{transaction}', function (CashTransaction $transaction) {
     abort_unless(auth()->check(), 403);
-    abort_unless(auth()->user()?->is_active && in_array(auth()->user()?->role, [Role::FINANCE, Role::MANAGEMENT], true), 403);
+    abort_unless(auth()->user()?->is_active && auth()->user()?->role->grants(Role::FINANCE), 403);
     abort_if($transaction->evidence_path === null
         || preg_match('~\Acash-evidence/[^/\\\\]+\z~D', $transaction->evidence_path) !== 1
         || str_contains($transaction->evidence_path, '..')

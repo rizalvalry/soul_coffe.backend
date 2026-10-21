@@ -66,6 +66,32 @@ class EventPublisher
             'payload_json' => $payload + ['channels' => array_values(array_unique($channels))],
         ]);
 
+        // Administrator's newly available Finance screens need live data changes. This separate
+        // signal has no notification recipient, message, or push and leaves the original routing
+        // and payload untouched.
+        $adminSignalId = null;
+        if (array_intersect(['role.FINANCE', 'role.MANAGEMENT'], $channels)
+            && ! in_array('role.ADMINISTRATOR', $channels, true)) {
+            $adminEventId = (string) Str::uuid();
+            $adminSignal = OutboxEvent::create([
+                'event_id' => $adminEventId,
+                'name' => 'AdministratorDataChanged',
+                'payload_json' => [
+                    'event_id' => $adminEventId,
+                    'type' => 'AdministratorDataChanged',
+                    'source_event_type' => $type,
+                    'refill_request_id' => $refillRequestId,
+                    'status' => null,
+                    'title' => '',
+                    'body' => '',
+                    'at' => now()->toIso8601String(),
+                    ...(isset($context['cart_id']) ? ['cart_id' => $context['cart_id']] : []),
+                    'channels' => ['role.ADMINISTRATOR'],
+                ],
+            ]);
+            $adminSignalId = $adminSignal->id;
+        }
+
         // One notification row per recipient, sharing the event_id. The client dedupes on it, so
         // the same event arriving by socket and by push renders once (E15).
         foreach (array_values(array_unique(array_map('intval', $notifyUserIds))) as $userId) {
@@ -86,12 +112,14 @@ class EventPublisher
 
         // Deliver only once the surrounding transaction commits. Delivering inside it would
         // broadcast a row that a rollback then erased.
-        DB::afterCommit(function () use ($outboxId, $recipients, $actorId, $title, $body, $payload, $includeActorPush): void {
+        DB::afterCommit(function () use ($outboxId, $adminSignalId, $recipients, $actorId, $title, $body, $payload, $includeActorPush): void {
             try {
-                if (config('outbox.publish_mode') === 'queue') {
-                    PublishOutboxEvent::enqueue((int) $outboxId);
-                } else {
-                    (new PublishOutboxEvent((int) $outboxId))->handle();
+                foreach (array_filter([$outboxId, $adminSignalId]) as $id) {
+                    if (config('outbox.publish_mode') === 'queue') {
+                        PublishOutboxEvent::enqueue((int) $id);
+                    } else {
+                        (new PublishOutboxEvent((int) $id))->handle();
+                    }
                 }
             } catch (Throwable $e) {
                 // A failed transport must not undo a committed sale or settlement. The same

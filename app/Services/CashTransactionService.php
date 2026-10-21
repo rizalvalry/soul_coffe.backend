@@ -140,6 +140,6 @@ class CashTransactionService
 
     private function authorize(User $actor): void
     {
-        abort_unless(in_array($actor->role, [Role::FINANCE, Role::MANAGEMENT], true), 403);
+        abort_unless($actor->role->grants(Role::FINANCE), 403);
     }
 }

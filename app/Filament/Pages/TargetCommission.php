@@ -73,7 +73,7 @@ class TargetCommission extends Page
 
     private static function allowedRole(): bool
     {
-        return in_array(Auth::user()?->role, [Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR], true);
+        return Auth::user()?->role->grants(Role::FINANCE) ?? false;
     }
 
     public function mount(): void

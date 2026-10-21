@@ -101,7 +101,7 @@ class RefillRequestsTable
 
     private static function mayDecide(RefillRequest $record): bool
     {
-        return in_array(Auth::user()?->role, [Role::FINANCE, Role::MANAGEMENT], true)
+        return (Auth::user()?->role->grants(Role::FINANCE) ?? false)
             && $record->status === RefillStatus::EXPIRED && $record->expiryDecision === null;
     }
 }

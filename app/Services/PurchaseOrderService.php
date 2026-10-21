@@ -358,7 +358,7 @@ class PurchaseOrderService
 
     private function assertMayOperate(User $actor): void
     {
-        if (! in_array($actor->role, [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT], true)) {
+        if (! $actor->role->grants(Role::FINANCE)) {
             abort(403);
         }
     }

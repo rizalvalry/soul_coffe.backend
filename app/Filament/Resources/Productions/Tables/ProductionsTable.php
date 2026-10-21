@@ -49,7 +49,7 @@ class ProductionsTable
 
                 TextColumn::make('cost')
                     ->label('Estimasi HPP Bahan Baku')
-                    ->visible(fn (): bool => in_array(Auth::user()?->role, [Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR], true))
+                    ->visible(fn (): bool => Auth::user()?->role->grants(Role::FINANCE) ?? false)
                     ->state(fn (Production $record): int => $record->lines
                         ->sum(fn (ProductionLine $line): int => ($line->recipe_cost_minor ?? 0) * $line->qty_brewed))
                     ->money('IDR', 0),

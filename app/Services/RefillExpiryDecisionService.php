@@ -23,7 +23,7 @@ class RefillExpiryDecisionService
      */
     public function decide(RefillRequest $refill, User $actor, string $outcome, string $reason, array $lines = []): RefillExpiryDecision
     {
-        abort_unless(in_array($actor->role, [Role::FINANCE, Role::MANAGEMENT], true), 403);
+        abort_unless($actor->role->grants(Role::FINANCE), 403);
 
         if (! in_array($outcome, ['failed', 'recognized'], true)) {
             throw ValidationException::withMessages(['outcome' => 'Keputusan tidak dikenal.']);

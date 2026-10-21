@@ -274,6 +274,10 @@ class SaleTest extends TestCase
                     'socket_id' => '123.456', 'channel_name' => 'private-role.'.$role->value,
                 ])->assertForbidden();
         }
+        $inactiveAdmin = User::factory()->role(Role::ADMINISTRATOR)->create(['is_active' => false]);
+        $this->actingAs($inactiveAdmin, 'sanctum')->postJson('/api/v1/broadcasting/auth', [
+            'socket_id' => '123.456', 'channel_name' => 'private-user.'.$inactiveAdmin->id,
+        ])->assertForbidden();
     }
 
     public function test_manual_and_superseded_rider_cannot_subscribe_to_cart_channel(): void

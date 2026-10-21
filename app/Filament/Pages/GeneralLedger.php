@@ -48,7 +48,7 @@ class GeneralLedger extends Page implements HasTable
 
     public static function canAccess(): bool
     {
-        return in_array(Auth::user()?->role, [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT], true);
+        return Auth::user()?->role->grants(Role::FINANCE) ?? false;
     }
 
     public function updatedAccountId(): void

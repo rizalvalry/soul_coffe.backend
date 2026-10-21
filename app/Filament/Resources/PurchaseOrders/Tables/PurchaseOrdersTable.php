@@ -55,7 +55,7 @@ class PurchaseOrdersTable
                     ->label('Bahan Baku')
                     ->wrap()
                     ->state(fn (PurchaseOrder $record): string => $record->lines
-                        ->map(fn (PurchaseOrderLine $line): string => in_array(Auth::user()?->role, [Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR], true)
+                        ->map(fn (PurchaseOrderLine $line): string => (Auth::user()?->role->grants(Role::FINANCE) ?? false)
                             ? sprintf('%s %dx@Rp%s', $line->rawMaterial?->name ?? '-', $line->qty_ordered, number_format($line->unit_cost_minor, 0, ',', '.'))
                             : sprintf('%s %dx', $line->rawMaterial?->name ?? '-', $line->qty_ordered))
                         ->implode(', ')),
@@ -91,7 +91,7 @@ class PurchaseOrdersTable
                     ->toggleable(),
                 TextColumn::make('unpaid_minor')
                     ->label('Sisa hutang')
-                    ->visible(fn (): bool => in_array(Auth::user()?->role, [Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR], true))
+                    ->visible(fn (): bool => Auth::user()?->role->grants(Role::FINANCE) ?? false)
                     ->state(fn (PurchaseOrder $record): ?int => $record->status->isReceived() && $record->payment_method === 'CREDIT'
                         ? $record->unpaidMinor() : null)
                     ->money('IDR', 0)
@@ -263,7 +263,7 @@ class PurchaseOrdersTable
 
     private static function mayOperate(): bool
     {
-        return in_array(Auth::user()?->role, [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT], true)
+        return (Auth::user()?->role->grants(Role::FINANCE) ?? false)
             && PermissionMatrix::can(Auth::user(), PanelModule::PURCHASE_ORDERS, 'edit');
     }
 

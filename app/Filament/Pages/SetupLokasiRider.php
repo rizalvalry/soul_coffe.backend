@@ -46,7 +46,7 @@ class SetupLokasiRider extends Page implements HasTable
 
     public static function canAccess(): bool
     {
-        return in_array(Auth::user()?->role, [Role::MANAGEMENT, Role::ADMINISTRATOR, Role::FINANCE], true);
+        return Auth::user()?->role->grants(Role::FINANCE) ?? false;
     }
 
     public function table(Table $table): Table
@@ -80,7 +80,7 @@ class SetupLokasiRider extends Page implements HasTable
             ])
             ->recordActions([
                 Action::make('setup')->label('Atur setup')
-                    ->visible(fn (): bool => Auth::user()?->role === Role::MANAGEMENT)
+                    ->visible(fn (): bool => Auth::user()?->role->grants(Role::MANAGEMENT) ?? false)
                     ->fillForm(fn (User $record): array => [
                         'location_id' => $this->active($record)?->location_id,
                         'basis' => $this->active($record)?->basis ?? 'kitchen',
@@ -94,7 +94,7 @@ class SetupLokasiRider extends Page implements HasTable
                             ->required(),
                     ])
                     ->action(function (User $record, array $data): void {
-                        abort_unless(Auth::user()?->role === Role::MANAGEMENT, 403);
+                        abort_unless(Auth::user()?->role->grants(Role::MANAGEMENT) ?? false, 403);
                         try {
                             app(RiderLocationSetupService::class)->save(Auth::user(), $record,
                                 $data['location_id'] ? (int) $data['location_id'] : null, $data['basis']);

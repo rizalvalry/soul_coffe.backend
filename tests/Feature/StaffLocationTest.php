@@ -124,7 +124,11 @@ class StaffLocationTest extends TestCase
         $this->assertSame($this->cart->id, $arrival->payload_json['cart_id']);
         $this->assertSame(StaffLocationPing::query()->sole()->id, $arrival->payload_json['source_id']);
         $this->assertSame(0, AppNotification::query()->where('type', 'CartArrivalChanged')->count());
-        Event::assertDispatchedTimes(SoulEvent::class, 1);
+        $adminSignal = OutboxEvent::query()->where('name', 'AdministratorDataChanged')->sole();
+        $this->assertSame(['role.ADMINISTRATOR'], $adminSignal->payload_json['channels']);
+        $this->assertSame('CartArrivalChanged', $adminSignal->payload_json['source_event_type']);
+        $this->assertSame(0, AppNotification::query()->where('event_id', $adminSignal->event_id)->count());
+        Event::assertDispatchedTimes(SoulEvent::class, 2);
 
         $this->report([['lat' => -6.18, 'lng' => 106.88]])->assertStatus(202)->assertJsonPath('data.recorded', 0);
         $this->report([['lat' => -6.18001, 'lng' => 106.88]])->assertStatus(202);
@@ -147,7 +151,7 @@ class StaffLocationTest extends TestCase
             Event::assertNotDispatched(SoulEvent::class);
         });
 
-        Event::assertDispatchedTimes(SoulEvent::class, 1);
+        Event::assertDispatchedTimes(SoulEvent::class, 2);
     }
 
     public function test_a_small_geofence_crossing_is_kept_even_below_the_normal_movement_filter(): void

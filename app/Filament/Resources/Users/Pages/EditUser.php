@@ -21,7 +21,7 @@ class EditUser extends EditRecord
         /** @var User $user */
         $user = $this->record;
         foreach (['national_id', 'bank_account_number'] as $field) {
-            $data[$field] = Auth::user()?->role === Role::MANAGEMENT
+            $data[$field] = (Auth::user()?->role->grants(Role::MANAGEMENT) ?? false)
                 ? $user->getAttribute($field)
                 : User::maskSensitiveValue($user->getAttribute($field));
         }

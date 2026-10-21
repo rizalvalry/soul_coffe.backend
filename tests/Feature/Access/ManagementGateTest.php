@@ -3,7 +3,10 @@
 namespace Tests\Feature\Access;
 
 use App\Enums\Role;
+use App\Models\RefillRequest;
 use App\Models\User;
+use App\Policies\DailyAllocationPolicy;
+use App\Policies\RefillRequestPolicy;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Gate;
 use Tests\TestCase;
@@ -12,17 +15,32 @@ class ManagementGateTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_management_is_the_only_role_allowed_by_the_reporting_and_payroll_gates(): void
+    public function test_every_gate_uses_role_inheritance_and_rejects_inactive_accounts(): void
     {
-        foreach (['view-management-reports', 'manage-payroll'] as $ability) {
+        $gates = [
+            'view-management-reports' => Role::MANAGEMENT,
+            'manage-payroll' => Role::MANAGEMENT,
+            'manage-tax-settings' => Role::MANAGEMENT,
+            'manage-accounting-periods' => Role::MANAGEMENT,
+            'view-fixed-assets' => Role::FINANCE,
+            'record-fixed-assets' => Role::FINANCE,
+            'post-fixed-asset-depreciation' => Role::MANAGEMENT,
+            'void-production' => Role::FINANCE,
+            'revalue-inventory' => Role::FINANCE,
+            'post-manual-journal' => Role::FINANCE,
+        ];
+
+        foreach ($gates as $ability => $required) {
             foreach (Role::cases() as $role) {
                 $user = User::factory()->role($role)->create();
 
                 $this->assertSame(
-                    $role === Role::MANAGEMENT,
+                    $role->grants($required),
                     Gate::forUser($user)->allows($ability),
                     "{$role->value} got the wrong result for {$ability}.",
                 );
+                $user->update(['is_active' => false]);
+                $this->assertFalse(Gate::forUser($user)->allows($ability), "Inactive {$role->value} passed {$ability}.");
             }
         }
     }
@@ -30,5 +48,24 @@ class ManagementGateTest extends TestCase
     public function test_management_has_a_client_facing_label(): void
     {
         $this->assertSame('Management', Role::MANAGEMENT->label());
+    }
+
+    public function test_inactive_administrator_token_cannot_read_protected_api_routes(): void
+    {
+        $admin = User::factory()->role(Role::ADMINISTRATOR)->create(['is_active' => false]);
+        foreach (['/api/v1/products', '/api/v1/refills', '/api/v1/settlements/queue'] as $url) {
+            $this->actingAs($admin, 'sanctum')->getJson($url)->assertForbidden();
+        }
+    }
+
+    public function test_inactive_administrator_has_no_refill_or_allocation_policy_rights(): void
+    {
+        $admin = User::factory()->role(Role::ADMINISTRATOR)->create(['is_active' => false]);
+        $refillPolicy = app(RefillRequestPolicy::class);
+        $this->assertFalse($refillPolicy->viewAny($admin));
+        $this->assertFalse($refillPolicy->view($admin, new RefillRequest));
+        $this->assertFalse($refillPolicy->approve($admin, new RefillRequest));
+        $this->assertFalse($refillPolicy->reject($admin, new RefillRequest));
+        $this->assertFalse(app(DailyAllocationPolicy::class)->viewAny($admin));
     }
 }

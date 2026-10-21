@@ -42,7 +42,7 @@ class AccountResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return in_array(Auth::user()?->role, [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT], true);
+        return Auth::user()?->role->grants(Role::FINANCE) ?? false;
     }
 
     public static function canView(Model $record): bool
@@ -52,7 +52,7 @@ class AccountResource extends Resource
 
     public static function canCreate(): bool
     {
-        return Auth::user()?->role === Role::MANAGEMENT;
+        return Auth::user()?->role->grants(Role::MANAGEMENT) ?? false;
     }
 
     public static function canEdit(Model $record): bool

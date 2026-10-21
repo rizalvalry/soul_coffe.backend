@@ -45,7 +45,7 @@ class RecipesTable
 
                 TextColumn::make('computed_cost_minor')
                     ->label('HPP Terhitung')
-                    ->visible(fn (): bool => in_array(Auth::user()?->role, [Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR], true))
+                    ->visible(fn (): bool => Auth::user()?->role->grants(Role::FINANCE) ?? false)
                     ->money('IDR', 0)
                     ->placeholder('belum diketahui'),
 

@@ -47,7 +47,7 @@ class EmployeeProfileResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return in_array(Auth::user()?->role, [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT], true);
+        return Auth::user()?->role->grants(Role::FINANCE) ?? false;
     }
 
     public static function canView(mixed $record): bool
@@ -62,7 +62,7 @@ class EmployeeProfileResource extends Resource
         }
 
         return $record instanceof EmployeeProfile
-            && ($record->user?->role !== Role::MANAGEMENT || Auth::user()?->role === Role::MANAGEMENT);
+            && ($record->user?->role !== Role::MANAGEMENT || (Auth::user()?->role->grants(Role::MANAGEMENT) ?? false));
     }
 
     public static function canCreate(): bool

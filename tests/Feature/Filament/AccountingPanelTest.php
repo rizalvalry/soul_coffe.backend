@@ -61,7 +61,7 @@ class AccountingPanelTest extends TestCase
         $this->get('/admin')->assertSuccessful()->assertSeeInOrder(array_values($items));
     }
 
-    public function test_administrator_can_read_every_accounting_screen_but_cannot_write(): void
+    public function test_administrator_can_read_and_manage_every_accounting_screen(): void
     {
         $admin = User::factory()->role(Role::ADMINISTRATOR)->create();
         $custom = Account::query()->create([
@@ -84,30 +84,24 @@ class AccountingPanelTest extends TestCase
             AccountingPeriods::getUrl(), OpeningBalances::getUrl()] as $url) {
             $this->get($url)->assertSuccessful();
         }
-        $this->get(AccountResource::getUrl('create'))->assertForbidden();
-        $this->assertFalse(AccountResource::canCreate());
-        Livewire::test(ListAccounts::class)->assertDontSee('Tambah Akun')
-            ->assertTableActionHidden('deactivate', $custom);
-        Livewire::test(ListJournals::class)->assertTableActionHidden('reverse', $entry);
-        // Filament ignores a forged call to an action it did not mount; it returns 200 without writing.
-        Livewire::test(ListAccounts::class)
-            ->call('mountTableAction', 'deactivate', (string) $custom->id)
-            ->call('callMountedTableAction')->assertSuccessful();
-        Livewire::test(ListJournals::class)
-            ->call('mountTableAction', 'reverse', (string) $entry->id)
-            ->setTableActionData(['reason' => 'Koreksi'])
-            ->call('callMountedTableAction')->assertSuccessful();
+        $this->get(AccountResource::getUrl('create'))->assertOk();
+        $this->assertTrue(AccountResource::canCreate());
+        Livewire::test(ListAccounts::class)->assertSee('Tambah Akun')
+            ->assertTableActionVisible('deactivate', $custom);
+        Livewire::test(ListJournals::class)->assertTableActionVisible('reverse', $entry)
+            ->callTableAction('reverse', $entry, ['reason' => 'Koreksi akun uji'])
+            ->assertHasNoErrors();
         Livewire::test(AccountingPeriods::class)
-            ->assertDontSee('Tutup Periode')->assertDontSee('Buka kembali')
-            ->call('setStatus', 2026, 10, 'CLOSED')->assertForbidden();
-        Livewire::test(OpeningBalances::class)
-            ->assertDontSee('Posting Saldo Awal')->assertDontSee('Tambah Baris')
-            ->call('submit')->assertForbidden();
+            ->assertSee('Tutup Periode')
+            ->call('setStatus', 2026, 10, 'CLOSED')
+            ->call('setStatus', 2026, 10, 'OPEN', 'Koreksi periode uji');
+        Livewire::test(OpeningBalances::class)->assertSee('Posting Saldo Awal');
         $this->assertTrue($custom->fresh()->is_active);
-        $this->assertNull($entry->fresh()->reversal);
+        $this->assertNotNull($entry->fresh()->reversal);
         $this->assertSame('OPEN', AccountingPeriod::query()->where('year', 2026)->where('month', 10)->firstOrFail()->status);
         $this->assertSame('CLOSED', AccountingPeriod::query()->where('year', 2026)->where('month', 11)->firstOrFail()->status);
-        $this->assertSame(1, JournalEntry::query()->count());
+        $this->assertDatabaseHas('audit_log', ['action' => 'journal.reversed', 'actor_role' => Role::ADMINISTRATOR->value]);
+        $this->assertDatabaseHas('audit_log', ['action' => 'accounting_period.reopened', 'actor_role' => Role::ADMINISTRATOR->value]);
     }
 
     public function test_finance_can_read_chart_journal_and_ledger_but_cannot_manage_them(): void

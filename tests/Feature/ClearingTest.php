@@ -170,19 +170,69 @@ class ClearingTest extends TestCase
         $this->assertSame(100, $aging['unattributed_minor']);
     }
 
-    public function test_api_allows_finance_and_management_but_wrong_role_gets_403(): void
+    public function test_api_finance_role_matrix_for_receipt_and_aging(): void
     {
-        $rider = User::factory()->role(Role::STAFF)->create();
-        $payload = ['uuid' => (string) Str::uuid(), 'received_on' => '2026-10-20',
-            'amount_minor' => 100, 'bank_account_id' => $this->bankId];
-        $this->actingAs($rider, 'sanctum')->getJson('/api/v1/clearing-receipts/aging')->assertForbidden();
-        $this->actingAs($rider, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
-            ->postJson('/api/v1/clearing-receipts', $payload)->assertForbidden();
-        $this->actingAs($this->finance, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
-            ->postJson('/api/v1/clearing-receipts', $payload)->assertCreated();
-        $this->actingAs(User::factory()->role(Role::MANAGEMENT)->create(), 'sanctum')
-            ->getJson('/api/v1/clearing-receipts/aging')->assertOk();
-        $this->assertSame(1, ClearingReceipt::query()->count());
+        foreach ([Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR] as $role) {
+            $actor = $role === Role::FINANCE ? $this->finance : User::factory()->role($role)->create();
+            $payload = ['uuid' => (string) Str::uuid(), 'received_on' => '2026-10-20',
+                'amount_minor' => 100, 'bank_account_id' => $this->bankId];
+
+            $this->actingAs($actor, 'sanctum')->getJson('/api/v1/clearing-receipts')->assertOk();
+            $this->actingAs($actor, 'sanctum')->getJson('/api/v1/clearing-receipts/options')->assertOk();
+            $this->actingAs($actor, 'sanctum')->getJson('/api/v1/clearing-receipts/aging')->assertOk();
+            $this->actingAs($actor, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
+                ->postJson('/api/v1/clearing-receipts', $payload)->assertCreated();
+        }
+
+        foreach ([Role::BARISTA, Role::STAFF, Role::RIDER, Role::CONTENT_CREATOR] as $role) {
+            $actor = User::factory()->role($role)->create();
+            $payload = ['uuid' => (string) Str::uuid(), 'received_on' => '2026-10-20',
+                'amount_minor' => 100, 'bank_account_id' => $this->bankId];
+
+            $this->actingAs($actor, 'sanctum')->getJson('/api/v1/clearing-receipts')->assertForbidden();
+            $this->actingAs($actor, 'sanctum')->getJson('/api/v1/clearing-receipts/options')->assertForbidden();
+            $this->actingAs($actor, 'sanctum')->getJson('/api/v1/clearing-receipts/aging')->assertForbidden();
+            $this->actingAs($actor, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
+                ->postJson('/api/v1/clearing-receipts', $payload)->assertForbidden();
+        }
+
+        $this->assertSame(3, ClearingReceipt::query()->count());
+    }
+
+    public function test_api_finance_role_matrix_for_matching_and_voiding_receipts(): void
+    {
+        $this->source('2026-10-15', 100, 1);
+
+        foreach ([Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR] as $role) {
+            $actor = $role === Role::FINANCE ? $this->finance : User::factory()->role($role)->create();
+            $receipt = app(ClearingService::class)->record($this->finance, [
+                'uuid' => (string) Str::uuid(), 'received_on' => '2026-10-20',
+                'amount_minor' => 100, 'bank_account_id' => $this->bankId,
+            ]);
+
+            $this->actingAs($actor, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
+                ->postJson("/api/v1/clearing-receipts/{$receipt->id}/match", [
+                    'uuid' => (string) Str::uuid(), 'sale_dates' => ['2026-10-15'],
+                ])->assertOk();
+            $this->actingAs($actor, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
+                ->postJson("/api/v1/clearing-receipts/{$receipt->id}/void", ['reason' => 'Uji hak akses'])
+                ->assertOk();
+        }
+
+        $receipt = app(ClearingService::class)->record($this->finance, [
+            'uuid' => (string) Str::uuid(), 'received_on' => '2026-10-20',
+            'amount_minor' => 100, 'bank_account_id' => $this->bankId,
+        ]);
+        foreach ([Role::BARISTA, Role::STAFF, Role::RIDER, Role::CONTENT_CREATOR] as $role) {
+            $actor = User::factory()->role($role)->create();
+            $this->actingAs($actor, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
+                ->postJson("/api/v1/clearing-receipts/{$receipt->id}/match", [
+                    'uuid' => (string) Str::uuid(), 'sale_dates' => ['2026-10-15'],
+                ])->assertForbidden();
+            $this->actingAs($actor, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())
+                ->postJson("/api/v1/clearing-receipts/{$receipt->id}/void", ['reason' => 'Uji hak akses'])
+                ->assertForbidden();
+        }
     }
 
     public function test_audit_log_cannot_be_changed_or_deleted_through_model(): void

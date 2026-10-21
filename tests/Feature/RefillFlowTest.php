@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\Role;
+use App\Models\AppNotification;
 use App\Models\Attendance;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
@@ -49,6 +50,19 @@ class RefillFlowTest extends TestCase
     private User $rider;
 
     private User $admin;
+
+    public function test_refill_submission_sends_administrator_data_signal_without_a_notification(): void
+    {
+        $refill = $this->submitRefill();
+        $original = OutboxEvent::query()->where('name', 'RefillRequestSubmitted')->sole();
+        $signal = OutboxEvent::query()->where('name', 'AdministratorDataChanged')->sole();
+
+        $this->assertNotContains('role.ADMINISTRATOR', $original->payload_json['channels']);
+        $this->assertSame(['role.ADMINISTRATOR'], $signal->payload_json['channels']);
+        $this->assertSame($refill->id, $signal->payload_json['refill_request_id']);
+        $this->assertSame('RefillRequestSubmitted', $signal->payload_json['source_event_type']);
+        $this->assertFalse(AppNotification::query()->where('event_id', $signal->event_id)->exists());
+    }
 
     protected function setUp(): void
     {
@@ -207,14 +221,16 @@ class RefillFlowTest extends TestCase
             'Finance rejects' => [Role::FINANCE, 'reject'],
             'Management approves' => [Role::MANAGEMENT, 'approve'],
             'Management rejects' => [Role::MANAGEMENT, 'reject'],
+            'Administrator approves' => [Role::ADMINISTRATOR, 'approve'],
+            'Administrator rejects' => [Role::ADMINISTRATOR, 'reject'],
         ];
     }
 
     #[DataProvider('financeDecisionCases')]
-    public function test_finance_and_management_decide_refills_without_attendance(Role $role, string $decision): void
+    public function test_finance_management_and_administrator_decide_refills_without_attendance(Role $role, string $decision): void
     {
         $refill = $this->submitRefill();
-        $actor = $role === Role::FINANCE ? $this->finance : User::factory()->role(Role::MANAGEMENT)->create();
+        $actor = $role === Role::FINANCE ? $this->finance : User::factory()->role($role)->create();
         $this->assertFalse(Attendance::query()->where('user_id', $actor->id)->exists());
 
         $payload = $decision === 'approve'

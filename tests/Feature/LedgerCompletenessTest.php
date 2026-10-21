@@ -263,6 +263,7 @@ class LedgerCompletenessTest extends TestCase
         $finance = User::factory()->role(Role::FINANCE)->create();
         $managerA = User::factory()->role(Role::MANAGEMENT)->create();
         $managerB = User::factory()->role(Role::MANAGEMENT)->create();
+        $administrator = User::factory()->role(Role::ADMINISTRATOR)->create();
         $rider = User::factory()->role(Role::STAFF)->create();
         $cart = Cart::create(['code' => 'T052', 'status' => 'active']);
         $allowance = app(DailyAllowanceService::class)->forCart($cart);
@@ -288,6 +289,8 @@ class LedgerCompletenessTest extends TestCase
         app(AccountingPeriodService::class)->setStatus(today()->year, today()->month, 'OPEN', $managerA, 'Koreksi saldo awal');
         $this->assertEqualsCanonicalizing([$managerA->id, $managerB->id],
             AppNotification::query()->where('type', 'AccountingPeriodReopened')->pluck('user_id')->all());
+        $this->assertFalse(AppNotification::query()->where('type', 'AccountingPeriodReopened')
+            ->where('user_id', $administrator->id)->exists());
         $audit = AuditLog::query()->where('action', 'accounting_period.reopened')->firstOrFail();
         $this->assertSame('Koreksi saldo awal', $audit->after_json['reason']);
     }

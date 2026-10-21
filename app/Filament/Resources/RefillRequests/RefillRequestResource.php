@@ -31,7 +31,7 @@ class RefillRequestResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return in_array(Auth::user()?->role, [Role::FINANCE, Role::MANAGEMENT], true);
+        return Auth::user()?->role->grants(Role::FINANCE) ?? false;
     }
 
     public static function canCreate(): bool

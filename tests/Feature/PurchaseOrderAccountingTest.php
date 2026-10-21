@@ -22,6 +22,7 @@ use App\Services\JournalService;
 use App\Services\PurchaseOrderService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
@@ -116,19 +117,31 @@ class PurchaseOrderAccountingTest extends TestCase
         $this->assertSame(0, $po->unpaidMinor());
     }
 
-    public function test_wrong_role_payment_is_403(): void
+    public function test_purchase_order_payment_uses_finance_role_inheritance(): void
     {
         $po = $this->service->receive($this->order(), [], $this->finance);
-        try {
-            $this->service->payDebt($po, User::factory()->role(Role::BARISTA)->create(), [
-                'uuid' => '755d55f2-5e43-41de-adac-375f1b8db5e9', 'paid_on' => today()->toDateString(),
-                'cash_account_id' => $this->cash->id, 'amount_minor' => 1000,
-            ]);
-            $this->fail('Wrong role accepted');
-        } catch (HttpException $exception) {
-            $this->assertSame(403, $exception->getStatusCode());
-            $this->assertSame(0, PurchaseOrderPayment::count());
+        $input = ['uuid' => '755d55f2-5e43-41de-adac-375f1b8db5e9', 'paid_on' => today()->toDateString(),
+            'cash_account_id' => $this->cash->id, 'amount_minor' => 1000];
+
+        foreach ([Role::BARISTA, Role::STAFF, Role::RIDER, Role::CONTENT_CREATOR] as $role) {
+            try {
+                $this->service->payDebt($po, User::factory()->role($role)->create(), $input);
+                $this->fail("{$role->value} was allowed to pay a purchase order.");
+            } catch (HttpException $exception) {
+                $this->assertSame(403, $exception->getStatusCode());
+            }
         }
+        $this->assertSame(0, PurchaseOrderPayment::count());
+
+        foreach ([Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR] as $role) {
+            $actor = $role === Role::FINANCE ? $this->finance : User::factory()->role($role)->create();
+            $payment = $this->service->payDebt($po, $actor, [
+                ...$input, 'uuid' => (string) Str::uuid(),
+            ]);
+            $this->assertSame($actor->id, $payment->paid_by);
+        }
+        $this->assertSame(3, PurchaseOrderPayment::count());
+        $this->assertDatabaseHas('audit_log', ['action' => 'purchase_order.paid', 'actor_role' => Role::ADMINISTRATOR->value]);
     }
 
     public function test_closed_period_rolls_back_receipt_stock_and_payment(): void

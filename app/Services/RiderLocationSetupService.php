@@ -39,7 +39,7 @@ class RiderLocationSetupService
 
     public function save(User $actor, User $rider, ?int $locationId, string $basis, ?string $idempotencyKey = null): RiderLocationSetup
     {
-        if ($actor->role !== Role::MANAGEMENT || ! $actor->is_active) {
+        if (! $actor->role->grants(Role::MANAGEMENT) || ! $actor->is_active) {
             abort(403);
         }
         if ($rider->role !== Role::STAFF || ! $rider->is_active) {

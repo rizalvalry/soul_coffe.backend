@@ -187,7 +187,7 @@ class DeliveryIncidentService
         string $mode,
         ?string $note = null,
     ): DeliveryIncident {
-        if (! in_array($decider->role, [Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR], true)) {
+        if (! $decider->role->grants(Role::FINANCE)) {
             abort(403, 'Hanya Finance atau Administrator yang memutuskan insiden.');
         }
 

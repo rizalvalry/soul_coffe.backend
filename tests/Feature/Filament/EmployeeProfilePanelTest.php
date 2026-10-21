@@ -43,7 +43,7 @@ class EmployeeProfilePanelTest extends TestCase
         ]);
     }
 
-    public function test_payroll_is_encrypted_and_hidden_from_non_management(): void
+    public function test_payroll_is_encrypted_and_hidden_from_finance(): void
     {
         $profile = $this->profile();
         $raw = DB::table('employee_profiles')->where('id', $profile->id)->first();
@@ -54,7 +54,7 @@ class EmployeeProfilePanelTest extends TestCase
         $this->assertArrayNotHasKey('base_salary_minor', $profile->fresh()->toArray());
         $this->assertArrayNotHasKey('npwp', $profile->fresh()->toArray());
 
-        foreach ([Role::ADMINISTRATOR, Role::FINANCE] as $role) {
+        foreach ([Role::FINANCE] as $role) {
             $this->actingAs(User::factory()->role($role)->create());
             $this->get(ListEmployeeProfiles::getUrl())->assertSuccessful()
                 ->assertSee('Karyawan Uji')->assertDontSee('7800000')->assertDontSee('123456789012345');
@@ -111,11 +111,28 @@ class EmployeeProfilePanelTest extends TestCase
             ->assertDontSee('7800000')->assertDontSee('8100000')->assertDontSee('_payroll_ciphertext');
     }
 
-    public function test_only_management_can_edit_management_profile(): void
+    public function test_administrator_can_view_and_edit_payroll_with_its_own_audit_role(): void
+    {
+        $profile = $this->profile();
+        $admin = User::factory()->role(Role::ADMINISTRATOR)->create();
+        $this->actingAs($admin);
+
+        $this->get(EditEmployeeProfile::getUrl(['record' => $profile]))->assertSuccessful()
+            ->assertSee('7800000')->assertSee('123456789012345');
+        Livewire::test(EditEmployeeProfile::class, ['record' => $profile->id])
+            ->fillForm(['base_salary_minor' => 8100000])
+            ->call('save')->assertHasNoFormErrors();
+        $this->assertSame(8100000, $profile->fresh()->base_salary_minor);
+        $this->assertDatabaseHas('audit_log', [
+            'action' => 'employee_payroll_updated', 'actor_role' => Role::ADMINISTRATOR->value,
+        ]);
+    }
+
+    public function test_management_and_administrator_can_edit_management_profile(): void
     {
         $profile = $this->profile(Role::MANAGEMENT);
         $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create());
-        $this->get(EditEmployeeProfile::getUrl(['record' => $profile]))->assertForbidden();
+        $this->get(EditEmployeeProfile::getUrl(['record' => $profile]))->assertSuccessful();
 
         $this->actingAs(User::factory()->role(Role::MANAGEMENT)->create());
         $this->get(EditEmployeeProfile::getUrl(['record' => $profile]))->assertSuccessful();

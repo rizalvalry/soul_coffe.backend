@@ -255,7 +255,7 @@ class CashTransactionTest extends TestCase
         $url = route('admin.cash-receipts.download', $transaction);
         $this->get($url)->assertForbidden();
         $this->actingAs(User::factory()->role(Role::STAFF)->create())->get($url)->assertForbidden();
-        $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create())->get($url)->assertForbidden();
+        $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create())->get($url)->assertSuccessful();
         $this->actingAs($this->finance)->get($url)->assertSuccessful();
         $management = User::factory()->role(Role::MANAGEMENT)->create();
         $this->actingAs($management)->get($url)->assertSuccessful();
@@ -280,14 +280,18 @@ class CashTransactionTest extends TestCase
         $this->actingAs($this->finance)->get(route('admin.cash-receipts.download', $transaction))->assertNotFound();
     }
 
-    public function test_only_finance_and_management_can_open_cash_cms_resources(): void
+    public function test_finance_roles_can_open_cash_cms_resources(): void
     {
         $resources = [CashTransactionResource::class, CashCategoryResource::class,
             CashAccountResource::class, OfficeItemResource::class];
         foreach ($resources as $resource) {
-            $this->actingAs(User::factory()->role(Role::STAFF)->create())->get($resource::getUrl())->assertForbidden();
-            $this->actingAs($this->finance)->get($resource::getUrl())->assertSuccessful();
-            $this->actingAs(User::factory()->role(Role::MANAGEMENT)->create())->get($resource::getUrl())->assertSuccessful();
+            foreach ([Role::BARISTA, Role::STAFF, Role::RIDER, Role::CONTENT_CREATOR] as $role) {
+                $this->actingAs(User::factory()->role($role)->create())->get($resource::getUrl())->assertForbidden();
+            }
+            foreach ([Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR] as $role) {
+                $actor = $role === Role::FINANCE ? $this->finance : User::factory()->role($role)->create();
+                $this->actingAs($actor)->get($resource::getUrl())->assertSuccessful();
+            }
         }
     }
 

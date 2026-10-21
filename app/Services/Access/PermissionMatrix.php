@@ -27,7 +27,7 @@ class PermissionMatrix
 
     public static function can(?User $user, PanelModule $module, string $ability): bool
     {
-        if ($user === null) {
+        if ($user === null || ! $user->is_active) {
             return false;
         }
 
@@ -41,17 +41,12 @@ class PermissionMatrix
     /** @return array<string> the abilities a role currently holds on a module — for the editor UI. */
     public static function abilitiesFor(Role $role, PanelModule $module): array
     {
-        $own = static::ownAbilitiesFor($role, $module);
-
-        if ($role !== Role::MANAGEMENT) {
-            return $own;
+        $abilities = [];
+        foreach ($role->inheritedRoles() as $inheritedRole) {
+            $abilities = array_merge($abilities, static::ownAbilitiesFor($inheritedRole, $module));
         }
 
-        // Management keeps every Finance grant, including grants changed later in the CMS.
-        return array_values(array_unique(array_merge(
-            static::load()[Role::FINANCE->value][$module->value] ?? [],
-            $own,
-        )));
+        return array_values(array_unique($abilities));
     }
 
     /** @return array<string> explicitly granted abilities, excluding Management inheritance */
@@ -69,9 +64,7 @@ class PermissionMatrix
      */
     public static function hasAnyModule(Role $role): bool
     {
-        $roles = $role === Role::MANAGEMENT ? [Role::FINANCE, Role::MANAGEMENT] : [$role];
-
-        foreach ($roles as $inheritedRole) {
+        foreach ($role->inheritedRoles() as $inheritedRole) {
             foreach (static::load()[$inheritedRole->value] ?? [] as $module => $abilities) {
                 if (PanelModule::tryFrom($module) !== null && $abilities !== []) {
                     return true;

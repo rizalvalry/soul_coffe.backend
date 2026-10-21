@@ -78,7 +78,9 @@ class ManagementReportsTest extends TestCase
         Livewire::test(ManagementReports::class)->call('exportPdf', 'ringkasan')
             ->assertFileDownloaded('laporan-management-ringkasan-'.today()->toDateString().'-'.today()->toDateString().'.pdf');
 
-        foreach ([Role::ADMINISTRATOR, Role::FINANCE, Role::BARISTA, Role::RIDER, Role::STAFF, Role::CONTENT_CREATOR] as $role) {
+        $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create())
+            ->get(ManagementReports::getUrl())->assertOk();
+        foreach ([Role::FINANCE, Role::BARISTA, Role::RIDER, Role::STAFF, Role::CONTENT_CREATOR] as $role) {
             $this->actingAs(User::factory()->role($role)->create())
                 ->get(ManagementReports::getUrl())->assertForbidden();
             $this->assertFalse(ManagementReports::canAccess());

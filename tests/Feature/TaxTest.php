@@ -307,7 +307,10 @@ class TaxTest extends TestCase
     {
         $this->get(TaxSettings::getUrl())->assertOk()->assertSee('Pajak Restoran (PBJT)');
         Livewire::test(TaxSettings::class)->call('openPbjtForm')->assertSet('showPbjtForm', true);
-        foreach ([Role::ADMINISTRATOR, Role::FINANCE, Role::BARISTA, Role::RIDER, Role::STAFF, Role::CONTENT_CREATOR] as $role) {
+        $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create())
+            ->get(TaxSettings::getUrl())->assertOk();
+        $this->actingAs($this->management);
+        foreach ([Role::FINANCE, Role::BARISTA, Role::RIDER, Role::STAFF, Role::CONTENT_CREATOR] as $role) {
             $component = Livewire::test(TaxSettings::class);
             $user = User::factory()->role($role)->create();
             $this->actingAs($user)->get(TaxSettings::getUrl())->assertForbidden();

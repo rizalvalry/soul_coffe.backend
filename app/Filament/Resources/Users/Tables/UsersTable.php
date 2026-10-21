@@ -29,10 +29,10 @@ class UsersTable
                     ->sortable(),
                 TextColumn::make('national_id')
                     ->label('No. KTP')
-                    ->formatStateUsing(fn (?string $state): ?string => Auth::user()?->role === Role::MANAGEMENT ? $state : User::maskSensitiveValue($state)),
+                    ->formatStateUsing(fn (?string $state): ?string => (Auth::user()?->role->grants(Role::MANAGEMENT) ?? false) ? $state : User::maskSensitiveValue($state)),
                 TextColumn::make('bank_account_number')
                     ->label('No. Rekening')
-                    ->formatStateUsing(fn (?string $state): ?string => Auth::user()?->role === Role::MANAGEMENT ? $state : User::maskSensitiveValue($state)),
+                    ->formatStateUsing(fn (?string $state): ?string => (Auth::user()?->role->grants(Role::MANAGEMENT) ?? false) ? $state : User::maskSensitiveValue($state)),
                 TextColumn::make('phone_e164')
                     ->label('Nomor HP')
                     ->searchable()

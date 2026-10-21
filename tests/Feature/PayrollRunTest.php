@@ -336,7 +336,7 @@ class PayrollRunTest extends TestCase
         $this->assertSame(100000, $audit->displayChanges('before')['amount_minor']);
         $this->assertSame(200000, $audit->displayChanges('after')['amount_minor']);
         $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create());
-        $this->assertSame(['payroll_detail' => '[redacted]'], $audit->displayChanges('after'));
+        $this->assertSame(200000, $audit->displayChanges('after')['amount_minor']);
         $this->actingAs($this->manager);
         Livewire::test(PayrollConfiguration::class)->call('updateEntry', $entry->id, 300000, 'Terlambat')
             ->assertHasErrors(['entry.period_start']);
@@ -986,9 +986,11 @@ class PayrollRunTest extends TestCase
         $this->assertSame($finance->id, $record->created_by);
     }
 
-    public function test_prior_withholding_rejects_administrator_and_other_roles_with_403(): void
+    public function test_prior_withholding_allows_administrator_and_rejects_field_roles_with_403(): void
     {
-        foreach ([Role::ADMINISTRATOR, Role::BARISTA, Role::RIDER, Role::STAFF, Role::CONTENT_CREATOR] as $role) {
+        $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create());
+        $this->get(PayrollPriorWithholding::getUrl())->assertOk();
+        foreach ([Role::BARISTA, Role::RIDER, Role::STAFF, Role::CONTENT_CREATOR] as $role) {
             $this->actingAs(User::factory()->role($role)->create());
             $this->get(PayrollPriorWithholding::getUrl())->assertForbidden();
             $this->actingAs($this->manager);
@@ -1046,7 +1048,10 @@ class PayrollRunTest extends TestCase
     {
         $run = app(PayrollRunService::class)->create('2026-10', $this->manager);
         $item = $run->items()->firstOrFail();
-        foreach ([Role::FINANCE, Role::ADMINISTRATOR] as $role) {
+        $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create());
+        $this->get(PayrollRuns::getUrl())->assertOk();
+        $this->get(PayrollConfiguration::getUrl())->assertOk();
+        foreach ([Role::FINANCE] as $role) {
             $this->actingAs($this->manager);
             $page = Livewire::test(PayrollConfiguration::class);
             $this->actingAs(User::factory()->role($role)->create());
