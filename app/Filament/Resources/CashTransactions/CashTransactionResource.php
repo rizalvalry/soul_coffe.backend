@@ -5,6 +5,7 @@ namespace App\Filament\Resources\CashTransactions;
 use App\Filament\Concerns\CashFinanceOnly;
 use App\Filament\Resources\CashTransactions\Pages\CreateCashTransaction;
 use App\Filament\Resources\CashTransactions\Pages\ListCashTransactions;
+use App\Models\AuditLog;
 use App\Models\CashAccount;
 use App\Models\CashCategory;
 use App\Models\CashTransaction;
@@ -72,6 +73,9 @@ class CashTransactionResource extends Resource
             Select::make('cash_category_id')->label('Kategori')->options(fn (): array => CashCategory::query()->where('is_active', true)->orderBy('direction')->orderBy('name')->get()
                 ->mapWithKeys(fn (CashCategory $category): array => [$category->id => ($category->direction === 'IN' ? 'Masuk' : 'Keluar').' · '.$category->name])->all())
                 ->searchable()->required()->live()->afterStateUpdated(function ($state, Set $set): void {
+                    if (CashCategory::query()->whereKey($state)->where('name', 'Setor tunai ke bank')->exists()) {
+                        $set('cash_account_id', CashAccount::query()->where('name', 'Kas Setoran')->value('id'));
+                    }
                     if (CashCategory::query()->whereKey($state)->value('direction') === 'IN') {
                         $set('office_item_id', null);
                         $set('quantity', null);
@@ -112,6 +116,10 @@ class CashTransactionResource extends Resource
             TextColumn::make('officeItem.name')->label('Barang'),
             TextColumn::make('quantity')->label('Jumlah'),
             TextColumn::make('status')->label('Status')->badge(),
+            TextColumn::make('balance_warning')->label('Pemeriksaan saldo')->badge()
+                ->state(fn (CashTransaction $record): string => AuditLog::query()
+                    ->where('subject_type', CashTransaction::class)->where('subject_id', $record->id)
+                    ->where('action', 'cash_transaction.balance_exceeded')->exists() ? 'Melebihi saldo' : 'Sesuai'),
         ])->filters([
             Filter::make('tanggal')->schema([
                 DatePicker::make('from')->label('Dari'), DatePicker::make('until')->label('Sampai'),

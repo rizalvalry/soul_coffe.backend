@@ -82,6 +82,23 @@ class CashTransactionService
                 throw ValidationException::withMessages(['office_item_id' => 'Barang kantor hanya untuk kas keluar.']);
             }
 
+            if ($category->name === 'Setor tunai ke bank' && $cash->account->code !== '1-1200') {
+                throw ValidationException::withMessages(['cash_account_id' => 'Pilih Kas Setoran sebagai sumber dana ya.']);
+            }
+            if ($category->name === 'Setor tunai ke bank' && $category->account->code !== '1-1300') {
+                throw ValidationException::withMessages(['cash_category_id' => 'Kategori setor bank harus menuju akun Bank ya.']);
+            }
+            $balanceBefore = null;
+            if ($category->direction === 'OUT' && $category->account->code === '1-1300'
+                && $cash->account->code === '1-1200') {
+                $balanceBefore = (int) DB::table('journal_lines as line')
+                    ->join('journal_entries as entry', 'entry.id', '=', 'line.entry_id')
+                    ->where('line.account_id', $cash->account_id)
+                    ->where('entry.entry_date', '<=', $data['date'])
+                    ->selectRaw('COALESCE(SUM(CAST(line.debit_minor AS SIGNED) - CAST(line.credit_minor AS SIGNED)), 0) AS balance')
+                    ->value('balance');
+            }
+
             $transaction = CashTransaction::query()->create([
                 ...$data,
                 'direction' => $category->direction,
@@ -107,6 +124,13 @@ class CashTransactionService
                 'date' => $data['date'], 'amount_minor' => $amount,
                 'cash_category_id' => $data['cash_category_id'], 'cash_account_id' => $data['cash_account_id'],
             ]);
+            if ($balanceBefore !== null && $amount > $balanceBefore) {
+                AuditLog::recordAction($actor, 'cash_transaction.balance_exceeded', $transaction, null, [
+                    'date' => $data['date'], 'cash_account_id' => $cash->id,
+                    'balance_before_minor' => $balanceBefore, 'amount_minor' => $amount,
+                    'excess_minor' => $amount - $balanceBefore,
+                ]);
+            }
 
             return $transaction;
         }, 3);
