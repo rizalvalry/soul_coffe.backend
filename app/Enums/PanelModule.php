@@ -138,6 +138,13 @@ enum PanelModule: string
         };
     }
 
+    public function accessHint(): ?string
+    {
+        return $this === self::PAYROLL
+            ? 'Lihat = slip gaji sendiri di aplikasi; Kelola = halaman Payroll CMS'
+            : null;
+    }
+
     /**
      * Read-only listing modules offer only Lihat. Their separate action modules govern writes
      * such as voids, incident decisions, stock opname, and stock adjustments.

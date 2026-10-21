@@ -105,16 +105,22 @@ class EmployeePrivacyTest extends TestCase
         $this->assertFalse(UserResource::canDeleteAny());
     }
 
-    public function test_management_can_edit_users_without_assigning_new_account_access(): void
+    public function test_management_can_create_and_edit_users_with_its_users_grant(): void
     {
         PermissionMatrix::set(Role::MANAGEMENT, PanelModule::USERS, ['view', 'create', 'edit']);
         $actor = User::factory()->role(Role::MANAGEMENT)->create();
         $created = User::factory()->role(Role::MANAGEMENT)->create();
         $this->actingAs($actor);
 
-        $this->assertFalse(UserResource::canCreate());
-        $this->get(CreateUser::getUrl())->assertForbidden();
-        Livewire::test(CreateUser::class)->assertForbidden();
+        $this->assertTrue(UserResource::canCreate());
+        $this->get(CreateUser::getUrl())->assertSuccessful();
+        Livewire::test(CreateUser::class)->fillForm([
+            'name' => 'Rider Baru',
+            'phone_e164' => '081298760098',
+            'role' => Role::STAFF->value,
+            'password' => 'rahasia123',
+        ])->call('create')->assertHasNoFormErrors();
+        $this->assertDatabaseHas('users', ['phone_e164' => '081298760098', 'role' => Role::STAFF->value]);
 
         Livewire::test(EditUser::class, ['record' => $created->id])
             ->fillForm(['name' => 'Management Uji Diubah'])

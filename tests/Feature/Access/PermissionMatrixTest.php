@@ -10,6 +10,7 @@ use App\Filament\Resources\Users\Pages\EditUser;
 use App\Filament\Resources\Users\UserAccessForm;
 use App\Filament\Resources\Users\UserResource;
 use App\Models\AuditLog;
+use App\Models\CentralKitchen;
 use App\Models\OutboxEvent;
 use App\Models\RolePermission;
 use App\Models\User;
@@ -17,6 +18,7 @@ use App\Services\Access\DefaultPermissions;
 use App\Services\Access\PermissionMatrix;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
@@ -171,15 +173,54 @@ class PermissionMatrixTest extends TestCase
         $this->assertSame(2, OutboxEvent::query()->where('name', 'AccessChanged')->count());
     }
 
-    public function test_finance_cannot_assign_access_by_creating_or_promoting_accounts(): void
+    public function test_finance_can_create_staff_but_cannot_assign_administrator_or_account_grants(): void
     {
         $finance = User::factory()->role(Role::FINANCE)->create();
         $target = User::factory()->role(Role::BARISTA)->create();
         $administrator = User::factory()->role(Role::ADMINISTRATOR)->create();
+        $kitchen = CentralKitchen::query()->create([
+            'name' => 'Dapur Uji Akses', 'address' => 'Jakarta',
+            'open_at' => '08:00:00', 'close_at' => '17:00:00',
+        ]);
         $this->actingAs($finance);
-        $this->assertFalse(UserResource::canCreate());
+        $this->assertTrue(UserResource::canCreate());
         $this->assertFalse(UserResource::canDelete($administrator));
-        Livewire::test(CreateUser::class)->assertForbidden();
+        Livewire::test(CreateUser::class)->fillForm([
+            'name' => 'Produksi Baru',
+            'phone_e164' => '081298765057',
+            'role' => Role::BARISTA->value,
+            'kitchen_id' => $kitchen->id,
+            'password' => 'rahasia123',
+            'is_active' => true,
+        ])->call('create')->assertHasNoFormErrors();
+        $this->assertDatabaseHas('users', ['phone_e164' => '081298765057', 'role' => Role::BARISTA->value]);
+
+        Livewire::test(CreateUser::class)->fillForm([
+            'name' => 'Administrator Baru',
+            'phone_e164' => '081298765058',
+            'role' => Role::ADMINISTRATOR->value,
+            'password' => 'rahasia123',
+            'is_active' => true,
+        ])->call('create')->assertForbidden();
+        Livewire::test(CreateUser::class)->fillForm([
+            'name' => 'Akses Tambahan',
+            'phone_e164' => '081298765059',
+            'role' => Role::BARISTA->value,
+            'kitchen_id' => $kitchen->id,
+            'password' => 'rahasia123',
+            'is_active' => true,
+        ])->set('data.access_grants.payroll', 'edit')->call('create')->assertForbidden();
+        Livewire::test(CreateUser::class)->fillForm([
+            'name' => 'Super Palsu',
+            'phone_e164' => '081298765060',
+            'role' => Role::BARISTA->value,
+            'kitchen_id' => $kitchen->id,
+            'password' => 'rahasia123',
+            'is_active' => true,
+        ])->set('data.is_super_admin', true)->call('create')->assertForbidden();
+        $this->assertDatabaseMissing('users', ['phone_e164' => '081298765058']);
+        $this->assertDatabaseMissing('users', ['phone_e164' => '081298765059']);
+        $this->assertDatabaseMissing('users', ['phone_e164' => '081298765060']);
         Livewire::test(EditUser::class,
             ['record' => $target->id])
             ->set('data.role', Role::ADMINISTRATOR->value)
@@ -246,6 +287,72 @@ class PermissionMatrixTest extends TestCase
 
         $this->assertSame($count, RolePermission::query()->count());
         $this->assertSame(['view'], $row->fresh()->abilities);
+    }
+
+    public function test_management_migration_merges_existing_finance_grants_and_snapshots_prior_rows(): void
+    {
+        $modules = [
+            PanelModule::RAW_MATERIALS, PanelModule::SUPPLIERS, PanelModule::RECIPES,
+            PanelModule::PURCHASE_ORDERS, PanelModule::PRODUCTION, PanelModule::SALES,
+            PanelModule::DELIVERY_INCIDENTS, PanelModule::STAFF_ACTIVITY,
+            PanelModule::REPORTS, PanelModule::AUDIT_LOGS,
+        ];
+        foreach ($modules as $module) {
+            RolePermission::query()->where('role', Role::MANAGEMENT)
+                ->where('module', $module->value)->firstOrFail()->update(['abilities' => ['view']]);
+        }
+        RolePermission::query()->where('role', Role::FINANCE)
+            ->where('module', PanelModule::PURCHASE_ORDERS->value)
+            ->firstOrFail()->update(['abilities' => ['view', 'create', 'edit']]);
+        PermissionMatrix::forget();
+
+        DefaultPermissions::mergeManagement();
+        DefaultPermissions::mergeManagement();
+
+        foreach ($modules as $module) {
+            $expected = $module === PanelModule::PURCHASE_ORDERS
+                ? ['view', 'create', 'edit'] : ['view', 'create', 'edit', 'delete'];
+            $this->assertSame($expected,
+                PermissionMatrix::abilitiesFor(Role::MANAGEMENT, $module), $module->value);
+            $this->assertSame($expected,
+                PermissionMatrix::abilitiesFor(Role::FINANCE, $module), $module->value);
+            $this->assertSame(['view'], json_decode(DB::table('management_permission_merge_snapshots')
+                ->where('module', $module->value)->value('prior_abilities'), true));
+        }
+        $this->assertSame(count($modules), DB::table('management_permission_merge_snapshots')->count());
+
+        DefaultPermissions::restoreManagement();
+        foreach ($modules as $module) {
+            $this->assertSame(['view'], PermissionMatrix::abilitiesFor(Role::MANAGEMENT, $module), $module->value);
+        }
+        $this->assertSame(['view', 'create', 'edit'],
+            PermissionMatrix::abilitiesFor(Role::FINANCE, PanelModule::PURCHASE_ORDERS));
+    }
+
+    public function test_management_migration_rollback_preserves_later_revocation_and_edits(): void
+    {
+        RolePermission::query()->where('role', Role::MANAGEMENT)
+            ->where('module', PanelModule::PURCHASE_ORDERS->value)
+            ->firstOrFail()->update(['abilities' => ['view']]);
+        RolePermission::query()->where('role', Role::MANAGEMENT)
+            ->where('module', PanelModule::SUPPLIERS->value)->delete();
+
+        DefaultPermissions::mergeManagement();
+        PermissionMatrix::set(Role::MANAGEMENT, PanelModule::PURCHASE_ORDERS, []);
+        PermissionMatrix::set(Role::MANAGEMENT, PanelModule::SUPPLIERS, ['view']);
+        DefaultPermissions::restoreManagement();
+
+        $this->assertSame([], PermissionMatrix::abilitiesFor(Role::MANAGEMENT, PanelModule::PURCHASE_ORDERS));
+        $this->assertSame(['view'], PermissionMatrix::abilitiesFor(Role::MANAGEMENT, PanelModule::SUPPLIERS));
+    }
+
+    public function test_payroll_access_explanation_appears_in_matrix_and_account_form(): void
+    {
+        $admin = User::factory()->role(Role::ADMINISTRATOR)->create();
+        $this->actingAs($admin);
+        $hint = 'Lihat = slip gaji sendiri di aplikasi; Kelola = halaman Payroll CMS';
+        $this->get(RoleAccessMatrix::getUrl())->assertOk()->assertSee($hint);
+        $this->get(CreateUser::getUrl())->assertOk()->assertSee($hint);
     }
 
     public function test_retired_rows_remain_stored_but_grant_no_known_module(): void

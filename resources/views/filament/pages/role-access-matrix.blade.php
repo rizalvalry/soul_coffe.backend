@@ -65,6 +65,9 @@
                             <td>
                                 {{-- The renamed name, so this screen and the sidebar never disagree about what a menu is called. --}}
                                 <span class="bsi-matrix__module">{{ \App\Services\Menu\MenuLabels::for($module) }}</span>
+                                @if ($module->accessHint())
+                                    <span class="bsi-matrix__hint">{{ $module->accessHint() }}</span>
+                                @endif
                                 @if ($module->isReadOnly())
                                     <span class="bsi-matrix__hint">hanya baca</span>
                                 @endif

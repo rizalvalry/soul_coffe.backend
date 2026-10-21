@@ -289,7 +289,8 @@ class UserForm
                                 : (array_intersect($abilities, ['edit', 'create', 'delete']) ? 'Kelola' : 'Lihat');
                             $changed = ($get('access_grants.'.$module->value) ?? 'template') !== 'template';
 
-                            return 'Templat role: '.$level.($changed ? ' · diubah' : '');
+                            return 'Templat role: '.$level.($changed ? ' · diubah' : '')
+                                .($module->accessHint() ? ' · '.$module->accessHint() : '');
                         });
                     $fields[] = TextInput::make('access_reasons.'.$module->value)
                         ->label('Alasan '.$module->label())

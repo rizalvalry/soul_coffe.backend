@@ -58,8 +58,7 @@ class UserResource extends Resource
 
     public static function canCreate(): bool
     {
-        // Creating an account assigns its role template, so it is an access change.
-        return static::matrixCanCreate() && PermissionMatrix::canManagePermissions(Auth::user());
+        return static::matrixCanCreate();
     }
 
     public static function canDelete(mixed $record): bool
