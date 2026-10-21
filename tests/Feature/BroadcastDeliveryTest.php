@@ -5,9 +5,11 @@ namespace Tests\Feature;
 use App\Enums\Role;
 use App\Events\SoulEvent;
 use App\Jobs\PublishOutboxEvent;
+use App\Models\AppNotification;
 use App\Models\OutboxEvent;
 use App\Models\User;
 use App\Services\EventPublisher;
+use App\Services\Push\PushNotifier;
 use Illuminate\Contracts\Broadcasting\Broadcaster;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
@@ -18,6 +20,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Str;
+use Mockery\MockInterface;
 use RuntimeException;
 use Tests\Support\FailingBroadcaster;
 use Tests\TestCase;
@@ -156,6 +159,113 @@ class BroadcastDeliveryTest extends TestCase
         Queue::assertNothingPushed();
         $this->assertNotNull(OutboxEvent::query()->where('event_id', $eventId)->value('published_at'));
         Event::assertDispatched(SoulEvent::class, fn (SoulEvent $event): bool => $event->payload['event_id'] === $eventId);
+    }
+
+    public function test_finance_and_management_events_share_one_outbox_row_and_one_inline_broadcast_with_administrator(): void
+    {
+        config(['outbox.publish_mode' => 'inline']);
+        $admin = User::factory()->role(Role::ADMINISTRATOR)->create();
+        $this->mock(PushNotifier::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('notifyUsers')->times(3)
+                ->withArgs(fn (array $ids): bool => $ids === [$this->staff->id]);
+        });
+
+        $recorder = new class implements Broadcaster
+        {
+            public array $calls = [];
+
+            public function auth($request)
+            {
+                return true;
+            }
+
+            public function validAuthenticationResponse($request, $result)
+            {
+                return $result;
+            }
+
+            public function broadcast(array $channels, $event, array $payload = [])
+            {
+                $this->calls[] = compact('channels', 'event', 'payload');
+            }
+        };
+        Broadcast::extend('recording_admin_channels', fn (): Broadcaster => $recorder);
+        config([
+            'broadcasting.connections.recording_admin_channels' => ['driver' => 'recording_admin_channels'],
+            'broadcasting.default' => 'recording_admin_channels',
+        ]);
+
+        $cases = [
+            ['role.FINANCE'],
+            ['role.MANAGEMENT'],
+            ['role.FINANCE', 'role.MANAGEMENT', 'role.ADMINISTRATOR'],
+        ];
+        foreach ($cases as $index => $channels) {
+            $eventId = app(EventPublisher::class)->publish(
+                'SettlementRecorded', 'Setoran dicatat', 'Setoran baru', $channels, [$this->staff->id],
+            );
+            $expected = in_array('role.ADMINISTRATOR', $channels, true)
+                ? $channels : [...$channels, 'role.ADMINISTRATOR'];
+            $row = OutboxEvent::query()->where('event_id', $eventId)->sole();
+
+            $this->assertSame($index + 1, OutboxEvent::query()->count());
+            $this->assertSame($index + 1, count($recorder->calls));
+            $this->assertSame($expected, $row->payload_json['channels']);
+            $this->assertSame(array_map(fn (string $channel): string => 'private-'.$channel, $expected),
+                array_map(fn ($channel): string => $channel->name, $recorder->calls[$index]['channels']));
+            $this->assertSame($eventId, $recorder->calls[$index]['payload']['event_id']);
+            $this->assertSame('SettlementRecorded', $recorder->calls[$index]['payload']['type']);
+            $this->assertArrayNotHasKey('channels', $recorder->calls[$index]['payload']);
+            $this->assertSame(1, count(array_filter($row->payload_json['channels'],
+                fn (string $channel): bool => $channel === 'role.ADMINISTRATOR')));
+            $this->assertSame([$this->staff->id], AppNotification::query()
+                ->where('event_id', $eventId)->pluck('user_id')->all());
+            $this->assertFalse(AppNotification::query()->where('user_id', $admin->id)->exists());
+            $this->assertNotNull($row->published_at);
+        }
+    }
+
+    public function test_rolled_back_finance_event_does_not_broadcast_to_administrator(): void
+    {
+        config(['outbox.publish_mode' => 'inline']);
+        Event::fake([SoulEvent::class]);
+
+        try {
+            DB::transaction(function (): void {
+                app(EventPublisher::class)->publish(
+                    'SettlementRecorded', 'Setoran dicatat', 'Setoran baru', ['role.FINANCE'],
+                );
+                $this->assertSame(['role.FINANCE', 'role.ADMINISTRATOR'],
+                    OutboxEvent::query()->sole()->payload_json['channels']);
+                Event::assertNotDispatched(SoulEvent::class);
+                throw new RuntimeException('rollback expected');
+            });
+        } catch (RuntimeException $e) {
+            $this->assertSame('rollback expected', $e->getMessage());
+        }
+
+        $this->assertSame(0, OutboxEvent::query()->count());
+        Event::assertNotDispatched(SoulEvent::class);
+    }
+
+    public function test_administrator_role_channel_requires_an_active_administrator(): void
+    {
+        config([
+            'broadcasting.default' => 'pusher',
+            'broadcasting.connections.pusher.key' => 'test-key',
+            'broadcasting.connections.pusher.secret' => 'test-secret',
+            'broadcasting.connections.pusher.app_id' => 'test-app',
+        ]);
+        require base_path('routes/channels.php');
+        $payload = ['socket_id' => '123.456', 'channel_name' => 'private-role.ADMINISTRATOR'];
+
+        $admin = User::factory()->role(Role::ADMINISTRATOR)->create();
+        $finance = User::factory()->role(Role::FINANCE)->create();
+        $inactiveAdmin = User::factory()->role(Role::ADMINISTRATOR)->create(['is_active' => false]);
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/v1/broadcasting/auth', $payload)->assertOk();
+        $this->actingAs($finance, 'sanctum')->postJson('/api/v1/broadcasting/auth', $payload)->assertForbidden();
+        $this->actingAs($inactiveAdmin, 'sanctum')->postJson('/api/v1/broadcasting/auth', $payload)->assertForbidden();
     }
 
     public function test_inline_failure_is_recovered_after_an_authenticated_response_without_cron(): void

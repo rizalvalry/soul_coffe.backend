@@ -119,16 +119,13 @@ class StaffLocationTest extends TestCase
 
         $this->report([['lat' => -6.18, 'lng' => 106.88]])->assertStatus(202);
         $arrival = OutboxEvent::query()->where('name', 'CartArrivalChanged')->sole();
-        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT'], $arrival->payload_json['channels']);
+        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT', 'role.ADMINISTRATOR'], $arrival->payload_json['channels']);
         $this->assertSame('ARRIVED', $arrival->payload_json['status']);
         $this->assertSame($this->cart->id, $arrival->payload_json['cart_id']);
         $this->assertSame(StaffLocationPing::query()->sole()->id, $arrival->payload_json['source_id']);
         $this->assertSame(0, AppNotification::query()->where('type', 'CartArrivalChanged')->count());
-        $adminSignal = OutboxEvent::query()->where('name', 'AdministratorDataChanged')->sole();
-        $this->assertSame(['role.ADMINISTRATOR'], $adminSignal->payload_json['channels']);
-        $this->assertSame('CartArrivalChanged', $adminSignal->payload_json['source_event_type']);
-        $this->assertSame(0, AppNotification::query()->where('event_id', $adminSignal->event_id)->count());
-        Event::assertDispatchedTimes(SoulEvent::class, 2);
+        $this->assertSame(1, OutboxEvent::query()->count());
+        Event::assertDispatchedTimes(SoulEvent::class, 1);
 
         $this->report([['lat' => -6.18, 'lng' => 106.88]])->assertStatus(202)->assertJsonPath('data.recorded', 0);
         $this->report([['lat' => -6.18001, 'lng' => 106.88]])->assertStatus(202);
@@ -151,7 +148,7 @@ class StaffLocationTest extends TestCase
             Event::assertNotDispatched(SoulEvent::class);
         });
 
-        Event::assertDispatchedTimes(SoulEvent::class, 2);
+        Event::assertDispatchedTimes(SoulEvent::class, 1);
     }
 
     public function test_a_small_geofence_crossing_is_kept_even_below_the_normal_movement_filter(): void

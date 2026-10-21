@@ -51,17 +51,16 @@ class RefillFlowTest extends TestCase
 
     private User $admin;
 
-    public function test_refill_submission_sends_administrator_data_signal_without_a_notification(): void
+    public function test_refill_submission_shares_original_event_with_administrator_without_a_notification(): void
     {
         $refill = $this->submitRefill();
         $original = OutboxEvent::query()->where('name', 'RefillRequestSubmitted')->sole();
-        $signal = OutboxEvent::query()->where('name', 'AdministratorDataChanged')->sole();
 
-        $this->assertNotContains('role.ADMINISTRATOR', $original->payload_json['channels']);
-        $this->assertSame(['role.ADMINISTRATOR'], $signal->payload_json['channels']);
-        $this->assertSame($refill->id, $signal->payload_json['refill_request_id']);
-        $this->assertSame('RefillRequestSubmitted', $signal->payload_json['source_event_type']);
-        $this->assertFalse(AppNotification::query()->where('event_id', $signal->event_id)->exists());
+        $this->assertContains('role.ADMINISTRATOR', $original->payload_json['channels']);
+        $this->assertSame($refill->id, $original->payload_json['refill_request_id']);
+        $this->assertFalse(OutboxEvent::query()->where('name', 'AdministratorDataChanged')->exists());
+        $this->assertFalse(AppNotification::query()->where('event_id', $original->event_id)
+            ->where('user_id', $this->admin->id)->exists());
     }
 
     protected function setUp(): void

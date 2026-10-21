@@ -176,7 +176,7 @@ class SaleTest extends TestCase
 
         $event = OutboxEvent::query()->where('name', 'SaleRecorded')->sole();
         $payload = $event->payload_json;
-        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT'], $payload['channels']);
+        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT', 'role.ADMINISTRATOR'], $payload['channels']);
         $this->assertSame($this->cart->id, $payload['cart_id']);
         $this->assertSame(Carbon::today()->toDateString(), $payload['operating_date']);
         $this->assertSame($saleId, $payload['source_id']);
