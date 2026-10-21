@@ -166,7 +166,7 @@ class RiderCommissionService
      */
     public function save(array $riderIds, string $date, array $rows, User $actor, string $requestKey): void
     {
-        if (! in_array($actor->role, [Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR], true)) {
+        if (! $actor->role->grants(Role::FINANCE)) {
             abort(403);
         }
         $riderIds = array_values(array_unique(array_map('intval', $riderIds)));

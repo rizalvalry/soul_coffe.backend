@@ -37,6 +37,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\Support\FailingBroadcaster;
 use Tests\TestCase;
@@ -180,8 +181,9 @@ class SettlementTest extends TestCase
             ])->assertCreated()->json('data.id');
 
         $recorded = OutboxEvent::query()->where('name', 'SettlementRecorded')->sole();
+        $this->assertFalse(OutboxEvent::query()->where('name', 'AdministratorDataChanged')->exists());
         $this->assertSame('SUBMITTED', $recorded->payload_json['status']);
-        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT', 'user.'.$this->staff->id], $recorded->payload_json['channels']);
+        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT', 'user.'.$this->staff->id, 'role.ADMINISTRATOR'], $recorded->payload_json['channels']);
         $this->assertSame($this->cart->id, $recorded->payload_json['cart_id']);
         $this->assertSame(Carbon::today()->toDateString(), $recorded->payload_json['operating_date']);
         $this->assertSame($settlementId, $recorded->payload_json['source_id']);
@@ -197,7 +199,7 @@ class SettlementTest extends TestCase
 
         $approved = OutboxEvent::query()->where('name', 'SettlementApproved')->sole();
         $this->assertSame('RECONCILED', $approved->payload_json['status']);
-        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT', 'user.'.$this->staff->id], $approved->payload_json['channels']);
+        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT', 'user.'.$this->staff->id, 'role.ADMINISTRATOR'], $approved->payload_json['channels']);
         $this->assertSame($this->cart->id, $approved->payload_json['cart_id']);
         $this->assertSame(Carbon::today()->toDateString(), $approved->payload_json['operating_date']);
         $this->assertSame($settlementId, $approved->payload_json['source_id']);
@@ -234,12 +236,12 @@ class SettlementTest extends TestCase
                 'cart_id' => $this->cart->id, 'cash' => 0, 'qris' => 0, 'transfer' => 0,
             ])->assertCreated()->json('data.id');
         $this->assertSame($nextRider->id, Settlement::findOrFail($settlementId)->staff_id);
-        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT', 'user.'.$this->staff->id],
+        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT', 'user.'.$this->staff->id, 'role.ADMINISTRATOR'],
             OutboxEvent::query()->where('name', 'SettlementRecorded')->sole()->payload_json['channels']);
         $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson('/api/v1/settlements/'.$settlementId.'/approve', ['lines' => $this->returnAll()])
             ->assertOk();
-        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT', 'user.'.$this->staff->id],
+        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT', 'user.'.$this->staff->id, 'role.ADMINISTRATOR'],
             OutboxEvent::query()->where('name', 'SettlementApproved')->sole()->payload_json['channels']);
         $this->assertFalse(AppNotification::query()->where('user_id', $nextRider->id)
             ->whereIn('type', ['SettlementRecorded', 'SettlementApproved'])->exists());
@@ -393,17 +395,18 @@ class SettlementTest extends TestCase
         $this->assertSame(0, OutboxEvent::query()->where('name', 'SettlementVarianceFlagged')->count());
     }
 
-    public function test_management_can_read_the_queue_and_record_a_deposit(): void
+    #[DataProvider('financeRoleProvider')]
+    public function test_finance_role_can_read_the_queue_and_record_a_deposit(Role $role): void
     {
         $this->issue(10);
         $this->sell(1);
 
-        $management = User::factory()->role(Role::MANAGEMENT)->create();
-        $this->actingAs($management, 'sanctum')
+        $actor = $role === Role::FINANCE ? $this->finance : User::factory()->role($role)->create();
+        $this->actingAs($actor, 'sanctum')
             ->getJson('/api/v1/settlements/queue')
             ->assertSuccessful();
 
-        $this->actingAs($management, 'sanctum')
+        $id = $this->actingAs($actor, 'sanctum')
             ->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson('/api/v1/settlements', [
                 'cart_id' => $this->cart->id,
@@ -413,28 +416,62 @@ class SettlementTest extends TestCase
             ])
             ->assertCreated()
             ->assertJsonPath('data.expected_total', 20000)
-            ->assertJsonPath('data.status', 'SUBMITTED');
+            ->assertJsonPath('data.status', 'SUBMITTED')
+            ->json('data.id');
+
+        $this->actingAs($actor, 'sanctum')
+            ->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson("/api/v1/settlements/{$id}/approve", ['lines' => $this->returnAll()])
+            ->assertOk();
     }
 
-    public function test_staff_and_runner_cannot_use_finance_settlement_endpoints(): void
+    public static function financeRoleProvider(): array
     {
-        foreach ([Role::STAFF, Role::RIDER] as $role) {
-            $user = User::factory()->role($role)->create();
+        return [
+            'Finance' => [Role::FINANCE],
+            'Management' => [Role::MANAGEMENT],
+            'Administrator' => [Role::ADMINISTRATOR],
+        ];
+    }
 
-            $this->actingAs($user, 'sanctum')
-                ->getJson('/api/v1/settlements/queue')
-                ->assertForbidden();
+    #[DataProvider('nonFinanceRoleProvider')]
+    public function test_non_finance_role_cannot_use_finance_settlement_endpoints(Role $role): void
+    {
+        $this->issue(10);
+        $id = $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', [
+                'cart_id' => $this->cart->id, 'cash' => 0, 'qris' => 0, 'transfer' => 0,
+            ])->assertCreated()->json('data.id');
+        $user = User::factory()->role($role)->create();
 
-            $this->actingAs($user, 'sanctum')
-                ->withHeader('Idempotency-Key', (string) Str::uuid())
-                ->postJson('/api/v1/settlements', [
-                    'cart_id' => $this->cart->id,
-                    'cash' => 0,
-                    'qris' => 0,
-                    'transfer' => 0,
-                ])
-                ->assertForbidden();
-        }
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/settlements/queue')
+            ->assertForbidden();
+
+        $this->actingAs($user, 'sanctum')
+            ->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', [
+                'cart_id' => $this->cart->id,
+                'cash' => 0,
+                'qris' => 0,
+                'transfer' => 0,
+            ])
+            ->assertForbidden();
+
+        $this->actingAs($user, 'sanctum')
+            ->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson("/api/v1/settlements/{$id}/approve", ['lines' => $this->returnAll()])
+            ->assertForbidden();
+    }
+
+    public static function nonFinanceRoleProvider(): array
+    {
+        return [
+            'Production' => [Role::BARISTA],
+            'Rider' => [Role::STAFF],
+            'Runner' => [Role::RIDER],
+            'Content Creator' => [Role::CONTENT_CREATOR],
+        ];
     }
 
     public function test_a_short_deposit_without_a_reason_is_flagged_audited_and_can_be_approved_once(): void
@@ -929,7 +966,6 @@ class SettlementTest extends TestCase
         $this->assertContains("user.{$management->id}", $event->payload_json['channels']);
         $this->assertSame(1, AppNotification::query()->where('event_id', $event->event_id)
             ->where('user_id', $management->id)->count());
-
         $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson("/api/v1/settlements/{$id}/approve", ['lines' => $this->returnAll()])->assertOk();
         $journal = JournalEntry::query()->where('source_type', 'settlement')->where('purpose', 'SETTLEMENT')->sole();
@@ -966,6 +1002,7 @@ class SettlementTest extends TestCase
         $this->issue(10);
         $this->sell(1);
         $management = User::factory()->role(Role::MANAGEMENT)->create();
+        $administrator = User::factory()->role(Role::ADMINISTRATOR)->create();
         $id = $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson('/api/v1/settlements', [
                 'cart_id' => $this->cart->id, 'cash' => 20000, 'qris' => 0, 'transfer' => 0,
@@ -978,6 +1015,8 @@ class SettlementTest extends TestCase
         $this->assertContains("user.{$management->id}", $event->payload_json['channels']);
         $this->assertSame(1, AppNotification::query()->where('event_id', $event->event_id)
             ->where('user_id', $management->id)->count());
+        $this->assertSame(0, AppNotification::query()->where('event_id', $event->event_id)
+            ->where('user_id', $administrator->id)->count());
     }
 
     public function test_rerecord_changes_recorder_and_different_approver_has_no_self_approval_flag(): void

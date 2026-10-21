@@ -44,7 +44,7 @@ class PayrollPriorWithholding extends Page implements HasTable
 
     public static function canAccess(): bool
     {
-        return Auth::user()?->is_active && in_array(Auth::user()?->role, [Role::FINANCE, Role::MANAGEMENT], true);
+        return Auth::user()?->is_active && (Auth::user()?->role->grants(Role::FINANCE) ?? false);
     }
 
     public static function getNavigationGroup(): string|UnitEnum|null

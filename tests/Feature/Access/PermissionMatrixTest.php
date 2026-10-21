@@ -99,6 +99,19 @@ class PermissionMatrixTest extends TestCase
         $this->assertSame(['view'], PermissionMatrix::abilitiesFor(Role::MANAGEMENT, PanelModule::REPORTS));
     }
 
+    public function test_administrator_inherits_management_and_finance_grants_without_losing_unconditional_access(): void
+    {
+        PermissionMatrix::set(Role::FINANCE, PanelModule::SETTLEMENTS, ['view']);
+        PermissionMatrix::set(Role::MANAGEMENT, PanelModule::REPORTS, ['edit']);
+
+        $this->assertSame(['view'], PermissionMatrix::abilitiesFor(Role::ADMINISTRATOR, PanelModule::SETTLEMENTS));
+        $this->assertSame(['edit'], PermissionMatrix::abilitiesFor(Role::ADMINISTRATOR, PanelModule::REPORTS));
+        $this->assertTrue(PermissionMatrix::hasAnyModule(Role::ADMINISTRATOR));
+        $admin = User::factory()->role(Role::ADMINISTRATOR)->create(['is_active' => false]);
+        $this->assertFalse(PermissionMatrix::can($admin, PanelModule::SETTLEMENTS, 'view'));
+        $this->assertFalse(PermissionMatrix::can($admin, PanelModule::REPORTS, 'delete'));
+    }
+
     public function test_setting_an_empty_ability_list_removes_the_row_entirely(): void
     {
         PermissionMatrix::set(Role::BARISTA, PanelModule::PRODUCTS, ['view']);

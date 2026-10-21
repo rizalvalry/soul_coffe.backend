@@ -51,7 +51,7 @@ class ManualJournalPanelTest extends TestCase
     public function test_finance_and_management_can_post_balanced_journals_with_optional_cart_and_audit(): void
     {
         $cart = Cart::query()->create(['code' => 'T-029', 'status' => 'retired']);
-        foreach ([Role::FINANCE, Role::MANAGEMENT] as $role) {
+        foreach ([Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR] as $role) {
             $actor = User::factory()->role($role)->create();
             $this->actingAs($actor);
             $this->get(ManualJournal::getUrl())->assertSuccessful()
@@ -206,7 +206,7 @@ class ManualJournalPanelTest extends TestCase
         $this->assertSame(1, AuditLog::query()->where('action', 'journal.reversed')->count());
     }
 
-    public function test_administrator_is_read_only_and_other_roles_get_403(): void
+    public function test_administrator_can_post_and_reverse_while_other_roles_get_403(): void
     {
         $entry = app(JournalService::class)->post([
             'entry_date' => '2026-10-18', 'description' => 'Modul kas',
@@ -218,13 +218,13 @@ class ManualJournalPanelTest extends TestCase
         $this->actingAs($administrator);
         $this->get(JournalResource::getUrl())->assertSuccessful();
         $this->get(JournalResource::getUrl('view', ['record' => $entry]))->assertSuccessful();
-        Livewire::test(ListJournals::class)->assertDontSee('Jurnal Manual')
-            ->assertTableActionHidden('reverse', $entry);
-        $this->get(ManualJournal::getUrl())->assertForbidden();
+        Livewire::test(ListJournals::class)->assertSee('Jurnal Manual')
+            ->assertTableActionVisible('reverse', $entry);
+        $this->get(ManualJournal::getUrl())->assertOk();
         $this->actingAs($finance);
         $page = Livewire::test(ManualJournal::class);
         $this->actingAs($administrator);
-        $page->call('submit')->assertForbidden();
+        $page->call('submit')->assertHasErrors();
         $this->assertFalse(JournalResource::canEdit($entry));
         $this->assertFalse(JournalResource::canDelete($entry));
 

@@ -40,6 +40,6 @@ trait CashFinanceOnly
 
     protected static function allowed(): bool
     {
-        return in_array(Auth::user()?->role, [Role::FINANCE, Role::MANAGEMENT], true);
+        return Auth::user()?->role->grants(Role::FINANCE) ?? false;
     }
 }

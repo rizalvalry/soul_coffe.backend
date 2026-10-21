@@ -71,7 +71,7 @@ class AccountingPeriods extends Page implements HasTable
 
     public static function canAccess(): bool
     {
-        return in_array(Auth::user()?->role, [Role::ADMINISTRATOR, Role::MANAGEMENT], true);
+        return Auth::user()?->role->grants(Role::MANAGEMENT) ?? false;
     }
 
     public function periods(): mixed

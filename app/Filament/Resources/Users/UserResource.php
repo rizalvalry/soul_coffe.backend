@@ -50,7 +50,7 @@ class UserResource extends Resource
     public static function canEdit(mixed $record): bool
     {
         return static::matrixCanEdit($record)
-            && ($record->role !== Role::MANAGEMENT || Auth::user()?->role === Role::MANAGEMENT);
+            && ($record->role !== Role::MANAGEMENT || (Auth::user()?->role->grants(Role::MANAGEMENT) ?? false));
     }
 
     public static function canDelete(mixed $record): bool
@@ -58,7 +58,7 @@ class UserResource extends Resource
         return static::matrixCanDelete($record)
             && ($record instanceof User
                 && ! $record->employeeProfile()->exists()
-                && ($record->role !== Role::MANAGEMENT || Auth::user()?->role === Role::MANAGEMENT));
+                && ($record->role !== Role::MANAGEMENT || (Auth::user()?->role->grants(Role::MANAGEMENT) ?? false)));
     }
 
     public static function canDeleteAny(): bool

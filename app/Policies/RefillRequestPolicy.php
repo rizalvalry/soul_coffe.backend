@@ -21,17 +21,25 @@ class RefillRequestPolicy
     public function viewAny(User $user): bool
     {
         // Scoping happens at the query level in RefillRequestController::index() (§2.2) — never here.
-        return true;
+        return $user->is_active;
     }
 
     public function view(User $user, RefillRequest $refill): bool
     {
+        if (! $user->is_active) {
+            return false;
+        }
+
+        if ($user->role->grants(Role::FINANCE)) {
+            return true;
+        }
+
         return match ($user->role) {
-            Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT => true,
             Role::BARISTA => $user->kitchen_id === $refill->kitchen_id,
             Role::STAFF => $user->id === $refill->staff_id,
             Role::RIDER => $refill->rider_id === $user->id
                 || ($refill->rider_id === null && $refill->status === RefillStatus::READY_TO_PICK),
+            default => false,
         };
     }
 
@@ -42,13 +50,13 @@ class RefillRequestPolicy
 
     public function approve(User $user, RefillRequest $refill): bool
     {
-        // §2.1 permission matrix: Approve/reject is Finance-only — Admin has read access, not approval.
-        return in_array($user->role, [Role::FINANCE, Role::MANAGEMENT], true);
+        // Finance approval also belongs to Management and Administrator through role inheritance.
+        return $user->is_active && $user->role->grants(Role::FINANCE);
     }
 
     public function reject(User $user, RefillRequest $refill): bool
     {
-        return in_array($user->role, [Role::FINANCE, Role::MANAGEMENT], true);
+        return $user->is_active && $user->role->grants(Role::FINANCE);
     }
 
     public function cancel(User $user, RefillRequest $refill): bool

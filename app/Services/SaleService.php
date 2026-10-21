@@ -424,7 +424,7 @@ class SaleService
      */
     private function assertMayVoid(Sale $sale, User $actor): void
     {
-        if (in_array($actor->role, [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT], true)) {
+        if ($actor->role->grants(Role::FINANCE)) {
             return;
         }
 

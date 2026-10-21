@@ -50,7 +50,7 @@ class DeliveryIncidentController extends Controller
 
         $query = DeliveryIncident::query()->with(self::EAGER)->latest('reported_at');
 
-        if (! in_array($user->role, [Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR], true)) {
+        if (! $user->role->grants(Role::FINANCE)) {
             $query->where(function ($scoped) use ($user): void {
                 $scoped->where('rider_id', $user->id)
                     ->orWhereHas('refillRequest', fn ($refill) => $refill->where('staff_id', $user->id));

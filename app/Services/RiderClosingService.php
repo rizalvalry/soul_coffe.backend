@@ -173,7 +173,7 @@ class RiderClosingService
             if ($closing && $closing->rider_id !== $rider->id) {
                 throw new RuntimeException('Coffee Bike ini sudah Closing atas nama Rider lain. Minta Finance cek dulu ya.');
             }
-            $financeActor = in_array($actor->role, [Role::FINANCE, Role::MANAGEMENT], true);
+            $financeActor = $actor->role->grants(Role::FINANCE);
             if ($settlement?->reconciled_at && ! $financeActor) {
                 throw new HttpResponseException(response()->json([
                     'code' => 'CLOSING_LOCKED',

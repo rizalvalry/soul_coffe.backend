@@ -176,7 +176,7 @@ class SaleTest extends TestCase
 
         $event = OutboxEvent::query()->where('name', 'SaleRecorded')->sole();
         $payload = $event->payload_json;
-        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT'], $payload['channels']);
+        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT', 'role.ADMINISTRATOR'], $payload['channels']);
         $this->assertSame($this->cart->id, $payload['cart_id']);
         $this->assertSame(Carbon::today()->toDateString(), $payload['operating_date']);
         $this->assertSame($saleId, $payload['source_id']);
@@ -274,6 +274,10 @@ class SaleTest extends TestCase
                     'socket_id' => '123.456', 'channel_name' => 'private-role.'.$role->value,
                 ])->assertForbidden();
         }
+        $inactiveAdmin = User::factory()->role(Role::ADMINISTRATOR)->create(['is_active' => false]);
+        $this->actingAs($inactiveAdmin, 'sanctum')->postJson('/api/v1/broadcasting/auth', [
+            'socket_id' => '123.456', 'channel_name' => 'private-user.'.$inactiveAdmin->id,
+        ])->assertForbidden();
     }
 
     public function test_manual_and_superseded_rider_cannot_subscribe_to_cart_channel(): void

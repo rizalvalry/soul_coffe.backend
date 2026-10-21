@@ -48,6 +48,11 @@ class EventPublisher
     ): string {
         $eventId = (string) Str::uuid();
 
+        if (array_intersect(['role.FINANCE', 'role.MANAGEMENT'], $channels)
+            && ! in_array('role.ADMINISTRATOR', $channels, true)) {
+            $channels[] = 'role.ADMINISTRATOR';
+        }
+
         $payload = [
             'event_id' => $eventId,
             'type' => $type,

@@ -119,11 +119,12 @@ class StaffLocationTest extends TestCase
 
         $this->report([['lat' => -6.18, 'lng' => 106.88]])->assertStatus(202);
         $arrival = OutboxEvent::query()->where('name', 'CartArrivalChanged')->sole();
-        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT'], $arrival->payload_json['channels']);
+        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT', 'role.ADMINISTRATOR'], $arrival->payload_json['channels']);
         $this->assertSame('ARRIVED', $arrival->payload_json['status']);
         $this->assertSame($this->cart->id, $arrival->payload_json['cart_id']);
         $this->assertSame(StaffLocationPing::query()->sole()->id, $arrival->payload_json['source_id']);
         $this->assertSame(0, AppNotification::query()->where('type', 'CartArrivalChanged')->count());
+        $this->assertSame(1, OutboxEvent::query()->count());
         Event::assertDispatchedTimes(SoulEvent::class, 1);
 
         $this->report([['lat' => -6.18, 'lng' => 106.88]])->assertStatus(202)->assertJsonPath('data.recorded', 0);

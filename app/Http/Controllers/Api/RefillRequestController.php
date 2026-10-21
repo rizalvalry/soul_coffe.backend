@@ -44,12 +44,14 @@ class RefillRequestController extends Controller
 
         $query = RefillRequest::query()->with(self::EAGER);
 
-        match ($user->role) {
-            Role::STAFF => $query->where('staff_id', $user->id),
-            Role::BARISTA => $query->where('kitchen_id', $user->kitchen_id),
-            Role::RIDER => $this->scopeRider($query, $user->id, (string) $request->query('scope')),
-            Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR => null,
-        };
+        if (! $user->role->grants(Role::FINANCE)) {
+            match ($user->role) {
+                Role::STAFF => $query->where('staff_id', $user->id),
+                Role::BARISTA => $query->where('kitchen_id', $user->kitchen_id),
+                Role::RIDER => $this->scopeRider($query, $user->id, (string) $request->query('scope')),
+                default => abort(403),
+            };
+        }
 
         if ($request->filled('status')) {
             $statuses = collect(explode(',', (string) $request->query('status')))

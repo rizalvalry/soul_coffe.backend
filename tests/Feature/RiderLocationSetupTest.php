@@ -101,7 +101,7 @@ class RiderLocationSetupTest extends TestCase
                 ['location_id' => $locationId, 'basis' => $basis]);
     }
 
-    public function test_cms_allows_management_to_edit_and_admin_finance_to_view_only(): void
+    public function test_cms_allows_management_and_administrator_to_edit_and_finance_to_view(): void
     {
         PermissionMatrix::set(Role::FINANCE, PanelModule::ATTENDANCE, ['view']);
         foreach ([$this->management, $this->admin, $this->finance] as $reader) {
@@ -111,10 +111,8 @@ class RiderLocationSetupTest extends TestCase
         foreach ([$this->barista, $this->rider] as $blocked) {
             $this->actingAs($blocked)->get(SetupLokasiRider::getUrl())->assertForbidden();
         }
-        foreach ([$this->admin, $this->finance] as $viewer) {
-            Livewire::actingAs($viewer)->test(SetupLokasiRider::class)
-                ->assertTableActionHidden('setup', $this->rider);
-        }
+        Livewire::actingAs($this->finance)->test(SetupLokasiRider::class)
+            ->assertTableActionHidden('setup', $this->rider);
         Livewire::actingAs($this->management)->test(SetupLokasiRider::class)
             ->assertTableActionVisible('setup', $this->rider)
             ->callTableAction('setup', $this->rider, [
@@ -124,15 +122,20 @@ class RiderLocationSetupTest extends TestCase
             'rider_id' => $this->rider->id, 'location_id' => $this->point->id,
             'basis' => 'selling_location', 'changed_by' => $this->management->id,
         ]);
+        Livewire::actingAs($this->admin)->test(SetupLokasiRider::class)
+            ->assertTableActionVisible('setup', $this->rider)
+            ->callTableAction('setup', $this->rider, ['location_id' => null, 'basis' => 'kitchen'])
+            ->assertHasNoErrors();
+        $this->assertDatabaseHas('audit_log', ['action' => 'rider_location_setup.changed', 'actor_role' => Role::ADMINISTRATOR->value]);
     }
 
-    public function test_only_management_can_write_while_allowed_roles_can_read_and_history_is_preserved(): void
+    public function test_management_and_administrator_can_write_while_allowed_roles_can_read_and_history_is_preserved(): void
     {
         foreach ([$this->management, $this->barista, $this->admin, $this->finance] as $reader) {
             $this->actingAs($reader, 'sanctum')->getJson('/api/v1/rider-location-setups')->assertOk()
                 ->assertJsonPath('data.0.id', $this->rider->id);
         }
-        foreach ([$this->barista, $this->admin, $this->finance,
+        foreach ([$this->barista, $this->finance,
             $this->rider, User::factory()->role(Role::RIDER)->create(),
             User::factory()->role(Role::CONTENT_CREATOR)->create()] as $blocked) {
             $this->writeAs($blocked, $this->point->id, 'selling_location')->assertForbidden();
@@ -144,6 +147,12 @@ class RiderLocationSetupTest extends TestCase
         $this->writeAs($this->management, $this->point->id, 'selling_location')->assertForbidden();
         $this->actingAs($this->management, 'sanctum')->getJson('/api/v1/rider-location-setups')->assertForbidden();
         $this->management->update(['is_active' => true]);
+        $this->admin->update(['is_active' => false]);
+        $this->writeAs($this->admin, $this->point->id, 'selling_location')->assertForbidden();
+        $this->actingAs($this->admin, 'sanctum')->getJson('/api/v1/rider-location-setups')->assertForbidden();
+        $this->admin->update(['is_active' => true]);
+        $this->writeAs($this->admin, $this->point->id, 'selling_location')->assertOk();
+        $this->assertDatabaseHas('audit_log', ['action' => 'rider_location_setup.changed', 'actor_role' => Role::ADMINISTRATOR->value]);
         $this->writeAs($this->management, $this->point->id, 'selling_location')->assertOk();
         $this->writeAs($this->management, $this->point->id, 'selling_location')->assertOk();
         $this->assertSame(1, RiderLocationSetup::query()->where('rider_id', $this->rider->id)->count());

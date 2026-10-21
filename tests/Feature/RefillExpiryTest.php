@@ -349,7 +349,7 @@ class RefillExpiryTest extends TestCase
         $this->assertSame(0, StockLedger::count());
         $this->actingAs($this->barista)->get(RefillRequestResource::getUrl())->assertForbidden();
         $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create())
-            ->get(RefillRequestResource::getUrl())->assertForbidden();
+            ->get(RefillRequestResource::getUrl())->assertOk();
         PermissionMatrix::set(Role::FINANCE, PanelModule::SETTLEMENTS, ['view']);
         $this->actingAs($this->finance)->get(RefillRequestResource::getUrl())->assertOk();
     }

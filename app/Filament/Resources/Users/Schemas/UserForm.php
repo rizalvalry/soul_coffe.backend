@@ -237,6 +237,6 @@ class UserForm
 
     private static function canManageSensitiveData(): bool
     {
-        return Auth::user()?->role === Role::MANAGEMENT;
+        return Auth::user()?->role->grants(Role::MANAGEMENT) ?? false;
     }
 }

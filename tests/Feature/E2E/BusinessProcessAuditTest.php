@@ -503,7 +503,7 @@ class BusinessProcessAuditTest extends TestCase
                 $this->assertFalse($auth->invoke($history->instance())->allowed());
             }
             $this->actingAs($user)->get(PayrollConfiguration::getUrl())
-                ->assertStatus($role === Role::MANAGEMENT ? 200 : 403);
+                ->assertStatus($role->grants(Role::MANAGEMENT) ? 200 : 403);
         }
         PermissionMatrix::set(Role::BARISTA, PanelModule::PURCHASE_ORDERS, ['view', 'edit']);
         Livewire::actingAs($this->barista)->test(ListPurchaseOrders::class)

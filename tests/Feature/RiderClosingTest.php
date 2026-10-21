@@ -109,6 +109,35 @@ class RiderClosingTest extends TestCase
         return (string) Str::uuid();
     }
 
+    public function test_finance_role_matrix_for_closing_corrections(): void
+    {
+        $this->issue(10, MovementType::ALLOCATION_IN);
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', $this->body(3, 0))->assertCreated();
+        $closing = RiderClosing::query()->sole();
+
+        foreach ([Role::BARISTA, Role::STAFF, Role::RIDER, Role::CONTENT_CREATOR] as $role) {
+            $actor = User::factory()->role($role)->create();
+            $this->actingAs($actor, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+                ->postJson("/api/v1/closings/{$closing->id}/corrections", [
+                    ...$this->body(3, 0), 'reason' => 'Uji hak akses',
+                ])->assertForbidden();
+        }
+
+        foreach ([Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR] as $index => $role) {
+            $actor = $role === Role::FINANCE ? $this->finance : User::factory()->role($role)->create();
+            $this->actingAs($actor, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+                ->postJson("/api/v1/closings/{$closing->id}/corrections", [
+                    ...$this->body(3, 0), 'qris' => 90000 + $index * 10000,
+                    'reason' => 'Uji koreksi',
+                ])->assertOk();
+        }
+
+        $this->assertDatabaseHas('audit_log', [
+            'action' => 'rider_closing.corrected', 'actor_role' => Role::ADMINISTRATOR->value,
+        ]);
+    }
+
     public function test_correction_after_cost_revaluation_restores_sale_and_waste_at_resolved_cost(): void
     {
         ProductPriceVersion::query()->where('product_id', $this->product->id)

@@ -103,7 +103,7 @@ class PriceVersionsRelationManager extends RelationManager
 
     private static function canViewCost(): bool
     {
-        return in_array(Auth::user()?->role, [Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR], true);
+        return Auth::user()?->role->grants(Role::FINANCE) ?? false;
     }
 
     private static function canCreatePriceVersion(): bool

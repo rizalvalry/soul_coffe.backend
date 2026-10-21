@@ -58,11 +58,13 @@ class PayrollConfigurationPanelTest extends TestCase
         $this->assertSame(1, (int) $rows[99]->amount_per_cup_minor);
     }
 
-    public function test_administrator_and_finance_get_403_on_payroll_page_and_livewire_writes(): void
+    public function test_finance_and_other_roles_get_403_on_payroll_page_and_livewire_writes(): void
     {
         $this->seed(RolePermissionSeeder::class);
         $manager = User::factory()->role(Role::MANAGEMENT)->create();
-        foreach ([Role::ADMINISTRATOR, Role::FINANCE] as $role) {
+        $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create())
+            ->get(PayrollConfiguration::getUrl())->assertOk();
+        foreach ([Role::FINANCE, Role::BARISTA, Role::RIDER, Role::STAFF, Role::CONTENT_CREATOR] as $role) {
             $this->actingAs($manager);
             $page = Livewire::test(PayrollConfiguration::class);
             $this->actingAs(User::factory()->role($role)->create());
