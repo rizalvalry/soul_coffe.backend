@@ -7,6 +7,7 @@ use App\Http\Requests\LoginRequest;
 use App\Http\Requests\LoginWithPinRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Services\DeviceBindingService;
 use App\Support\PhoneNumber;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -45,7 +46,7 @@ class AuthController extends Controller
 
     public const CODE_PIN_NOT_SET = 'PIN_NOT_SET';
 
-    public function login(LoginRequest $request): JsonResponse
+    public function login(LoginRequest $request, DeviceBindingService $devices): JsonResponse
     {
         // The mobile client already normalises, but the server must not trust that. PhoneNumber
         // is the single authoritative rule, shared with the admin panel so an account created
@@ -57,6 +58,7 @@ class AuthController extends Controller
         // Same generic message whether the phone doesn't exist, the password is wrong, or the
         // account is inactive — never reveal which, to a caller that isn't authenticated yet.
         if (! $user || ! $user->is_active || ! Hash::check($request->validated('password'), $user->password)) {
+            $devices->credentialFailure($user, $request);
             abort(401, 'Nomor HP atau kata sandi salah.');
         }
 
@@ -69,7 +71,11 @@ class AuthController extends Controller
             ], 409);
         }
 
-        $token = $user->createToken($request->validated('device_name'))->plainTextToken;
+        $decision = $devices->login($user, $request);
+        if (isset($decision['code'])) {
+            return response()->json(['message' => $decision['message'], 'code' => $decision['code']], 403);
+        }
+        $token = $decision['token'];
 
         return response()->json([
             'data' => [
@@ -96,7 +102,7 @@ class AuthController extends Controller
      * enumeration cost is accepted: it only tells a caller who already knows a valid phone number
      * that its owner signs in with a password, behind a 5/min throttle.
      */
-    public function loginWithPin(LoginWithPinRequest $request): JsonResponse
+    public function loginWithPin(LoginWithPinRequest $request, DeviceBindingService $devices): JsonResponse
     {
         $phone = PhoneNumber::normalize($request->validated('phone'));
         $user = User::query()->where('phone_e164', $phone)->first();
@@ -104,6 +110,7 @@ class AuthController extends Controller
         $reject = fn () => abort(401, 'Nomor HP atau PIN salah.');
 
         if (! $user || ! $user->is_active) {
+            $devices->credentialFailure($user, $request);
             $reject();
         }
 
@@ -119,6 +126,7 @@ class AuthController extends Controller
         }
 
         if (! Hash::check($request->validated('pin'), $user->login_pin_hash)) {
+            $devices->credentialFailure($user, $request);
             $failures = $user->login_pin_failures + 1;
 
             $user->forceFill([
@@ -133,7 +141,11 @@ class AuthController extends Controller
 
         $user->forceFill(['login_pin_failures' => 0, 'login_pin_locked_until' => null])->save();
 
-        $token = $user->createToken($request->validated('device_name'))->plainTextToken;
+        $decision = $devices->login($user, $request);
+        if (isset($decision['code'])) {
+            return response()->json(['message' => $decision['message'], 'code' => $decision['code']], 403);
+        }
+        $token = $decision['token'];
 
         return response()->json([
             'data' => [

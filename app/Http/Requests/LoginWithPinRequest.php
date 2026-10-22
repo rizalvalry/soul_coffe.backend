@@ -30,6 +30,10 @@ class LoginWithPinRequest extends FormRequest
             'phone' => ['required', 'string'],
             'pin' => ['required', 'string', 'digits:6'],
             'device_name' => ['required', 'string', 'max:255'],
+            'device_id' => ['nullable', 'string', 'max:255'],
+            'model' => ['nullable', 'string', 'max:255'],
+            'os_version' => ['nullable', 'string', 'max:100'],
+            'app_version' => ['nullable', 'string', 'max:100'],
         ];
     }
 

@@ -7,6 +7,7 @@ use App\Models\DevicePushToken;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Laravel\Sanctum\PersonalAccessToken;
 
 /**
  * Push registrations for the calling user's device (docs/04 §Push).
@@ -33,6 +34,8 @@ class DeviceController extends Controller
             ['token' => $validated['token']],
             [
                 'user_id' => $request->user()->id,
+                'user_device_id' => $request->user()->currentAccessToken() instanceof PersonalAccessToken
+                    ? $request->user()->currentAccessToken()->user_device_id : null,
                 'platform' => $validated['platform'] ?? 'android',
                 'device_name' => $validated['device_name'] ?? null,
                 'last_seen_at' => now(),

@@ -25,7 +25,7 @@ final class DefaultPermissions
         PanelModule::MENU_NAMING, PanelModule::NEWS_FEED, PanelModule::DELIVERY_INCIDENT_DECISIONS,
         PanelModule::SALE_CORRECTIONS, PanelModule::ALLOCATIONS, PanelModule::CLOSING_LOCATION_EVIDENCE,
         PanelModule::DIRECT_SALE_ACTIONS, PanelModule::PURCHASE_ORDER_ACTIONS,
-        PanelModule::STOCK_OPNAME_ACTIONS, PanelModule::STOCK_ADJUSTMENTS,
+        PanelModule::STOCK_OPNAME_ACTIONS, PanelModule::STOCK_ADJUSTMENTS, PanelModule::DEVICES,
     ];
 
     public static function seed(): void

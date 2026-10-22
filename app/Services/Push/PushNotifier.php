@@ -3,6 +3,7 @@
 namespace App\Services\Push;
 
 use App\Models\DevicePushToken;
+use App\Models\UserDevice;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -55,6 +56,9 @@ class PushNotifier
             $registrations = DevicePushToken::query()
                 ->whereIn('user_id', $ids)
                 ->whereNull('failed_at')
+                ->when(config('soul.device_binding_enforce'), fn ($query) => $query
+                    ->whereIn('user_device_id', UserDevice::query()->select('id')
+                        ->where('status', UserDevice::ACTIVE)))
                 ->orderByDesc('last_seen_at')
                 ->limit(200)
                 ->get(['id', 'user_id', 'token']);
