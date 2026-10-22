@@ -73,7 +73,7 @@ class RosterImportTest extends TestCase
         $this->assertFalse($newRider->is_active);
         $this->assertTrue($newRider->roster_onboarding);
         $this->assertNull($newRider->phone_e164);
-        $this->assertSame(Role::MANAGEMENT, User::query()->where('name', 'Dina Uji')->firstOrFail()->role);
+        $this->assertSame(Role::FINANCE, User::query()->where('name', 'Dina Uji')->firstOrFail()->role);
     }
 
     public function test_unknown_cart_aborts_without_creating_any_accounts(): void
@@ -85,6 +85,16 @@ class RosterImportTest extends TestCase
         $this->assertSame('kode Coffee Bike tidak ditemukan', $result['rows'][0]['reason']);
         $this->assertSame(0, User::query()->count());
         $this->assertSame(0, DB::table('employee_profiles')->count());
+    }
+
+    public function test_legacy_management_role_in_csv_is_rejected_without_creating_an_account(): void
+    {
+        $result = app(RosterImportService::class)->import($this->fixture('roster_legacy_management.csv'));
+
+        $this->assertTrue($result['aborted']);
+        $this->assertSame(1, $result['issues']);
+        $this->assertSame('Management adalah status akun, bukan role CSV', $result['rows'][0]['reason']);
+        $this->assertSame(0, User::query()->count());
     }
 
     public function test_header_only_csv_is_rejected(): void

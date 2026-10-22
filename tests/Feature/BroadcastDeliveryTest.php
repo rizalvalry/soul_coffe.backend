@@ -225,7 +225,7 @@ class BroadcastDeliveryTest extends TestCase
             $eventId = app(EventPublisher::class)->publish(
                 'SettlementRecorded', 'Setoran dicatat', 'Setoran baru', $channels, [$this->staff->id],
             );
-            $expected = [...$channels, 'user.'.$admin->id];
+            $expected = [...array_values(array_diff($channels, ['role.MANAGEMENT'])), 'user.'.$admin->id];
             if (! in_array('role.ADMINISTRATOR', $channels, true)) {
                 $expected[] = 'role.ADMINISTRATOR';
             }

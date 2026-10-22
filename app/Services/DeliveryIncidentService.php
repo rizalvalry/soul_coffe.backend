@@ -317,8 +317,10 @@ class DeliveryIncidentService
     {
         $supervisors = $decision
             ? PermissionMatrix::usersWith(PanelModule::DELIVERY_INCIDENT_DECISIONS, 'edit')
-            : User::query()->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT])
-                ->where('is_active', true)->pluck('id')->all();
+            : array_values(array_unique(array_merge(
+                User::query()->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE])
+                    ->where('is_active', true)->pluck('id')->all(), User::managementIds(),
+            )));
 
         $kitchenBaristas = User::query()
             ->where('role', Role::BARISTA)

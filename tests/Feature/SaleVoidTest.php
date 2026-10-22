@@ -232,7 +232,7 @@ class SaleVoidTest extends TestCase
         $outbox = OutboxEvent::query()->where('name', 'SaleVoided')->sole();
         $payload = $outbox->payload_json;
         $this->assertEqualsCanonicalizing([
-            'role.ADMINISTRATOR', 'role.FINANCE', 'role.MANAGEMENT',
+            'role.ADMINISTRATOR', 'role.FINANCE',
             'user.'.$admin->id, 'user.'.$this->finance->id, 'user.'.$management->id,
         ], $payload['channels']);
         $this->assertSame($this->cart->id, $payload['cart_id']);

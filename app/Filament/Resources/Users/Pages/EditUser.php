@@ -19,6 +19,14 @@ class EditUser extends EditRecord
 {
     protected static string $resource = UserResource::class;
 
+    public function save(bool $shouldRedirect = true, bool $shouldSendSavedNotification = true): void
+    {
+        abort_if(($this->data['role'] ?? null) === Role::MANAGEMENT->value, 422);
+        abort_if(! Auth::user()?->is_super_admin && array_key_exists('is_management', $this->data)
+            && (bool) $this->data['is_management'] !== (bool) $this->record->is_management, 403);
+        parent::save($shouldRedirect, $shouldSendSavedNotification);
+    }
+
     protected function mutateFormDataBeforeFill(array $data): array
     {
         /** @var User $user */
@@ -43,12 +51,15 @@ class EditUser extends EditRecord
     protected function handleRecordUpdate(Model $record, array $data): Model
     {
         $requestedRole = (string) ($this->data['role'] ?? $data['role'] ?? $record->role->value);
+        abort_if($requestedRole === Role::MANAGEMENT->value, 422);
 
         return DB::transaction(function () use ($record, $data, $requestedRole): Model {
             User::query()->where('role', Role::ADMINISTRATOR->value)
                 ->orderBy('id')->lockForUpdate()->get(['id']);
             $actor = Auth::user()->refresh();
             $record->refresh();
+            abort_if(! $actor->is_super_admin && array_key_exists('is_management', $this->data)
+                && (bool) $this->data['is_management'] !== (bool) $record->is_management, 403);
             if (! PermissionMatrix::canManagePermissions($actor)
                 && ($record->role === Role::ADMINISTRATOR || $requestedRole !== $record->role->value)) {
                 abort(403);

@@ -13,8 +13,8 @@ use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TagsInput;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Section;
@@ -140,12 +140,13 @@ class NewsPostForm
                             ->native(false),
 
                         Select::make('audience_roles')
-                            ->label('Untuk Role')
+                            ->label('Untuk peran atau status')
                             ->multiple()
                             ->options(collect(Role::cases())
-                                ->mapWithKeys(fn (Role $r) => [$r->value => $r->label()])
-                                ->all())
-                            ->helperText('Kosongkan untuk semua orang. Artikel yang ditujukan ke role tertentu jauh lebih dibaca.')
+                                ->reject(fn (Role $role): bool => $role === Role::MANAGEMENT)
+                                ->mapWithKeys(fn (Role $role) => [$role->value => $role->label()])
+                                ->put(Role::MANAGEMENT->value, 'Status Management')->all())
+                            ->helperText('Kosongkan untuk semua orang. Pilih Status Management buat kabar pimpinan.')
                             ->native(false),
 
                         Toggle::make('is_highlighted')

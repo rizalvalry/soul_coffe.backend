@@ -357,7 +357,7 @@ class RiderClosingTest extends TestCase
 
     public function test_closing_uses_handover_refill_and_carry_then_posts_aggregate_ledger_once(): void
     {
-        $management = User::factory()->role(Role::MANAGEMENT)->create();
+        $management = User::factory()->role(Role::BARISTA)->create(['is_management' => true]);
         $administrator = User::factory()->role(Role::ADMINISTRATOR)->create();
         $this->issue(2, MovementType::ALLOCATION_IN, now()->subDay());
         $this->issue(20, MovementType::ALLOCATION_IN);

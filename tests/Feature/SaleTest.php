@@ -176,7 +176,7 @@ class SaleTest extends TestCase
 
         $event = OutboxEvent::query()->where('name', 'SaleRecorded')->sole();
         $payload = $event->payload_json;
-        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT', 'role.ADMINISTRATOR'], $payload['channels']);
+        $this->assertSame(['role.FINANCE', 'role.ADMINISTRATOR'], $payload['channels']);
         $this->assertSame($this->cart->id, $payload['cart_id']);
         $this->assertSame(Carbon::today()->toDateString(), $payload['operating_date']);
         $this->assertSame($saleId, $payload['source_id']);
@@ -250,6 +250,7 @@ class SaleTest extends TestCase
         ]);
         require base_path('routes/channels.php');
         $body = ['socket_id' => '123.456', 'channel_name' => 'private-role.FINANCE'];
+        $manager = User::factory()->role(Role::FINANCE)->create(['is_management' => true]);
 
         $this->actingAs(User::factory()->role(Role::FINANCE)->create(), 'sanctum')
             ->postJson('/api/v1/broadcasting/auth', $body)->assertOk();
@@ -259,7 +260,7 @@ class SaleTest extends TestCase
                 ->postJson('/api/v1/broadcasting/auth', $body)->assertForbidden();
         }
 
-        $this->actingAs(User::factory()->role(Role::MANAGEMENT)->create(), 'sanctum')
+        $this->actingAs($manager, 'sanctum')
             ->postJson('/api/v1/broadcasting/auth', [
                 'socket_id' => '123.456', 'channel_name' => 'private-role.MANAGEMENT',
             ])->assertOk();

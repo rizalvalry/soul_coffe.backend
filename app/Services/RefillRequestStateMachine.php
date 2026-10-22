@@ -1005,14 +1005,17 @@ class RefillRequestStateMachine
      */
     private function userIdsWithRole(Role $role, ?int $kitchenId = null): array
     {
-        $roles = $role === Role::FINANCE ? [Role::FINANCE, Role::MANAGEMENT] : [$role];
-        $query = User::query()->whereIn('role', $roles);
+        $query = User::query()->where('role', $role);
 
         if ($kitchenId !== null) {
             $query->where('kitchen_id', $kitchenId);
         }
 
-        return $query->pluck('id')->all();
+        $ids = $query->pluck('id')->all();
+
+        return $role === Role::FINANCE
+            ? array_values(array_unique(array_merge($ids, User::managementIds())))
+            : $ids;
     }
 
     private function isDuplicateKeyViolation(\PDOException $e): bool

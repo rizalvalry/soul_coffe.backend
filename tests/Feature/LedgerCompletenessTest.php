@@ -261,9 +261,9 @@ class LedgerCompletenessTest extends TestCase
     public function test_allowance_posts_once_and_reopen_requires_reason_notifies_every_manager(): void
     {
         $finance = User::factory()->role(Role::FINANCE)->create();
-        $managerA = User::factory()->role(Role::MANAGEMENT)->create();
-        $managerB = User::factory()->role(Role::MANAGEMENT)->create();
-        $administrator = User::factory()->role(Role::ADMINISTRATOR)->create();
+        $managerA = User::factory()->role(Role::FINANCE)->create(['is_management' => true]);
+        $managerB = User::factory()->role(Role::FINANCE)->create(['is_management' => true]);
+        $administrator = User::factory()->role(Role::ADMINISTRATOR)->create(['is_super_admin' => true]);
         $rider = User::factory()->role(Role::STAFF)->create();
         $cart = Cart::create(['code' => 'T052', 'status' => 'active']);
         $allowance = app(DailyAllowanceService::class)->forCart($cart);
@@ -287,8 +287,10 @@ class LedgerCompletenessTest extends TestCase
             $this->assertSame(422, $exception->status);
         }
         app(AccountingPeriodService::class)->setStatus(today()->year, today()->month, 'OPEN', $managerA, 'Koreksi saldo awal');
-        $this->assertEqualsCanonicalizing([$finance->id, $managerA->id, $managerB->id, $administrator->id],
+        $this->assertEqualsCanonicalizing([$managerA->id, $managerB->id, $administrator->id],
             AppNotification::query()->where('type', 'AccountingPeriodReopened')->pluck('user_id')->all());
+        $this->assertFalse(AppNotification::query()->where('type', 'AccountingPeriodReopened')
+            ->where('user_id', $finance->id)->exists());
         $this->assertTrue(AppNotification::query()->where('type', 'AccountingPeriodReopened')
             ->where('user_id', $administrator->id)->exists());
         $audit = AuditLog::query()->where('action', 'accounting_period.reopened')->firstOrFail();

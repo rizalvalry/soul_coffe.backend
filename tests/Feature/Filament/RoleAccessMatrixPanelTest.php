@@ -54,7 +54,7 @@ class RoleAccessMatrixPanelTest extends TestCase
 
         $this->assertContains(Role::ADMINISTRATOR, $roles);
         $this->assertContains(Role::FINANCE, $roles);
-        $this->assertContains(Role::MANAGEMENT, $roles);
+        $this->assertNotContains(Role::MANAGEMENT, $roles);
     }
 
     public function test_one_matrix_save_emits_one_access_refresh_for_many_changed_modules(): void
@@ -74,66 +74,37 @@ class RoleAccessMatrixPanelTest extends TestCase
         $this->assertTrue(PermissionMatrix::can($barista, PanelModule::SETTLEMENTS, 'view'));
     }
 
-    public function test_management_grants_are_independent_and_can_be_revoked(): void
+    public function test_legacy_management_template_is_hidden_and_preserved(): void
     {
         $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create());
-        $management = User::factory()->role(Role::MANAGEMENT)->create();
-        PermissionMatrix::set(Role::FINANCE, PanelModule::SETTLEMENTS, ['view']);
-
-        $editor = Livewire::test(RoleAccessMatrix::class)
-            ->set('role', Role::MANAGEMENT->value);
-
-        $this->assertTrue($editor->get('grants.'.PanelModule::SETTLEMENTS->value.'.view'));
-        $this->assertFalse($editor->instance()->isInherited(PanelModule::SETTLEMENTS, 'view'));
-
-        $editor->set('grants.'.PanelModule::SETTLEMENTS->value.'.view', false)
-            ->set('grants.'.PanelModule::SETTLEMENTS->value.'.create', false)
-            ->set('grants.'.PanelModule::SETTLEMENTS->value.'.edit', false)
-            ->set('grants.'.PanelModule::SETTLEMENTS->value.'.delete', false)
-            ->call('save')
-            ->assertHasNoErrors();
-
-        $this->assertFalse(PermissionMatrix::can($management, PanelModule::SETTLEMENTS, 'view'));
-        $this->assertDatabaseMissing('role_permissions', [
-            'role' => Role::MANAGEMENT->value,
-            'module' => PanelModule::SETTLEMENTS->value,
-        ]);
+        $before = PermissionMatrix::ownAbilitiesFor(Role::MANAGEMENT, PanelModule::SETTLEMENTS);
+        $this->assertNotContains(Role::MANAGEMENT, Livewire::test(RoleAccessMatrix::class)->instance()->editableRoles());
+        Livewire::test(RoleAccessMatrix::class)->set('role', Role::MANAGEMENT->value)->assertStatus(422);
+        $this->assertSame($before, PermissionMatrix::ownAbilitiesFor(Role::MANAGEMENT, PanelModule::SETTLEMENTS));
     }
 
-    public function test_management_extra_action_keeps_its_own_view_if_finance_is_revoked(): void
+    public function test_editing_finance_template_keeps_legacy_management_row(): void
     {
         $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create());
-        $management = User::factory()->role(Role::MANAGEMENT)->create();
-        PermissionMatrix::set(Role::FINANCE, PanelModule::CARTS, ['view']);
+        $before = PermissionMatrix::ownAbilitiesFor(Role::MANAGEMENT, PanelModule::CARTS);
 
         Livewire::test(RoleAccessMatrix::class)
-            ->set('role', Role::MANAGEMENT->value)
-            ->set('grants.'.PanelModule::CARTS->value.'.edit', true)
+            ->set('role', Role::FINANCE->value)
+            ->set('grants.'.PanelModule::CARTS->value.'.view', false)
+            ->set('grants.'.PanelModule::CARTS->value.'.edit', false)
             ->call('save')
             ->assertHasNoErrors();
 
-        PermissionMatrix::set(Role::FINANCE, PanelModule::CARTS, []);
-
-        $this->assertTrue(PermissionMatrix::can($management, PanelModule::CARTS, 'view'));
-        $this->assertTrue(PermissionMatrix::can($management, PanelModule::CARTS, 'edit'));
+        $this->assertSame($before, PermissionMatrix::ownAbilitiesFor(Role::MANAGEMENT, PanelModule::CARTS));
     }
 
-    public function test_management_explicit_grant_survives_temporary_finance_overlap(): void
+    public function test_management_status_does_not_inherit_legacy_template(): void
     {
-        $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create());
-        $management = User::factory()->role(Role::MANAGEMENT)->create();
-        PermissionMatrix::set(Role::MANAGEMENT, PanelModule::CARTS, ['view']);
-        PermissionMatrix::set(Role::FINANCE, PanelModule::CARTS, ['view']);
+        $management = User::factory()->role(Role::BARISTA)->create(['is_management' => true]);
+        PermissionMatrix::set(Role::MANAGEMENT, PanelModule::MANAGEMENT_REPORTS, ['view']);
 
-        Livewire::test(RoleAccessMatrix::class)
-            ->set('role', Role::MANAGEMENT->value)
-            ->call('save')
-            ->assertHasNoErrors();
-
-        PermissionMatrix::set(Role::FINANCE, PanelModule::CARTS, []);
-
-        $this->assertTrue(PermissionMatrix::can($management, PanelModule::CARTS, 'view'));
-        $this->assertSame(['view'], PermissionMatrix::ownAbilitiesFor(Role::MANAGEMENT, PanelModule::CARTS));
+        $this->assertFalse(PermissionMatrix::can($management, PanelModule::MANAGEMENT_REPORTS, 'view'));
+        $this->assertSame(['view'], PermissionMatrix::ownAbilitiesFor(Role::MANAGEMENT, PanelModule::MANAGEMENT_REPORTS));
     }
 
     public function test_saving_writes_the_ticked_abilities_for_the_selected_role_only(): void

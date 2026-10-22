@@ -73,16 +73,21 @@ class NewsPost extends Model
      * Audience is a whitelist: an empty or absent `audience_roles` means everyone, which keeps
      * the common case (a general announcement) free of ceremony.
      */
-    public function scopeVisibleTo(Builder $query, Role $role): Builder
+    public function scopeVisibleTo(Builder $query, User $user): Builder
     {
         return $query
             ->where('status', 'published')
             ->where(fn (Builder $q) => $q->whereNull('published_at')->orWhere('published_at', '<=', now()))
             ->where(fn (Builder $q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))
-            ->where(function (Builder $q) use ($role): void {
+            ->where(function (Builder $q) use ($user): void {
                 $q->whereNull('audience_roles')
-                    ->orWhereJsonLength('audience_roles', 0)
-                    ->orWhereJsonContains('audience_roles', $role->value);
+                    ->orWhereJsonLength('audience_roles', 0);
+                if ($user->role !== Role::MANAGEMENT) {
+                    $q->orWhereJsonContains('audience_roles', $user->role->value);
+                }
+                if ($user->isManagement()) {
+                    $q->orWhereJsonContains('audience_roles', Role::MANAGEMENT->value);
+                }
             });
     }
 

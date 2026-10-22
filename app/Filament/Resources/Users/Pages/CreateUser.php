@@ -17,11 +17,19 @@ class CreateUser extends CreateRecord
 {
     protected static string $resource = UserResource::class;
 
+    public function create(bool $another = false): void
+    {
+        abort_if(($this->data['role'] ?? null) === Role::MANAGEMENT->value, 422);
+        abort_if(! Auth::user()?->is_super_admin && ($this->data['is_management'] ?? false), 403);
+        parent::create($another);
+    }
+
     protected function handleRecordCreation(array $data): Model
     {
         abort_unless(PermissionMatrix::can(Auth::user(), PanelModule::USERS, 'create'), 403);
         $requestedRole = Role::tryFrom((string) ($this->data['role'] ?? $data['role'] ?? ''));
-        abort_unless($requestedRole !== null && $requestedRole->value === ($data['role'] ?? null), 422);
+        abort_unless($requestedRole !== null && $requestedRole !== Role::MANAGEMENT
+            && $requestedRole->value === ($data['role'] ?? null), 422);
 
         return DB::transaction(function () use ($data, $requestedRole): Model {
             User::query()->where('role', Role::ADMINISTRATOR->value)
@@ -36,6 +44,7 @@ class CreateUser extends CreateRecord
                 abort_if(collect($this->data['access_reasons'] ?? [])->contains(fn ($reason): bool => filled($reason)), 403);
             }
             abort_if(! $actor->is_super_admin && ($this->data['is_super_admin'] ?? false), 403);
+            abort_if(! $actor->is_super_admin && ($this->data['is_management'] ?? false), 403);
             [$choices, $reasons, $superAdmin] = UserAccessForm::extract($data, $actor);
             /** @var User $user */
             $user = parent::handleRecordCreation($data);

@@ -37,6 +37,7 @@ class User extends Authenticatable implements FilamentUser, HasName
         'pin_hash',
         'login_pin_hash',
         'is_active',
+        'is_management',
         'roster_onboarding',
         // Absensi fields remain on the user; payroll-specific fields live in employee_profiles.
         // Both refer to this one identity, rather than creating a second roster of people.
@@ -94,6 +95,7 @@ class User extends Authenticatable implements FilamentUser, HasName
             'role' => Role::class,
             'is_active' => 'boolean',
             'is_super_admin' => 'boolean',
+            'is_management' => 'boolean',
             'roster_onboarding' => 'boolean',
             'login_pin_locked_until' => 'datetime',
             'monthly_libur_quota' => 'integer',
@@ -107,7 +109,12 @@ class User extends Authenticatable implements FilamentUser, HasName
     /** Mask all employee financial/identity changes before they reach the audit trail. */
     protected static function booted(): void
     {
-        static::created(fn (self $user) => $user->auditSensitiveChanges(true));
+        static::created(function (self $user): void {
+            $user->auditSensitiveChanges(true);
+            if ($user->is_management) {
+                $user->auditManagementStatus(false);
+            }
+        });
         static::saving(function (self $user): void {
             if ($user->is_super_admin && $user->role !== Role::ADMINISTRATOR) {
                 throw ValidationException::withMessages(['role' => 'Super Administrator harus punya role Administrator.']);
@@ -115,6 +122,9 @@ class User extends Authenticatable implements FilamentUser, HasName
 
             $wasSuper = (bool) $user->getRawOriginal('is_super_admin');
             $actor = Auth::user();
+            if ($user->isDirty('is_management') && $actor !== null && ! $actor->is_super_admin) {
+                abort(403);
+            }
             if ($user->exists && $user->isDirty('role') && $actor !== null
                 && ! PermissionMatrix::canManagePermissions($actor)) {
                 abort(403);
@@ -133,7 +143,11 @@ class User extends Authenticatable implements FilamentUser, HasName
         });
         static::updated(function (self $user): void {
             $user->auditSensitiveChanges(false);
-            if ($user->wasChanged('role') || $user->wasChanged('is_active') || $user->wasChanged('is_super_admin')) {
+            if ($user->wasChanged('is_management')) {
+                $user->auditManagementStatus((bool) $user->getRawOriginal('is_management'));
+            }
+            if ($user->wasChanged('role') || $user->wasChanged('is_active') || $user->wasChanged('is_super_admin')
+                || $user->wasChanged('is_management')) {
                 app(EventPublisher::class)->publish('AccessChanged', 'Hak akses diperbarui',
                     'Menu kamu sudah diperbarui ya.', ['user.'.$user->id]);
             }
@@ -156,6 +170,34 @@ class User extends Authenticatable implements FilamentUser, HasName
                 'ip' => request()?->ip(),
             ]);
         });
+    }
+
+    public function isManagement(): bool
+    {
+        return $this->is_active && ($this->is_super_admin || $this->is_management);
+    }
+
+    /** @return array<int, int> */
+    public static function managementIds(): array
+    {
+        return self::query()->where('is_active', true)->where(function ($query): void {
+            $query->where('is_super_admin', true)->orWhere('is_management', true);
+        })->orderBy('id')->pluck('id')->all();
+    }
+
+    private function auditManagementStatus(bool $before): void
+    {
+        $actor = Auth::user();
+        AuditLog::query()->create([
+            'actor_id' => $actor?->id,
+            'actor_role' => $actor?->role?->value ?? 'SYSTEM',
+            'action' => 'management.status_changed',
+            'subject_type' => self::class,
+            'subject_id' => $this->id,
+            'before_json' => ['is_management' => $before],
+            'after_json' => ['is_management' => (bool) $this->is_management],
+            'ip' => request()?->ip(),
+        ]);
     }
 
     public static function maskSensitiveValue(?string $value): ?string

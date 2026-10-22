@@ -6,6 +6,7 @@ use App\Enums\PanelModule;
 use App\Jobs\PublishOutboxEvent;
 use App\Models\AppNotification;
 use App\Models\OutboxEvent;
+use App\Models\User;
 use App\Services\Access\PermissionMatrix;
 use App\Services\Push\PushNotifier;
 use Illuminate\Support\Facades\Auth;
@@ -50,6 +51,31 @@ class EventPublisher
     ): string {
         $eventId = (string) Str::uuid();
 
+        // A private role subscription remains live until the socket leaves. Resolve the
+        // leadership audience at publish time so revoking status stops future delivery even
+        // while an old socket is still subscribed to role.MANAGEMENT.
+        $managementChannel = in_array('role.MANAGEMENT', $channels, true);
+        if ($managementChannel) {
+            $channels = array_values(array_filter($channels,
+                fn (string $channel): bool => $channel !== 'role.MANAGEMENT'));
+            foreach (User::managementIds() as $id) {
+                $channels[] = 'user.'.$id;
+            }
+        }
+
+        // These alerts already persisted notifications for the old Management role through
+        // its full permission template. Keep that leadership audience independent of grants.
+        if (in_array($type, ['RefillRequestSubmitted', 'RefillRequestExpired',
+            'DeliveryIncidentReported', 'AllocationOverTarget', 'CartCloseOutVarianceFlagged',
+            'SettlementVarianceFlagged', 'SettlementMethodVarianceFlagged',
+            'SettlementExpectedStale'], true)) {
+            $managementIds = User::managementIds();
+            $notifyUserIds = array_values(array_unique(array_merge($notifyUserIds, $managementIds)));
+            foreach ($managementIds as $id) {
+                $channels[] = 'user.'.$id;
+            }
+        }
+
         // Add each current holder's private channel to the existing outbox row. Role channels
         // still carry field-flow and informative events; a new permission needs no extra event.
         $module = match ($type) {
@@ -60,7 +86,6 @@ class EventPublisher
             'RiderClosingRecorded', 'RiderClosingCorrected', 'SaleRecorded', 'SaleVoided',
             'CartArrivalChanged' => PanelModule::SETTLEMENTS,
             'RiderLocationSetupMissing', 'RiderLocationSetupChanged' => PanelModule::RIDER_LOCATION_SETUP,
-            'AccountingPeriodReopened' => PanelModule::ACCOUNTING_PERIODS,
             default => null,
         };
         if ($module !== null) {
@@ -76,9 +101,10 @@ class EventPublisher
             $channels = array_values(array_filter($channels,
                 fn (string $channel): bool => ! in_array($channel,
                     ['role.FINANCE', 'role.MANAGEMENT', 'role.ADMINISTRATOR'], true)));
+            $managementChannel = false;
         }
 
-        if (array_intersect(['role.FINANCE', 'role.MANAGEMENT'], $channels)
+        if (($managementChannel || in_array('role.FINANCE', $channels, true))
             && ! in_array('role.ADMINISTRATOR', $channels, true)) {
             $channels[] = 'role.ADMINISTRATOR';
         }

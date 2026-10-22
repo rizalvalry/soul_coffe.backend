@@ -435,8 +435,10 @@ class RiderClosingService
             } elseif ($settlement && $before) {
                 $this->settlements->markExpectedStale($cart->id, $date, $actor, $total - (int) $before['total_minor'], true);
             }
-            $recipientIds = User::query()->whereIn('role', [Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR])
-                ->where('is_active', true)->pluck('id')->all();
+            $recipientIds = array_values(array_unique(array_merge(
+                User::query()->whereIn('role', [Role::FINANCE, Role::ADMINISTRATOR])
+                    ->where('is_active', true)->pluck('id')->all(), User::managementIds(),
+            )));
             $this->events->publish(
                 $before ? 'RiderClosingCorrected' : 'RiderClosingRecorded',
                 'Closing Rider sudah masuk',
