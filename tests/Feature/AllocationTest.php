@@ -7,6 +7,7 @@ use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Models\AppNotification;
 use App\Models\Cart;
+use App\Models\DailyTarget;
 use App\Models\Location;
 use App\Models\Product;
 use App\Models\StaffAssignment;
@@ -92,6 +93,55 @@ class AllocationTest extends TestCase
 
         $this->assertSame(5, $ledger->stockFor(StockLedgerService::CART, $this->cart->id, $this->product->id));
         $this->assertSame(195, $ledger->stockFor(StockLedgerService::KITCHEN, $this->cart->kitchen_id, $this->product->id));
+    }
+
+    public function test_allocation_150_cups_moves_stock_when_kitchen_has_enough(): void
+    {
+        DailyTarget::query()->where('cart_id', $this->cart->id)
+            ->where('product_id', $this->product->id)->update(['target_qty' => 150]);
+
+        $this->actingAs($this->barista, 'sanctum')
+            ->postJson('/api/v1/allocations', $this->payload(150), ['Idempotency-Key' => 'alloc-150'])
+            ->assertCreated()->assertJsonPath('data.status', 'ISSUED');
+
+        $ledger = app(StockLedgerService::class);
+        $this->assertSame(150, $ledger->stockFor(StockLedgerService::CART, $this->cart->id, $this->product->id));
+        $this->assertSame(50, $ledger->stockFor(StockLedgerService::KITCHEN, $this->cart->kitchen_id, $this->product->id));
+    }
+
+    public function test_allocation_above_actual_stock_returns_422_even_below_ten_thousand(): void
+    {
+        DailyTarget::query()->where('cart_id', $this->cart->id)
+            ->where('product_id', $this->product->id)->update(['target_qty' => 201]);
+
+        $response = $this->actingAs($this->barista, 'sanctum')
+            ->postJson('/api/v1/allocations', $this->payload(201), ['Idempotency-Key' => 'alloc-201'])
+            ->assertUnprocessable();
+        $this->assertStringContainsString('Stok kitchen tidak cukup', $response->json('message'));
+        $this->assertDatabaseCount('daily_allocations', 0);
+    }
+
+    public function test_allocation_rejects_ten_thousand_cups_per_product(): void
+    {
+        $response = $this->actingAs($this->barista, 'sanctum')
+            ->postJson('/api/v1/allocations', $this->payload(10000), ['Idempotency-Key' => 'alloc-10000'])
+            ->assertUnprocessable();
+        $this->assertStringContainsString('maksimal 9.999', $response->json('message'));
+    }
+
+    public function test_allocation_rejects_duplicate_product_lines_before_the_stock_transfer(): void
+    {
+        $payload = $this->payload(100);
+        $payload['lines'][] = ['product_id' => $this->product->id, 'qty_issued' => 100];
+
+        $response = $this->actingAs($this->barista, 'sanctum')
+            ->postJson('/api/v1/allocations', $payload, ['Idempotency-Key' => 'alloc-duplicate'])
+            ->assertUnprocessable();
+        $this->assertStringContainsString('Produk yang sama cukup satu baris', $response->json('message'));
+        $this->assertDatabaseCount('daily_allocations', 0);
+        $this->assertSame(200, app(StockLedgerService::class)->stockFor(
+            StockLedgerService::KITCHEN, $this->cart->kitchen_id, $this->product->id,
+        ));
     }
 
     public function test_allocation_line_includes_the_absolute_cms_product_image_url(): void

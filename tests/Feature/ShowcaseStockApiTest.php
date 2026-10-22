@@ -2,13 +2,19 @@
 
 namespace Tests\Feature;
 
+use App\Enums\MovementType;
 use App\Enums\Role;
+use App\Models\Account;
 use App\Models\Cart;
+use App\Models\JournalEntry;
 use App\Models\Location;
 use App\Models\Product;
+use App\Models\Production;
+use App\Models\RawMaterial;
 use App\Models\StaffAssignment;
 use App\Models\User;
 use App\Services\AttendanceService;
+use App\Services\RecipeService;
 use App\Services\StockLedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -121,6 +127,125 @@ class ShowcaseStockApiTest extends TestCase
         $row = collect($response->json('data'))->firstWhere('product_id', $this->product->id);
         $this->assertNotNull($row);
         $this->assertSame(212, $row['qty']); // seeded 200 + 12
+    }
+
+    public function test_brew_150_cups_posts_exact_stock_and_recipe_cost_to_the_ledger_and_journal(): void
+    {
+        $raw = RawMaterial::query()->create([
+            'code' => 'T069-RAW', 'name' => 'Bahan T-069', 'unit' => 'g', 'is_active' => true, 'sort_order' => 1,
+        ]);
+        $admin = User::query()->where('role', Role::ADMINISTRATOR)->firstOrFail();
+        $recipe = app(RecipeService::class)->create($this->product->id, [
+            ['raw_material_id' => $raw->id, 'qty_per_unit' => 2],
+        ], $admin);
+        app(StockLedgerService::class)->post(
+            StockLedgerService::RAW_MATERIAL_STORE, $this->cart->kitchen_id, null,
+            MovementType::PURCHASE_IN, 300, $admin->id, $this->cart->kitchen_id,
+            rawMaterialId: $raw->id, costMinor: 9000,
+        );
+        app(RecipeService::class)->refreshCostsForRawMaterials([$raw->id], $this->cart->kitchen_id);
+        $this->assertSame(60, $recipe->fresh()->computed_cost_minor);
+
+        $response = $this->actingAs($this->barista, 'sanctum')
+            ->withHeader('Idempotency-Key', $this->key())
+            ->postJson('/api/v1/showcase/brew', [
+                'lines' => [['product_id' => $this->product->id, 'qty' => 150]],
+            ])->assertOk();
+
+        $this->assertSame(350, collect($response->json('data'))->firstWhere('product_id', $this->product->id)['qty']);
+        $production = Production::query()->latest('id')->firstOrFail();
+        $this->assertSame(150, $production->lines()->sole()->qty_brewed);
+        $this->assertSame(60, $production->lines()->sole()->recipe_cost_minor);
+        $this->assertDatabaseHas('stock_ledger', [
+            'ref_type' => 'production', 'ref_id' => $production->id,
+            'movement_type' => MovementType::PRODUCTION_IN->value,
+            'product_id' => $this->product->id, 'qty_delta' => 150, 'cost_minor' => 9000,
+        ]);
+        $this->assertDatabaseHas('stock_ledger', [
+            'ref_type' => 'production', 'ref_id' => $production->id,
+            'movement_type' => MovementType::RECIPE_CONSUME_OUT->value,
+            'raw_material_id' => $raw->id, 'qty_delta' => -300, 'cost_minor' => 9000,
+        ]);
+        $journal = JournalEntry::query()->where('source_type', 'production')
+            ->where('source_id', $production->id)->where('purpose', 'TRANSFER')->sole();
+        $finished = Account::query()->where('code', '1-1600')->sole();
+        $this->assertDatabaseHas('journal_lines', [
+            'entry_id' => $journal->id, 'account_id' => $finished->id,
+            'debit_minor' => 9000, 'credit_minor' => 0,
+        ]);
+        $rawInventory = Account::query()->where('code', '1-1700')->sole();
+        $this->assertDatabaseHas('journal_lines', [
+            'entry_id' => $journal->id, 'account_id' => $rawInventory->id,
+            'debit_minor' => 0, 'credit_minor' => 9000,
+        ]);
+    }
+
+    public function test_brew_rejects_zero_ten_thousand_and_duplicate_lines_above_the_per_product_limit(): void
+    {
+        foreach ([
+            [['product_id' => $this->product->id, 'qty' => 0]],
+            [['product_id' => $this->product->id, 'qty' => 10000]],
+            [['product_id' => $this->product->id, 'qty' => 6000], ['product_id' => $this->product->id, 'qty' => 4000]],
+        ] as $lines) {
+            $response = $this->actingAs($this->barista, 'sanctum')
+                ->withHeader('Idempotency-Key', $this->key())
+                ->postJson('/api/v1/showcase/brew', ['lines' => $lines])
+                ->assertUnprocessable();
+            $this->assertStringContainsString(
+                $lines[0]['qty'] === 0 ? 'lebih dari 0' : 'maksimal 9.999',
+                $response->json('message'),
+            );
+        }
+
+        $this->assertDatabaseCount('productions', 0);
+    }
+
+    public function test_handover_150_cups_uses_real_showcase_stock_instead_of_the_refill_limit(): void
+    {
+        app(StockLedgerService::class)->post(
+            StockLedgerService::KITCHEN, $this->cart->kitchen_id, $this->product->id,
+            MovementType::ADJUSTMENT, -50, $this->barista->id, $this->cart->kitchen_id,
+        );
+        $this->assertSame(150, app(StockLedgerService::class)->stockFor(
+            StockLedgerService::KITCHEN, $this->cart->kitchen_id, $this->product->id,
+        ));
+
+        $response = $this->actingAs($this->barista, 'sanctum')
+            ->withHeader('Idempotency-Key', $this->key())
+            ->postJson('/api/v1/showcase/hand-to-cart', [
+                'cart_id' => $this->cart->id, 'staff_id' => $this->staff->id,
+                'lines' => [['product_id' => $this->product->id, 'qty' => 151]],
+            ])->assertUnprocessable();
+        $this->assertStringContainsString('Stok showcase tidak cukup', $response->json('message'));
+        $this->assertSame(0, $this->cartStock());
+
+        $this->actingAs($this->barista, 'sanctum')
+            ->withHeader('Idempotency-Key', $this->key())
+            ->postJson('/api/v1/showcase/hand-to-cart', [
+                'cart_id' => $this->cart->id, 'staff_id' => $this->staff->id,
+                'lines' => [['product_id' => $this->product->id, 'qty' => 150]],
+            ])->assertCreated();
+        $this->assertSame(150, $this->cartStock());
+        $this->assertSame(0, app(StockLedgerService::class)->stockFor(
+            StockLedgerService::KITCHEN, $this->cart->kitchen_id, $this->product->id,
+        ));
+    }
+
+    public function test_handover_rejects_ten_thousand_cups_per_product_before_stock_check(): void
+    {
+        foreach ([
+            [['product_id' => $this->product->id, 'qty' => 10000]],
+            [['product_id' => $this->product->id, 'qty' => 6000], ['product_id' => $this->product->id, 'qty' => 4000]],
+        ] as $lines) {
+            $response = $this->actingAs($this->barista, 'sanctum')
+                ->withHeader('Idempotency-Key', $this->key())
+                ->postJson('/api/v1/showcase/hand-to-cart', [
+                    'cart_id' => $this->cart->id, 'staff_id' => $this->staff->id,
+                    'lines' => $lines,
+                ])->assertUnprocessable();
+            $this->assertStringContainsString('maksimal 9.999', $response->json('message'));
+        }
+        $this->assertSame(0, $this->cartStock());
     }
 
     public function test_handing_cups_over_returns_the_assignment_allowance_and_both_stocks(): void
