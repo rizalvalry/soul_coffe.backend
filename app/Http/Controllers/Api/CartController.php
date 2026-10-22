@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CartResource;
 use App\Models\Cart;
+use App\Services\Access\PermissionMatrix;
 use App\Services\KitchenContext;
 use App\Services\RefillExpiryService;
 use Illuminate\Http\Request;
@@ -26,8 +28,11 @@ class CartController extends Controller
 
         $query = Cart::query()->orderBy('code');
         $kitchenId = null;
-        if ($request->query('scope') === 'kitchen' || $request->filled('kitchen_id')) {
-            $kitchenId = KitchenContext::resolve($request);
+        $scope = $request->query('scope');
+        if (in_array($scope, ['kitchen', 'close-out'], true) || $request->filled('kitchen_id')) {
+            $module = ($scope === 'close-out' || PermissionMatrix::can($user, PanelModule::CART_CLOSE_OUT, 'view'))
+                ? PanelModule::CART_CLOSE_OUT : PanelModule::KITCHEN_OPERATIONS;
+            $kitchenId = KitchenContext::resolve($request, 'view', $module);
             $query->where(fn ($cartQuery) => $cartQuery->where('kitchen_id', $kitchenId)
                 ->orWhere(fn ($unbound) => $unbound->whereNull('kitchen_id')
                     ->whereNotIn('id', fn ($assigned) => $assigned->select('cart_id')
@@ -36,6 +41,14 @@ class CartController extends Controller
                         ->where('source', 'hand_to_cart')
                         ->whereNull('superseded_at')
                         ->where('kitchen_id', '<>', $kitchenId))));
+        }
+
+        if ($scope === 'close-out') {
+            $query->where('status', 'active')
+                ->whereHas('staffAssignments', fn ($assignment) => $assignment
+                    ->whereDate('operating_date', today()->toDateString())
+                    ->where('source', 'hand_to_cart')
+                    ->whereNull('superseded_at'));
         }
 
         if ($user->role === Role::STAFF) {

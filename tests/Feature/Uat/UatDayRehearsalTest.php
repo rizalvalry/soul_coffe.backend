@@ -257,7 +257,8 @@ class UatDayRehearsalTest extends TestCase
         ])->assertCreated()->assertJsonPath('data.lines.0.qty_sold', 10)
             ->assertJsonPath('data.total_minor', 200000)
             ->assertJsonPath('data.cash_minor', 100000);
-        $this->postAs($this->production, 'showcase/close-out', [
+        $this->postAs($this->runner, 'showcase/close-out', [
+            'kitchen_id' => $this->kitchen->id,
             'cart_id' => $this->cart->id,
             'returned' => [['product_id' => $this->product->id, 'qty' => 3]],
         ])->assertOk();
@@ -372,7 +373,7 @@ class UatDayRehearsalTest extends TestCase
         $this->assertDatabaseHas('accounting_periods', ['year' => 2026, 'month' => 10, 'status' => 'CLOSED']);
         foreach (['staff_attendance_window.opened' => $this->production,
             'central_stock.brew' => $this->production, 'central_stock.hand_to_cart' => $this->production,
-            'central_stock.close_out' => $this->production,
+            'central_stock.close_out' => $this->runner,
             'refill.start_preparing' => $this->production, 'refill.ready' => $this->production,
             'direct_sale.created' => $this->finance, 'rider_closing.recorded' => $this->rider,
             'settlement.approved' => $this->finance, 'clearing_receipt.created' => $this->finance,
@@ -496,7 +497,8 @@ class UatDayRehearsalTest extends TestCase
                 'lines' => json_encode([['line_id' => $lineId, 'qty_received' => 1]]),
                 'stroke_count' => 0,
             ], ['Accept' => 'application/json'])->assertSuccessful();
-        $this->postAs($actor, 'showcase/close-out', $kitchenContext + [
+        $closeOutActor = $actor->role === Role::BARISTA ? $this->runner : $actor;
+        $this->postAs($closeOutActor, 'showcase/close-out', ['kitchen_id' => $this->kitchen->id] + [
             'cart_id' => $cart->id,
             'returned' => [['product_id' => $this->product->id, 'qty' => 1]],
             'rejected' => [['product_id' => $this->product->id, 'qty' => 1]],

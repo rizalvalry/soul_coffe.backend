@@ -131,8 +131,9 @@ class PermissionMatrix
     {
         foreach (PanelModule::cases() as $module) {
             $abilities = static::effectiveAbilitiesFor($user, $module);
-            // Payroll view alone serves the personal slip API; it opens no CMS page.
-            if ($abilities !== [] && ! ($module === PanelModule::PAYROLL && $abilities === ['view'])) {
+            // Phone-only close-out and payroll view do not open a CMS page.
+            if ($abilities !== [] && $module !== PanelModule::CART_CLOSE_OUT
+                && ! ($module === PanelModule::PAYROLL && $abilities === ['view'])) {
                 return true;
             }
         }

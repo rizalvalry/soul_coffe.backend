@@ -175,7 +175,8 @@ class UatExceptionRehearsalTest extends TestCase
         }
 
         // E6: physical return differs from Closing by one cup; close-out still succeeds.
-        $this->postAs($this->production, 'showcase/close-out', [
+        $this->postAs($this->runner, 'showcase/close-out', [
+            'kitchen_id' => $this->kitchen->id,
             'cart_id' => $this->cart->id,
             'returned' => [['product_id' => $this->product->id, 'qty' => 2]],
         ])->assertOk();

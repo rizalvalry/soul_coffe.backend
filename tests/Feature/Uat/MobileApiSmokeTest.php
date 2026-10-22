@@ -104,7 +104,7 @@ class MobileApiSmokeTest extends TestCase
             [$finance, "refills/{$refill->id}"],
             [$rider, "news/{$news->id}"],
             [$production, "showcase/allowance/{$cart->id}"],
-            [$production, "showcase/close-out/draft/{$cart->id}"],
+            [$finance, "showcase/close-out/draft/{$cart->id}?kitchen_id={$kitchen->id}"],
         ] as [$actor, $path]) {
             $status = $this->actingAs($actor, 'sanctum')->getJson('/api/v1/'.$path)->status();
             $this->assertContains($status, str_starts_with($path, 'showcase/allowance/') ? [200, 201] : [200], $path);
