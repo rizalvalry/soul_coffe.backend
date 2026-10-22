@@ -36,11 +36,17 @@ class GoogleIdTokenVerifier
             && is_string($claims['email'] ?? null) && filter_var($claims['email'], FILTER_VALIDATE_EMAIL),
             401, 'Login Google gagal. Coba lagi ya.');
 
-        $key = collect($this->keys())->first(fn ($key): bool => is_array($key)
+        $hadCachedKeys = is_array(Cache::get('customer:google:jwks'));
+        $findKey = fn (array $keys) => collect($keys)->first(fn ($key): bool => is_array($key)
             && ($key['kid'] ?? null) === $header['kid']
             && ($key['kty'] ?? null) === 'RSA'
             && in_array($key['alg'] ?? 'RS256', ['RS256'], true)
             && is_string($key['n'] ?? null) && is_string($key['e'] ?? null));
+        $key = $findKey($this->keys());
+        if ($key === null && $hadCachedKeys
+            && Cache::add('customer:google:jwks:refresh', true, now()->addMinute())) {
+            $key = $findKey($this->keys(true));
+        }
         abort_unless($key !== null, 401, 'Login Google gagal. Coba lagi ya.');
 
         $modulus = $this->base64UrlDecode($key['n']);
@@ -62,11 +68,13 @@ class GoogleIdTokenVerifier
         ];
     }
 
-    private function keys(): array
+    private function keys(bool $forceRefresh = false): array
     {
-        $cached = Cache::get('customer:google:jwks');
-        if (is_array($cached)) {
-            return $cached;
+        if (! $forceRefresh) {
+            $cached = Cache::get('customer:google:jwks');
+            if (is_array($cached)) {
+                return $cached;
+            }
         }
 
         try {

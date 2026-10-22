@@ -45,7 +45,7 @@ Route::middleware(['auth:sanctum', EnsureCustomer::class])->prefix('customer')->
     Route::post('privacy/accept', [CustomerAuthController::class, 'acceptPrivacy'])
         ->middleware('idempotent:require');
     Route::delete('me', [CustomerAuthController::class, 'delete']);
-    Route::get('nearby-carts', [CustomerNearbyController::class, 'index'])
+    Route::post('nearby-carts', [CustomerNearbyController::class, 'index'])
         ->middleware('throttle:customer-nearby');
 });
 

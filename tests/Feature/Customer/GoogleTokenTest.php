@@ -18,6 +18,8 @@ class GoogleTokenTest extends TestCase
 
     private $privateKey;
 
+    private array $googleJwks;
+
     private string $opensslConfig;
 
     protected function setUp(): void
@@ -25,13 +27,13 @@ class GoogleTokenTest extends TestCase
         parent::setUp();
         config(['services.google_client_ids' => 'accepted-client,second-client']);
         Cache::forget('customer:google:jwks');
+        Cache::forget('customer:google:jwks:refresh');
         $this->opensslConfig = tempnam(sys_get_temp_dir(), 'customer-openssl-');
         file_put_contents($this->opensslConfig, "[req]\ndistinguished_name=req_distinguished_name\n[req_distinguished_name]\n");
         $this->privateKey = openssl_pkey_new(['private_key_bits' => 2048, 'config' => $this->opensslConfig]);
-        $rsa = openssl_pkey_get_details($this->privateKey)['rsa'];
-        Http::fake(['https://www.googleapis.com/oauth2/v3/certs' => Http::response([
-            'keys' => [['kid' => 'local-key', 'kty' => 'RSA', 'alg' => 'RS256',
-                'n' => $this->base64Url($rsa['n']), 'e' => $this->base64Url($rsa['e'])]],
+        $this->googleJwks = [$this->jwk($this->privateKey, 'local-key')];
+        Http::fake(['https://www.googleapis.com/oauth2/v3/certs' => fn () => Http::response([
+            'keys' => $this->googleJwks,
         ], 200, ['Cache-Control' => 'public, max-age=3600'])]);
     }
 
@@ -41,9 +43,10 @@ class GoogleTokenTest extends TestCase
         parent::tearDown();
     }
 
-    private function token(array $claims = [], bool $badSignature = false): string
+    private function token(array $claims = [], bool $badSignature = false,
+        string $kid = 'local-key', $privateKey = null): string
     {
-        $header = $this->encode(['alg' => 'RS256', 'kid' => 'local-key']);
+        $header = $this->encode(['alg' => 'RS256', 'kid' => $kid]);
         $body = $this->encode(array_replace([
             'sub' => 'google-123',
             'email' => 'pelanggan@example.test',
@@ -55,7 +58,7 @@ class GoogleTokenTest extends TestCase
         ], $claims));
         $signingKey = $badSignature
             ? openssl_pkey_new(['private_key_bits' => 2048, 'config' => $this->opensslConfig])
-            : $this->privateKey;
+            : ($privateKey ?? $this->privateKey);
         openssl_sign($header.'.'.$body, $signature, $signingKey, OPENSSL_ALGO_SHA256);
 
         return $header.'.'.$body.'.'.rtrim(strtr(base64_encode($signature), '+/', '-_'), '=');
@@ -69,6 +72,14 @@ class GoogleTokenTest extends TestCase
     private function base64Url(string $value): string
     {
         return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
+    }
+
+    private function jwk($privateKey, string $kid): array
+    {
+        $rsa = openssl_pkey_get_details($privateKey)['rsa'];
+
+        return ['kid' => $kid, 'kty' => 'RSA', 'alg' => 'RS256',
+            'n' => $this->base64Url($rsa['n']), 'e' => $this->base64Url($rsa['e'])];
     }
 
     private function login(string $token)
@@ -117,6 +128,31 @@ class GoogleTokenTest extends TestCase
             $this->login($token)->assertUnauthorized();
         }
         $this->assertDatabaseCount('customers', 0);
+    }
+
+    public function test_rotated_google_key_refreshes_cached_jwks_once(): void
+    {
+        Cache::put('customer:google:jwks', [$this->jwk($this->privateKey, 'local-key')], 3600);
+        $rotatedKey = openssl_pkey_new(['private_key_bits' => 2048, 'config' => $this->opensslConfig]);
+        $this->googleJwks = [$this->jwk($rotatedKey, 'rotated-key')];
+
+        $token = $this->token(kid: 'rotated-key', privateKey: $rotatedKey);
+        $this->login($token)->assertOk();
+        $this->login($token)->assertOk();
+        Http::assertSentCount(1);
+    }
+
+    public function test_unknown_key_id_cannot_force_more_than_one_refresh_per_minute(): void
+    {
+        Cache::put('customer:google:jwks', [$this->jwk($this->privateKey, 'local-key')], 3600);
+        $unknownKey = $this->token(kid: 'unknown-key');
+
+        $this->login($unknownKey)->assertUnauthorized();
+        $this->login($unknownKey)->assertUnauthorized();
+        Http::assertSentCount(1);
+        $this->travel(61)->seconds();
+        $this->login($unknownKey)->assertUnauthorized();
+        Http::assertSentCount(2);
     }
 
     public function test_disabled_customer_cannot_login_again(): void

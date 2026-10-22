@@ -7,15 +7,18 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 
 class CustomerNearbyController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $position = $request->validate([
+        abort_if($request->query->has('lat') || $request->query->has('lng'), 422,
+            'Kirim koordinat di body JSON ya.');
+        $position = Validator::make($request->json()->all(), [
             'lat' => ['required', 'numeric', 'between:-90,90'],
             'lng' => ['required', 'numeric', 'between:-180,180'],
-        ]);
+        ])->validate();
         $date = now('Asia/Jakarta')->toDateString();
 
         $carts = DB::table('staff_assignments as assignments')

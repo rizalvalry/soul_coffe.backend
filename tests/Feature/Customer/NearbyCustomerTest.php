@@ -75,7 +75,7 @@ class NearbyCustomerTest extends TestCase
         $this->openCart('NOASSIGN', $deg(500), assignment: false);
         $this->openCart('NOSETUP', $deg(500), setup: false);
 
-        $response = $this->withToken($token)->getJson('/api/v1/customer/nearby-carts?lat=0&lng=0')
+        $response = $this->withToken($token)->postJson('/api/v1/customer/nearby-carts', ['lat' => 0, 'lng' => 0])
             ->assertOk();
         $this->assertCount(1, $response->json('data'));
         $this->assertSame('IN', $response->json('data.0.code'));
@@ -91,14 +91,39 @@ class NearbyCustomerTest extends TestCase
         $handler = new TestHandler;
         Log::getLogger()->pushHandler($handler);
 
-        $this->withToken($token)->getJson('/api/v1/customer/nearby-carts?lat=91&lng=0')->assertUnprocessable();
-        $this->withToken($token)->getJson('/api/v1/customer/nearby-carts?lat=0&lng=181')->assertUnprocessable();
-        $this->withToken($token)->getJson('/api/v1/customer/nearby-carts?lat=12.345678&lng=98.765432')->assertOk();
+        $this->withToken($token)->postJson('/api/v1/customer/nearby-carts', ['lat' => 91, 'lng' => 0])
+            ->assertUnprocessable();
+        $this->withToken($token)->postJson('/api/v1/customer/nearby-carts', ['lat' => 0, 'lng' => 181])
+            ->assertUnprocessable();
+        $this->withToken($token)->postJson('/api/v1/customer/nearby-carts',
+            ['lat' => 12.345678, 'lng' => 98.765432])->assertOk();
 
         foreach ($handler->getRecords() as $record) {
             $this->assertStringNotContainsString('12.345678', (string) $record->message);
             $this->assertStringNotContainsString('98.765432', (string) $record->message);
+            $this->assertStringNotContainsString('12.345678', json_encode($record->context));
+            $this->assertStringNotContainsString('98.765432', json_encode($record->context));
         }
+    }
+
+    public function test_nearby_get_with_coordinates_is_not_available(): void
+    {
+        $customer = Customer::create(['google_sub' => 'nearby-method']);
+        $token = $customer->createToken('test', ['customer'])->plainTextToken;
+
+        $this->withToken($token)->getJson('/api/v1/customer/nearby-carts?lat=0&lng=0')
+            ->assertStatus(405);
+    }
+
+    public function test_nearby_post_rejects_query_coordinates_even_with_a_valid_json_body(): void
+    {
+        $customer = Customer::create(['google_sub' => 'nearby-query']);
+        $token = $customer->createToken('test', ['customer'])->plainTextToken;
+
+        $this->withToken($token)->postJson('/api/v1/customer/nearby-carts?lat=0&lng=0', [])
+            ->assertUnprocessable();
+        $this->withToken($token)->postJson('/api/v1/customer/nearby-carts?lat=0&lng=0',
+            ['lat' => 0, 'lng' => 0])->assertUnprocessable();
     }
 
     public function test_nearby_orders_nearest_first_and_caps_results_at_twenty(): void
@@ -109,7 +134,7 @@ class NearbyCustomerTest extends TestCase
             $this->openCart('C'.str_pad((string) $i, 2, '0', STR_PAD_LEFT),
                 rad2deg((float) ($i * 50) / 6371000));
         }
-        $items = $this->withToken($token)->getJson('/api/v1/customer/nearby-carts?lat=0&lng=0')
+        $items = $this->withToken($token)->postJson('/api/v1/customer/nearby-carts', ['lat' => 0, 'lng' => 0])
             ->assertOk()->json('data');
         $this->assertCount(20, $items);
         $this->assertSame('C01', $items[0]['code']);
@@ -126,7 +151,7 @@ class NearbyCustomerTest extends TestCase
         $this->openCart('POINT', $point, assignmentLongitude: rad2deg(4000 / 6371000),
             clockedInAt: $clockedInAt);
 
-        $item = $this->withToken($token)->getJson('/api/v1/customer/nearby-carts?lat=0&lng=0')
+        $item = $this->withToken($token)->postJson('/api/v1/customer/nearby-carts', ['lat' => 0, 'lng' => 0])
             ->assertOk()->json('data.0');
         $this->assertSame('Titik POINT', $item['location_name']);
         $this->assertEqualsWithDelta($point, $item['lng'], 0.000001);
@@ -139,12 +164,15 @@ class NearbyCustomerTest extends TestCase
         $customer = Customer::create(['google_sub' => 'nearby-limited']);
         $token = $customer->createToken('test', ['customer'])->plainTextToken;
         for ($i = 0; $i < 30; $i++) {
-            $this->withToken($token)->getJson('/api/v1/customer/nearby-carts?lat=0&lng=0')->assertOk();
+            $this->withToken($token)->postJson('/api/v1/customer/nearby-carts', ['lat' => 0, 'lng' => 0])
+                ->assertOk();
         }
-        $this->withToken($token)->getJson('/api/v1/customer/nearby-carts?lat=0&lng=0')->assertStatus(429);
+        $this->withToken($token)->postJson('/api/v1/customer/nearby-carts', ['lat' => 0, 'lng' => 0])
+            ->assertStatus(429);
         $other = Customer::create(['google_sub' => 'nearby-other']);
         $otherToken = $other->createToken('test', ['customer'])->plainTextToken;
         Auth::forgetGuards();
-        $this->withToken($otherToken)->getJson('/api/v1/customer/nearby-carts?lat=0&lng=0')->assertOk();
+        $this->withToken($otherToken)->postJson('/api/v1/customer/nearby-carts', ['lat' => 0, 'lng' => 0])
+            ->assertOk();
     }
 }
