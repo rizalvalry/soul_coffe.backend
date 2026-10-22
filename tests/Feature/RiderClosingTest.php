@@ -6,6 +6,7 @@ use App\Enums\MovementType;
 use App\Enums\PanelModule;
 use App\Enums\RefillStatus;
 use App\Enums\Role;
+use App\Exports\RevenueExport;
 use App\Models\Account;
 use App\Models\AppNotification;
 use App\Models\Cart;
@@ -26,14 +27,17 @@ use App\Models\StockLedger;
 use App\Models\User;
 use App\Services\Access\PermissionMatrix;
 use App\Services\AttendanceService;
+use App\Services\DirectSaleService;
 use App\Services\PendingStockCostService;
 use App\Services\RefillRequestStateMachine;
+use App\Services\Reporting\ManagementReportService;
 use App\Services\Reporting\SalesActivityService;
 use App\Services\RiderCommissionService;
 use App\Services\StockLedgerService;
 use App\Services\TaxService;
 use Database\Seeders\AccountSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -109,6 +113,170 @@ class RiderClosingTest extends TestCase
     private function closingKey(): string
     {
         return (string) Str::uuid();
+    }
+
+    public function test_office_sale_is_excluded_from_rider_closing_and_cart_stock(): void
+    {
+        $management = User::factory()->role(Role::MANAGEMENT)->create();
+        app(TaxService::class)->saveSetting($management, [
+            'tax_type' => 'PBJT', 'is_active' => true, 'rate_bps' => 1000,
+            'price_mode' => 'INCLUDED', 'scheme' => null,
+            'effective_from' => today()->toDateString(), 'effective_until' => null,
+            'legal_note' => null, 'monthly_threshold_minor' => null, 'reason' => 'Tarif uji',
+        ]);
+        $this->issue(10, MovementType::ALLOCATION_IN);
+        app(DirectSaleService::class)->record($this->finance, $this->cart->id, [
+            ['product_id' => $this->product->id, 'qty' => 2],
+        ]);
+
+        $this->actingAs($this->rider, 'sanctum')->getJson('/api/v1/me/closing/draft')
+            ->assertOk()->assertJsonPath('data.lines.0.qty_office_sold', 2);
+
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', [...$this->body(3, 0), 'qris' => 0, 'transfer' => 0])
+            ->assertCreated()->assertJsonPath('data.lines.0.qty_sold', 5)
+            ->assertJsonPath('data.total_minor', 100000)
+            ->assertJsonPath('data.cash_minor', 100000);
+        $this->assertSame(3, app(StockLedgerService::class)->stockFor(
+            StockLedgerService::CART, $this->cart->id, $this->product->id
+        ));
+        $this->assertSame(-5, (int) StockLedger::query()->where('ref_type', 'rider_closing')
+            ->where('movement_type', MovementType::SALE_OUT->value)->sum('qty_delta'));
+        $this->actingAs($this->finance, 'sanctum')
+            ->getJson('/api/v1/settlements/draft/'.$this->cart->id)->assertOk()
+            ->assertJsonPath('data.expected_cash_minor', 100000);
+        $this->actingAs($this->finance, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/settlements', [
+                'cart_id' => $this->cart->id, 'cash' => 100000, 'qris' => 0, 'transfer' => 0,
+            ])->assertCreated();
+        $settlement = Settlement::query()->firstOrFail();
+        $this->assertSame(0, $settlement->variance_minor);
+        $this->actingAs($this->barista, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/showcase/close-out', [
+                'cart_id' => $this->cart->id,
+                'returned' => [['product_id' => $this->product->id, 'qty' => 3]],
+            ])->assertOk();
+        $this->assertDatabaseCount('cart_closeout_variances', 0);
+        $this->actingAs($this->finance, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson("/api/v1/settlements/{$settlement->id}/approve", ['lines' => []])->assertOk();
+
+        $tax = app(TaxService::class);
+        $expectedRevenue = $tax->splitPbjt(100000, today()->toDateString())['revenue']
+            + $tax->splitPbjt(40000, today()->toDateString())['revenue'];
+        $journalRevenue = (int) DB::table('journal_lines as line')
+            ->join('accounts as account', 'account.id', '=', 'line.account_id')
+            ->whereIn('account.code', ['4-1100', '4-1200'])
+            ->selectRaw('SUM(line.credit_minor - line.debit_minor) AS net')->value('net');
+        $this->assertSame($expectedRevenue, $journalRevenue);
+        $report = app(ManagementReportService::class)->build(today(), today());
+        $this->assertSame($expectedRevenue, $report['summary']['revenue_minor']);
+        $this->assertSame(140000, $report['sections']['margin_gerobak']['rows'][0][1]);
+        $export = (new RevenueExport(today(), today()))->sheets()[0]->array();
+        $this->assertSame($expectedRevenue, end($export)[6]);
+    }
+
+    public function test_office_sale_and_void_lock_after_closing_but_void_before_it_updates_draft(): void
+    {
+        $this->issue(10, MovementType::ALLOCATION_IN);
+        $office = app(DirectSaleService::class);
+        $voided = $office->record($this->finance, $this->cart->id, [
+            ['product_id' => $this->product->id, 'qty' => 1],
+        ]);
+        $office->void($voided, $this->finance, 'Salah input');
+        $this->actingAs($this->rider, 'sanctum')->getJson('/api/v1/me/closing/draft')
+            ->assertOk()->assertJsonPath('data.lines.0.qty_office_sold', 0);
+        $sale = $office->record($this->finance, $this->cart->id, [
+            ['product_id' => $this->product->id, 'qty' => 2],
+        ]);
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', [...$this->body(3, 0), 'qris' => 0, 'transfer' => 0])
+            ->assertCreated();
+
+        foreach ([
+            [fn () => $office->record($this->finance, $this->cart->id, [
+                ['product_id' => $this->product->id, 'qty' => 1],
+            ]), 'Coffee Bike ini sudah Closing hari ini. Pilih Coffee Bike lain.'],
+            [fn () => $office->void($sale, $this->finance, 'Salah input'),
+                'Penjualan langsung ini nggak bisa dibatalkan karena Coffee Bike sudah Closing.'],
+        ] as [$action, $message]) {
+            try {
+                $action();
+                $this->fail('Expected a Closing conflict.');
+            } catch (HttpResponseException $exception) {
+                $this->assertSame(409, $exception->getResponse()->getStatusCode());
+                $this->assertSame($message,
+                    json_decode($exception->getResponse()->getContent(), true)['message']);
+            }
+        }
+        $this->assertDatabaseCount('direct_sales', 2);
+        $this->assertNull($sale->fresh()->voided_at);
+        $this->assertSame(3, app(StockLedgerService::class)->stockFor(
+            StockLedgerService::CART, $this->cart->id, $this->product->id
+        ));
+    }
+
+    public function test_closing_correction_keeps_office_cups_out_of_rider_sales(): void
+    {
+        $this->issue(10, MovementType::ALLOCATION_IN);
+        app(DirectSaleService::class)->record($this->finance, $this->cart->id, [
+            ['product_id' => $this->product->id, 'qty' => 2],
+        ]);
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', [...$this->body(3, 0), 'qris' => 0, 'transfer' => 0])
+            ->assertCreated();
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', [...$this->body(2, 0), 'qris' => 0, 'transfer' => 0])
+            ->assertOk()->assertJsonPath('data.lines.0.qty_sold', 6)
+            ->assertJsonPath('data.lines.0.qty_office_sold', 2)
+            ->assertJsonPath('data.total_minor', 120000);
+        $this->assertSame(2, app(StockLedgerService::class)->stockFor(
+            StockLedgerService::CART, $this->cart->id, $this->product->id
+        ));
+    }
+
+    public function test_void_of_older_office_sale_before_today_closing_counts_restored_cups(): void
+    {
+        $this->issue(10, MovementType::ALLOCATION_IN, now()->subDay());
+        $this->travel(-1)->days();
+        $sale = app(DirectSaleService::class)->record($this->finance, $this->cart->id, [
+            ['product_id' => $this->product->id, 'qty' => 2],
+        ]);
+        $this->travelBack();
+        app(DirectSaleService::class)->void($sale, $this->finance, 'Salah input');
+
+        $this->actingAs($this->rider, 'sanctum')->getJson('/api/v1/me/closing/draft')
+            ->assertOk()->assertJsonPath('data.lines.0.qty_in', 2)
+            ->assertJsonPath('data.lines.0.qty_carry', 8)
+            ->assertJsonPath('data.lines.0.qty_office_sold', 0);
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', [...$this->body(3, 0), 'qris' => 0, 'transfer' => 0])
+            ->assertCreated()->assertJsonPath('data.lines.0.qty_sold', 7);
+        $this->assertSame(3, app(StockLedgerService::class)->stockFor(
+            StockLedgerService::CART, $this->cart->id, $this->product->id
+        ));
+    }
+
+    public function test_void_of_older_office_sale_after_today_closing_is_rejected(): void
+    {
+        $this->issue(10, MovementType::ALLOCATION_IN, now()->subDay());
+        $this->travel(-1)->days();
+        $sale = app(DirectSaleService::class)->record($this->finance, $this->cart->id, [
+            ['product_id' => $this->product->id, 'qty' => 2],
+        ]);
+        $this->travelBack();
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', [...$this->body(3, 0), 'qris' => 0, 'transfer' => 0])
+            ->assertCreated();
+
+        try {
+            app(DirectSaleService::class)->void($sale, $this->finance, 'Salah input');
+            $this->fail('Expected a Closing conflict.');
+        } catch (HttpResponseException $exception) {
+            $this->assertSame(409, $exception->getResponse()->getStatusCode());
+        }
+        $this->assertSame(3, app(StockLedgerService::class)->stockFor(
+            StockLedgerService::CART, $this->cart->id, $this->product->id
+        ));
     }
 
     public function test_finance_role_matrix_for_closing_corrections(): void
