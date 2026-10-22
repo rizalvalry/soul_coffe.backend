@@ -52,6 +52,8 @@ class RiderClosingTest extends TestCase
 
     private User $barista;
 
+    private User $runner;
+
     private User $finance;
 
     private Cart $cart;
@@ -79,6 +81,7 @@ class RiderClosingTest extends TestCase
         ]);
         $this->rider = User::factory()->role(Role::STAFF)->create();
         $this->barista = User::factory()->role(Role::BARISTA)->create(['kitchen_id' => $kitchen->id]);
+        $this->runner = User::factory()->role(Role::RIDER)->create();
         $this->finance = User::factory()->role(Role::FINANCE)->create();
         StaffAssignment::create([
             'source' => 'hand_to_cart', 'user_id' => $this->rider->id,
@@ -151,8 +154,9 @@ class RiderClosingTest extends TestCase
             ])->assertCreated();
         $settlement = Settlement::query()->firstOrFail();
         $this->assertSame(0, $settlement->variance_minor);
-        $this->actingAs($this->barista, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+        $this->actingAs($this->runner, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
             ->postJson('/api/v1/showcase/close-out', [
+                'kitchen_id' => $this->cart->kitchen_id,
                 'cart_id' => $this->cart->id,
                 'returned' => [['product_id' => $this->product->id, 'qty' => 3]],
             ])->assertOk();
@@ -557,7 +561,7 @@ class RiderClosingTest extends TestCase
         $this->assertSame(3, app(StockLedgerService::class)->stockFor(StockLedgerService::CART, $this->cart->id, $this->product->id));
     }
 
-    public function test_production_closeout_prefills_and_flags_a_difference_without_blocking(): void
+    public function test_runner_closeout_prefills_and_flags_a_difference_without_blocking(): void
     {
         $super = User::factory()->role(Role::ADMINISTRATOR)->create(['is_super_admin' => true]);
         $holder = User::factory()->role(Role::CONTENT_CREATOR)->create();
@@ -569,11 +573,12 @@ class RiderClosingTest extends TestCase
         $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
             ->postJson('/api/v1/me/closing', [...$this->body(3, 0), 'qris' => 20000, 'transfer' => 0])
             ->assertCreated();
-        $this->actingAs($this->barista, 'sanctum')
-            ->getJson('/api/v1/showcase/close-out/draft/'.$this->cart->id)->assertOk()
+        $this->actingAs($this->runner, 'sanctum')
+            ->getJson('/api/v1/showcase/close-out/draft/'.$this->cart->id.'?kitchen_id='.$this->cart->kitchen_id)->assertOk()
             ->assertJsonPath('data.lines.0.qty_to_return', 3);
-        $this->actingAs($this->barista, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+        $this->actingAs($this->runner, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
             ->postJson('/api/v1/showcase/close-out', [
+                'kitchen_id' => $this->cart->kitchen_id,
                 'cart_id' => $this->cart->id,
                 'returned' => [['product_id' => $this->product->id, 'qty' => 2]],
             ])->assertOk();
@@ -617,8 +622,9 @@ class RiderClosingTest extends TestCase
         $this->issue(10, MovementType::ALLOCATION_IN);
         $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
             ->postJson('/api/v1/me/closing', [...$this->body(3, 0), 'qris' => 20000, 'transfer' => 0])->assertCreated();
-        $this->actingAs($this->barista, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+        $this->actingAs($this->runner, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
             ->postJson('/api/v1/showcase/close-out', [
+                'kitchen_id' => $this->cart->kitchen_id,
                 'cart_id' => $this->cart->id,
                 'returned' => [['product_id' => $this->product->id, 'qty' => 4]],
             ])->assertOk();
@@ -639,8 +645,9 @@ class RiderClosingTest extends TestCase
         $this->issue(10, MovementType::ALLOCATION_IN);
         $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
             ->postJson('/api/v1/me/closing', [...$this->body(3, 0), 'qris' => 20000, 'transfer' => 0])->assertCreated();
-        $this->actingAs($this->barista, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+        $this->actingAs($this->runner, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
             ->postJson('/api/v1/showcase/close-out', [
+                'kitchen_id' => $this->cart->kitchen_id,
                 'cart_id' => $this->cart->id,
                 'returned' => [['product_id' => $extra->id, 'qty' => 1]],
             ])->assertOk();
@@ -661,8 +668,9 @@ class RiderClosingTest extends TestCase
         $this->issue(10, MovementType::ALLOCATION_IN);
         $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
             ->postJson('/api/v1/me/closing', [...$this->body(3, 0), 'qris' => 20000, 'transfer' => 0])->assertCreated();
-        $this->actingAs($this->barista, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+        $this->actingAs($this->runner, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
             ->postJson('/api/v1/showcase/close-out', [
+                'kitchen_id' => $this->cart->kitchen_id,
                 'cart_id' => $this->cart->id, 'returned' => [], 'rejected' => [],
             ])->assertOk();
         $this->assertDatabaseHas('cart_closeout_variances', [
@@ -683,8 +691,9 @@ class RiderClosingTest extends TestCase
         $this->issue(10, MovementType::ALLOCATION_IN);
         $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
             ->postJson('/api/v1/me/closing', [...$this->body(3, 0), 'qris' => 20000, 'transfer' => 0])->assertCreated();
-        $this->actingAs($this->barista, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+        $this->actingAs($this->runner, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
             ->postJson('/api/v1/showcase/close-out', [
+                'kitchen_id' => $this->cart->kitchen_id,
                 'cart_id' => $this->cart->id,
                 'returned' => [['product_id' => $this->product->id, 'qty' => 3]],
             ])->assertOk();
@@ -751,8 +760,9 @@ class RiderClosingTest extends TestCase
     public function test_closeout_before_closing_is_reconciled_and_flagged(): void
     {
         $this->issue(10, MovementType::ALLOCATION_IN);
-        $this->actingAs($this->barista, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+        $this->actingAs($this->runner, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
             ->postJson('/api/v1/showcase/close-out', [
+                'kitchen_id' => $this->cart->kitchen_id,
                 'cart_id' => $this->cart->id,
                 'returned' => [['product_id' => $this->product->id, 'qty' => 3]],
             ])->assertOk();

@@ -33,6 +33,8 @@ class CentralStockTest extends TestCase
 
     private User $barista;
 
+    private User $runner;
+
     private User $staff;
 
     private Cart $cart;
@@ -49,6 +51,7 @@ class CentralStockTest extends TestCase
         $this->seed();
 
         $this->barista = User::query()->where('phone_e164', '081100000003')->firstOrFail();
+        $this->runner = User::query()->where('role', Role::RIDER)->firstOrFail();
         $this->staff = User::query()->where('phone_e164', '081100000005')->firstOrFail();
         $this->cart = Cart::query()->where('code', '0018')->firstOrFail();
         $this->product = Product::query()->where('name', 'Soul Coffee')->firstOrFail();
@@ -423,9 +426,10 @@ class CentralStockTest extends TestCase
         $cartAfterHandover = $this->cartStock();
 
         $this->service->closeOutCart(
-            $this->barista,
+            $this->runner,
             $this->cart,
             returnedByProductId: [$this->product->id => 8],
+            selectedKitchenId: $this->cart->kitchen_id,
         );
 
         $this->assertSame($kitchenAfterHandover + 8, $this->kitchenStock());
@@ -443,9 +447,10 @@ class CentralStockTest extends TestCase
         $cartAfterHandover = $this->cartStock();
 
         $this->service->closeOutCart(
-            $this->barista,
+            $this->runner,
             $this->cart,
             rejectedByProductId: [$this->product->id => 3],
+            selectedKitchenId: $this->cart->kitchen_id,
         );
 
         // A thrown-away cup has no receiving location — it leaves the system entirely.
@@ -461,10 +466,11 @@ class CentralStockTest extends TestCase
         $this->expectExceptionMessage('melebihi stok Coffee Bike');
 
         $this->service->closeOutCart(
-            $this->barista,
+            $this->runner,
             $this->cart,
             returnedByProductId: [$this->product->id => 6],
             rejectedByProductId: [$this->product->id => 6],
+            selectedKitchenId: $this->cart->kitchen_id,
         );
     }
 

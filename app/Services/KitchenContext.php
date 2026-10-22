@@ -12,18 +12,18 @@ use App\Services\Access\PermissionMatrix;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
-/** Resolves the kitchen for the phone's Produksi flow without changing the actor's role. */
+/** Resolves the kitchen for phone flows without changing the actor's role. */
 class KitchenContext
 {
-    public static function authorize(User $user, string $ability = 'view'): void
+    public static function authorize(User $user, string $ability = 'view', PanelModule $module = PanelModule::KITCHEN_OPERATIONS): void
     {
-        abort_unless(PermissionMatrix::can($user, PanelModule::KITCHEN_OPERATIONS, $ability), 403);
+        abort_unless(PermissionMatrix::can($user, $module, $ability), 403);
     }
 
-    public static function resolve(Request $request, string $ability = 'view'): int
+    public static function resolve(Request $request, string $ability = 'view', PanelModule $module = PanelModule::KITCHEN_OPERATIONS): int
     {
         $user = $request->user();
-        self::authorize($user, $ability);
+        self::authorize($user, $ability, $module);
 
         if ($user->role === Role::BARISTA) {
             if (! $user->kitchen_id) {

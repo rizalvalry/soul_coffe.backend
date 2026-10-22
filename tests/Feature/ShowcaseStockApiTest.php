@@ -2,12 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Models\Cart;
 use App\Models\Location;
 use App\Models\Product;
 use App\Models\StaffAssignment;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use App\Services\AttendanceService;
 use App\Services\StockLedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -27,6 +29,10 @@ class ShowcaseStockApiTest extends TestCase
 
     private User $staff;
 
+    private User $runner;
+
+    private User $finance;
+
     private Cart $cart;
 
     private Product $product;
@@ -38,6 +44,8 @@ class ShowcaseStockApiTest extends TestCase
 
         $this->barista = User::query()->where('phone_e164', '081100000003')->firstOrFail();
         $this->staff = User::query()->where('phone_e164', '081100000005')->firstOrFail();
+        $this->runner = User::query()->where('role', Role::RIDER)->firstOrFail();
+        $this->finance = User::query()->where('role', Role::FINANCE)->firstOrFail();
         $this->cart = Cart::query()->where('code', '0018')->firstOrFail();
         $this->product = Product::query()->where('name', 'Soul Coffee')->firstOrFail();
         $attendance = app(AttendanceService::class);
@@ -99,9 +107,10 @@ class ShowcaseStockApiTest extends TestCase
         $this->assertSame($expected, collect($handover->json('data.cart_stock'))->firstWhere('product_id', $this->product->id)['image_url']);
         $this->assertSame($expected, collect($handover->json('data.showcase_stock'))->firstWhere('product_id', $this->product->id)['image_url']);
 
-        $closeOut = $this->actingAs($this->barista, 'sanctum')
+        $closeOut = $this->actingAs($this->runner, 'sanctum')
             ->withHeader('Idempotency-Key', $this->key())
             ->postJson('/api/v1/showcase/close-out', [
+                'kitchen_id' => $this->cart->kitchen_id,
                 'cart_id' => $this->cart->id,
                 'returned' => [['product_id' => $this->product->id, 'qty' => 1]],
             ])->assertOk();
@@ -264,9 +273,10 @@ class ShowcaseStockApiTest extends TestCase
             ])
             ->assertCreated();
 
-        $this->actingAs($this->barista, 'sanctum')
+        $this->actingAs($this->runner, 'sanctum')
             ->withHeader('Idempotency-Key', $this->key())
             ->postJson('/api/v1/showcase/close-out', [
+                'kitchen_id' => $this->cart->kitchen_id,
                 'cart_id' => $this->cart->id,
                 'returned' => [['product_id' => $this->product->id, 'qty' => 6]],
                 'rejected' => [['product_id' => $this->product->id, 'qty' => 2]],
@@ -275,13 +285,83 @@ class ShowcaseStockApiTest extends TestCase
             ->assertJsonStructure(['data' => ['cart_stock', 'showcase_stock']]);
 
         $this->assertSame(22, $this->cartStock()); // 30 - 6 - 2
+        $this->assertDatabaseHas('audit_log', [
+            'action' => 'central_stock.close_out', 'actor_id' => $this->runner->id,
+            'actor_role' => Role::RIDER->value,
+        ]);
+    }
+
+    public function test_close_out_permission_is_separate_from_produksi_and_finance_keeps_backup_access(): void
+    {
+        $draft = '/api/v1/showcase/close-out/draft/'.$this->cart->id;
+        $this->actingAs($this->barista, 'sanctum')->getJson($draft)->assertForbidden();
+        $this->actingAs($this->barista, 'sanctum')->withHeader('Idempotency-Key', $this->key())
+            ->postJson('/api/v1/showcase/close-out', [])->assertForbidden();
+        $this->actingAs($this->runner, 'sanctum')->getJson('/api/v1/showcase/kitchens')->assertOk();
+        $this->actingAs($this->runner, 'sanctum')
+            ->getJson('/api/v1/carts?scope=kitchen&kitchen_id='.$this->cart->kitchen_id)->assertOk();
+        foreach ([$this->runner, $this->finance] as $actor) {
+            $this->actingAs($actor, 'sanctum')
+                ->getJson($draft.'?kitchen_id='.$this->cart->kitchen_id)->assertOk();
+        }
+
+        $this->actingAs($this->barista, 'sanctum')->withHeader('Idempotency-Key', $this->key())
+            ->postJson('/api/v1/showcase/brew', [
+                'lines' => [['product_id' => $this->product->id, 'qty' => 2]],
+            ])->assertOk();
+        $this->actingAs($this->barista, 'sanctum')->withHeader('Idempotency-Key', $this->key())
+            ->postJson('/api/v1/showcase/hand-to-cart', [
+                'cart_id' => $this->cart->id, 'staff_id' => $this->staff->id,
+                'lines' => [['product_id' => $this->product->id, 'qty' => 2]],
+            ])->assertCreated();
+        $this->actingAs($this->finance, 'sanctum')->withHeader('Idempotency-Key', $this->key())
+            ->postJson('/api/v1/showcase/close-out', [
+                'kitchen_id' => $this->cart->kitchen_id, 'cart_id' => $this->cart->id,
+                'returned' => [['product_id' => $this->product->id, 'qty' => 1]],
+            ])->assertOk();
+    }
+
+    public function test_close_out_cart_picker_only_lists_active_bikes_assigned_today(): void
+    {
+        $unassigned = Cart::query()->create([
+            'code' => 'T071-UNASSIGNED', 'status' => 'active', 'kitchen_id' => $this->cart->kitchen_id,
+        ]);
+        $path = '/api/v1/carts?scope=close-out&kitchen_id='.$this->cart->kitchen_id;
+        $this->actingAs($this->runner, 'sanctum')->getJson($path)
+            ->assertOk()->assertJsonFragment(['id' => $this->cart->id])
+            ->assertJsonMissing(['id' => $unassigned->id]);
+        $this->actingAs($this->finance, 'sanctum')->getJson($path)->assertOk();
+        $this->actingAs($this->barista, 'sanctum')->getJson($path)->assertForbidden();
+        $this->actingAs($this->barista, 'sanctum')
+            ->getJson('/api/v1/carts?scope=kitchen')->assertOk()
+            ->assertJsonFragment(['id' => $unassigned->id]);
+    }
+
+    public function test_matrix_can_restore_produksi_close_out_without_a_role_check_in_controller(): void
+    {
+        $this->actingAs($this->barista, 'sanctum')->withHeader('Idempotency-Key', $this->key())
+            ->postJson('/api/v1/showcase/hand-to-cart', [
+                'cart_id' => $this->cart->id, 'staff_id' => $this->staff->id,
+                'lines' => [['product_id' => $this->product->id, 'qty' => 1]],
+            ])->assertCreated();
+        $this->actingAs($this->barista, 'sanctum')
+            ->getJson('/api/v1/showcase/close-out/draft/'.$this->cart->id)->assertForbidden();
+        $super = User::factory()->role(Role::ADMINISTRATOR)->create(['is_super_admin' => true]);
+        PermissionMatrix::set(Role::BARISTA, PanelModule::CART_CLOSE_OUT, ['view', 'edit'], $super);
+        $this->actingAs($this->barista, 'sanctum')
+            ->getJson('/api/v1/showcase/close-out/draft/'.$this->cart->id)->assertOk();
+        $this->actingAs($this->barista, 'sanctum')->withHeader('Idempotency-Key', $this->key())
+            ->postJson('/api/v1/showcase/close-out', [
+                'cart_id' => $this->cart->id,
+                'returned' => [['product_id' => $this->product->id, 'qty' => 1]],
+            ])->assertOk();
     }
 
     public function test_close_out_with_nothing_reported_is_a_validation_error(): void
     {
-        $this->actingAs($this->barista, 'sanctum')
+        $this->actingAs($this->runner, 'sanctum')
             ->withHeader('Idempotency-Key', $this->key())
-            ->postJson('/api/v1/showcase/close-out', ['cart_id' => $this->cart->id])
+            ->postJson('/api/v1/showcase/close-out', ['kitchen_id' => $this->cart->kitchen_id, 'cart_id' => $this->cart->id])
             ->assertStatus(422)
             ->assertJsonValidationErrors('returned');
     }

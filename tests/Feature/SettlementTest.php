@@ -48,7 +48,7 @@ use Tests\TestCase;
  * The two tests that carry the weight: Finance is never asked to retype a number the system
  * already holds (the draft computes issued, sold, remaining and expected), and approving a
  * deposit settles the leftover cups against LIVE cart stock rather than a snapshot — which is
- * what stops this flow and the barista's "Tutup Coffee Bike" from both writing off the same cups.
+ * what stops this flow and the separate "Tutup Coffee Bike" action from writing off the same cups.
  */
 class SettlementTest extends TestCase
 {
@@ -803,10 +803,10 @@ class SettlementTest extends TestCase
     }
 
     /**
-     * The overlap with the barista's "Tutup Coffee Bike", which is the failure this design exists to
+     * The overlap with the close-out operator's "Tutup Coffee Bike", which is the failure this design exists to
      * avoid: two flows writing off the same cups and driving the ledger negative.
      */
-    public function test_cups_already_closed_out_by_the_barista_cannot_be_settled_again(): void
+    public function test_cups_already_closed_out_cannot_be_settled_again(): void
     {
         $this->issue(10);
         $this->sell(2);
@@ -817,12 +817,13 @@ class SettlementTest extends TestCase
                 'cart_id' => $this->cart->id, 'cash' => 40000, 'qris' => 0, 'transfer' => 0,
             ])->json('data.id');
 
-        // The barista gets there first and empties the cart.
+        // Finance gets there first and empties the cart.
         app(CentralStockService::class)->closeOutCart(
-            $this->barista,
+            $this->finance,
             $this->cart,
             [$this->coffee->id => 8],
             [],
+            $this->cart->kitchen_id,
         );
 
         $this->assertSame(0, $this->cartStock());

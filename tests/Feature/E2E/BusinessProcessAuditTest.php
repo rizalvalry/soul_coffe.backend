@@ -241,8 +241,9 @@ class BusinessProcessAuditTest extends TestCase
         $this->assertContains($refill->status->value, ['DELIVERED', 'CLOSED']);
         $this->assertNotNull($refill->signature_id);
         $this->assertSame(9, $this->stock(StockLedgerService::CART, $this->cart->id));
-        $this->actingAs($this->barista)->withHeader('Idempotency-Key', (string) Str::uuid())
+        $this->actingAs($this->runner)->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson('/api/v1/showcase/close-out', [
+                'kitchen_id' => $this->cart->kitchen_id,
                 'cart_id' => $this->cart->id,
                 'returned' => [['product_id' => $this->product->id, 'qty' => 8]],
                 'rejected' => [['product_id' => $this->product->id, 'qty' => 1]],

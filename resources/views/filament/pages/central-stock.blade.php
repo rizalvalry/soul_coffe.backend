@@ -43,8 +43,8 @@
             <p>
                 Angka di sini <strong>dihitung dari buku besar stok</strong>, bukan dari penghitung
                 yang bisa diketik — jadi tidak mungkin berbeda dari pergerakan yang membentuknya.
-                Stok bergerak lewat aktivitas: Produksi menyeduh (Add Stock), menyerahkan ke Coffee Bike,
-                refill, dan tutup Coffee Bike.
+                Stok bergerak lewat aktivitas: Produksi menyeduh dan mengisi Coffee Bike (Add Stock),
+                tim mengirim refill, lalu Runner menghitung sisa saat Tutup Coffee Bike.
             </p>
             <p>
                 Coffee Bike berstatus <em>maintenance</em> tetap dihitung — cups bisa saja masih ada di
