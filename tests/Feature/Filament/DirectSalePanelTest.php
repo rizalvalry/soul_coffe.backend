@@ -5,6 +5,7 @@ namespace Tests\Feature\Filament;
 use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Filament\Resources\DirectSales\DirectSaleResource;
+use App\Filament\Resources\DirectSales\Pages\CreateDirectSale;
 use App\Filament\Resources\DirectSales\Pages\ListDirectSales;
 use App\Filament\Resources\DirectSales\Schemas\DirectSaleForm;
 use App\Models\Cart;
@@ -13,6 +14,7 @@ use App\Models\DirectSale;
 use App\Models\DirectSaleLine;
 use App\Models\Location;
 use App\Models\Product;
+use App\Models\RiderClosing;
 use App\Models\StaffAssignment;
 use App\Models\User;
 use App\Services\Access\PermissionMatrix;
@@ -117,6 +119,29 @@ class DirectSalePanelTest extends TestCase
             ->assertHasNoTableActionErrors();
 
         $this->assertTrue($sale->fresh()->isVoided());
+    }
+
+    public function test_create_and_void_after_closing_return_conflict_to_cms(): void
+    {
+        $sale = $this->directSale();
+        RiderClosing::query()->create([
+            'operating_date' => today()->toDateString(),
+            'cart_id' => $this->cart->id, 'rider_id' => $this->admin->id,
+            'total_minor' => 0, 'cogs_minor' => 0, 'qris_minor' => 0,
+            'transfer_minor' => 0, 'cash_minor' => 0, 'closed_at' => now(),
+        ]);
+
+        Livewire::actingAs($this->admin)->test(CreateDirectSale::class)
+            ->fillForm([
+                'cart_id' => $this->cart->id,
+                'lines' => [['product_id' => $this->product->id, 'qty' => 1]],
+                'payment_method' => 'cash',
+            ])->call('create')->assertStatus(409)
+            ->assertJsonPath('message', 'Coffee Bike ini sudah Closing hari ini. Pilih Coffee Bike lain.');
+        Livewire::actingAs($this->admin)->test(ListDirectSales::class)
+            ->callTableAction('void', $sale, ['reason' => 'Salah input'])->assertStatus(409)
+            ->assertJsonPath('message', 'Penjualan langsung ini nggak bisa dibatalkan karena Coffee Bike sudah Closing.');
+        $this->assertFalse($sale->fresh()->isVoided());
     }
 
     public function test_voiding_requires_a_reason(): void

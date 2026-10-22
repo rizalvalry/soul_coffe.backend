@@ -12,9 +12,11 @@ use App\Models\DirectSale;
 use App\Models\DirectSaleLine;
 use App\Models\JournalEntry;
 use App\Models\Product;
+use App\Models\RiderClosing;
 use App\Models\Settlement;
 use App\Models\User;
 use App\Services\Access\PermissionMatrix;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -70,6 +72,9 @@ class DirectSaleService
         }
 
         return DB::transaction(function () use ($actor, $cart, $merged, $paymentMethod, $note): DirectSale {
+            Cart::query()->whereKey($cart->id)->lockForUpdate()->firstOrFail();
+            $occurredAt = now();
+            $this->assertNotClosed($cart->id, $occurredAt->toDateString());
             $productIds = array_keys($merged);
 
             $available = $this->ledger->lockAndProject(StockLedgerService::CART, $cart->id, $productIds);
@@ -82,7 +87,6 @@ class DirectSaleService
             $totalQty = 0;
             $totalAmount = 0;
             $lineRows = [];
-            $occurredAt = now();
 
             foreach ($merged as $productId => $qty) {
                 $product = $products[$productId] ?? null;
@@ -190,10 +194,10 @@ class DirectSaleService
     /**
      * Undoes a direct sale that should never have been recorded. Mirrors SaleService::void()
      * closely, with one deliberate simplification: since only Administrator and Finance ever
-     * create or void a direct sale, there is no rider-ownership case and no time window — both
-     * may void at any time. The settlement boundary is unchanged: once the cart's cups for that
-     * date have already been reconciled, a correction goes through Stock Opname instead, for
-     * exactly the reason SaleService::void() explains.
+     * create or void a direct sale, there is no rider-ownership case. A void is refused once
+     * Closing exists for the sale day or the current day: its stock reversal posts now and must
+     * not alter either snapshot. The settlement boundary is unchanged: once the cart's cups for
+     * the sale date have been reconciled, a correction goes through Stock Opname instead.
      */
     public function void(DirectSale $directSale, User $actor, string $reason): DirectSale
     {
@@ -208,10 +212,18 @@ class DirectSaleService
         }
 
         return DB::transaction(function () use ($directSale, $actor, $reason): DirectSale {
+            Cart::query()->whereKey($directSale->cart_id)->lockForUpdate()->firstOrFail();
             $locked = DirectSale::query()->with('lines')->whereKey($directSale->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->isVoided()) {
                 throw new RuntimeException('Transaksi ini sudah dibatalkan sebelumnya.');
+            }
+
+            $voidMessage = 'Penjualan langsung ini nggak bisa dibatalkan karena Coffee Bike sudah Closing.';
+            $this->assertNotClosed($locked->cart_id, $locked->occurred_at->toDateString(), $voidMessage);
+            // A void posts stock back now, so today's Closing must also stay unchanged.
+            if ($locked->occurred_at->toDateString() !== today()->toDateString()) {
+                $this->assertNotClosed($locked->cart_id, today()->toDateString(), $voidMessage);
             }
 
             $alreadySettled = Settlement::query()
@@ -287,5 +299,15 @@ class DirectSaleService
         }
 
         return $merged;
+    }
+
+    private function assertNotClosed(int $cartId, string $date, string $message = 'Coffee Bike ini sudah Closing hari ini. Pilih Coffee Bike lain.'): void
+    {
+        if (RiderClosing::query()->where('cart_id', $cartId)
+            ->where('operating_date', $date)->exists()) {
+            throw new HttpResponseException(response()->json([
+                'message' => $message,
+            ], 409));
+        }
     }
 }

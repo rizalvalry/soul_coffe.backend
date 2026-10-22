@@ -54,7 +54,7 @@ class RiderClosingService
         return $assignment;
     }
 
-    /** The input quantity is only the handover and accepted refill ledger, never a Rider field. */
+    /** Input is posted handover/refill plus older office-sale voids restored today, never a Rider field. */
     public function quantities(Cart $cart, Carbon $date): array
     {
         $day = $date->toDateString();
@@ -66,6 +66,20 @@ class RiderClosingService
             ->groupBy('product_id')
             ->selectRaw('product_id, SUM(qty_delta) AS qty')
             ->pluck('qty', 'product_id')->map(fn ($qty): int => (int) $qty)->all();
+        // A late void of an older office sale restores cups today, after yesterday's carry cutoff.
+        $lateOfficeVoids = DB::table('stock_ledger as ledger')
+            ->join('direct_sales as sales', 'sales.id', '=', 'ledger.ref_id')
+            ->where('ledger.location_type', StockLedgerService::CART)
+            ->where('ledger.location_id', $cart->id)
+            ->whereDate('ledger.created_at', $day)
+            ->where('ledger.ref_type', 'direct_sale_void')
+            ->where('sales.occurred_at', '<', $date->copy()->startOfDay())
+            ->groupBy('ledger.product_id')
+            ->selectRaw('ledger.product_id, SUM(ledger.qty_delta) AS qty')
+            ->pluck('qty', 'product_id');
+        foreach ($lateOfficeVoids as $productId => $qty) {
+            $incoming[$productId] = ($incoming[$productId] ?? 0) + (int) $qty;
+        }
         $carry = StockLedger::query()
             ->where('location_type', StockLedgerService::CART)
             ->where('location_id', $cart->id)
@@ -77,17 +91,34 @@ class RiderClosingService
         return [$incoming, $carry];
     }
 
+    /** Office sales already posted SALE_OUT and must not become Rider sales. */
+    private function officeSold(Cart $cart, Carbon $date): array
+    {
+        $start = $date->copy()->startOfDay();
+
+        return DB::table('direct_sale_lines as lines')
+            ->join('direct_sales as sales', 'sales.id', '=', 'lines.direct_sale_id')
+            ->where('sales.cart_id', $cart->id)
+            ->where('sales.occurred_at', '>=', $start)
+            ->where('sales.occurred_at', '<', $start->copy()->addDay())
+            ->whereNull('sales.voided_at')
+            ->groupBy('lines.product_id')
+            ->selectRaw('lines.product_id, SUM(lines.qty) AS qty')
+            ->pluck('qty', 'product_id')->map(fn ($qty): int => (int) $qty)->all();
+    }
+
     public function draft(User $rider): array
     {
         $assignment = $this->assignment($rider);
         $cart = Cart::query()->findOrFail($assignment->cart_id);
         $date = Carbon::today();
         [$incoming, $carry] = $this->quantities($cart, $date);
+        $officeSold = $this->officeSold($cart, $date);
         $existing = RiderClosing::query()->with('lines')
             ->where('cart_id', $cart->id)->whereDate('operating_date', $date->toDateString())->first();
         $ids = array_unique([...array_keys($incoming), ...array_keys($carry)]);
         $products = Product::query()->whereIn('id', $ids)->orderBy('sort_order')->get();
-        $lines = $products->map(function (Product $product) use ($incoming, $carry, $existing): array {
+        $lines = $products->map(function (Product $product) use ($incoming, $carry, $officeSold, $existing): array {
             $prior = $existing?->lines->firstWhere('product_id', $product->id);
             $price = $product->priceVersionAt(now());
 
@@ -96,6 +127,7 @@ class RiderClosingService
                 'product_name' => $product->name,
                 'qty_in' => $incoming[$product->id] ?? 0,
                 'qty_carry' => $carry[$product->id] ?? 0,
+                'qty_office_sold' => $officeSold[$product->id] ?? 0,
                 'qty_remaining' => $prior?->qty_remaining ?? 0,
                 'qty_wasted' => $prior?->qty_wasted ?? 0,
                 'qty_sold' => $prior?->qty_sold ?? 0,
@@ -187,6 +219,7 @@ class RiderClosingService
             }
 
             [$incoming, $carry] = $this->quantities($cart, $date);
+            $officeSold = $this->officeSold($cart, $date);
             $ids = array_unique([...array_keys($incoming), ...array_keys($carry)]);
             sort($ids);
             $submitted = [];
@@ -239,11 +272,11 @@ class RiderClosingService
             foreach ($ids as $id) {
                 $remaining = (int) $submitted[$id]['qty_remaining'];
                 $wasted = (int) $submitted[$id]['qty_wasted'];
-                $issued = ($incoming[$id] ?? 0) + ($carry[$id] ?? 0);
-                if ($remaining + $wasted > $issued) {
-                    throw new RuntimeException("Sisa + rusak produk #{$id} melebihi stok masuk ({$issued}).");
+                $availableToRider = ($incoming[$id] ?? 0) + ($carry[$id] ?? 0) - ($officeSold[$id] ?? 0);
+                if ($remaining + $wasted > $availableToRider) {
+                    throw new RuntimeException("Sisa + rusak produk #{$id} melebihi stok setelah dijual kantor ({$availableToRider}).");
                 }
-                $sold = $issued - $remaining - $wasted;
+                $sold = $availableToRider - $remaining - $wasted;
                 $postedSale = $sold - (int) ($legacySold[$id] ?? 0);
                 if ($postedSale < 0) {
                     throw new RuntimeException("Sisa produk #{$id} melebihi stok setelah penjualan lama. Muat ulang Closing ya.");

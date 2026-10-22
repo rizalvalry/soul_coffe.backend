@@ -18,6 +18,7 @@ use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\Auth;
 use RuntimeException;
 
@@ -131,6 +132,8 @@ class DirectSalesTable
                     ->action(function (DirectSale $record, array $data, DirectSaleService $service): void {
                         try {
                             $service->void($record, Auth::user(), (string) $data['reason']);
+                        } catch (HttpResponseException $e) {
+                            throw $e;
                         } catch (RuntimeException $e) {
                             Notification::make()->danger()->title('Tidak bisa membatalkan')->body($e->getMessage())->send();
 
