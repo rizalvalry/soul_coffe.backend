@@ -7,6 +7,7 @@ use App\Models\Attendance;
 use App\Models\Cart;
 use App\Models\Customer;
 use App\Models\Location;
+use App\Models\LocationSetting;
 use App\Models\RiderClosing;
 use App\Models\RiderLocationSetup;
 use App\Models\StaffAssignment;
@@ -21,6 +22,19 @@ use Tests\TestCase;
 class NearbyCustomerTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_updated_customer_radius_takes_effect_without_cache_clear(): void
+    {
+        $customer = Customer::create(['google_sub' => 'radius-google']);
+        $token = $customer->createToken('test', ['customer'])->plainTextToken;
+        $this->openCart('AT2500', rad2deg(2500 / 6371000));
+
+        $this->withToken($token)->postJson('/api/v1/customer/nearby-carts', ['lat' => 0, 'lng' => 0])
+            ->assertOk()->assertJsonCount(0, 'data');
+        LocationSetting::query()->findOrFail(1)->update(['customer_radius_m' => 3000]);
+        $this->withToken($token)->postJson('/api/v1/customer/nearby-carts', ['lat' => 0, 'lng' => 0])
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.code', 'AT2500');
+    }
 
     private function openCart(string $code, float $longitude, bool $attendance = true, bool $setup = true,
         bool $assignment = true, bool $closing = false, ?float $assignmentLongitude = null,

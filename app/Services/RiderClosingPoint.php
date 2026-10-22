@@ -18,7 +18,7 @@ class RiderClosingPoint
                 'basis' => 'selling_location', 'label' => $location?->name ?? 'titik jualan',
                 'lat' => $location?->lat === null ? null : (float) $location->lat,
                 'lng' => $location?->lng === null ? null : (float) $location->lng,
-                'radius_m' => (int) ($location?->geofence_m ?: config('soul.absen_geofence_m', 10)),
+                'radius_m' => app(LocationSettings::class)->radiusFor($location),
             ];
         }
         $kitchen = CentralKitchen::query()->find($assignment->kitchen_id ?? $rider->kitchen_id);
@@ -27,7 +27,7 @@ class RiderClosingPoint
             'basis' => 'kitchen', 'label' => $kitchen?->name ?? 'Dapur',
             'lat' => $kitchen?->lat === null ? null : (float) $kitchen->lat,
             'lng' => $kitchen?->lng === null ? null : (float) $kitchen->lng,
-            'radius_m' => (int) ($kitchen?->geofence_m ?: config('soul.absen_geofence_m', 10)),
+            'radius_m' => app(LocationSettings::class)->radiusFor($kitchen),
         ];
     }
 

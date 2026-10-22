@@ -34,7 +34,8 @@ final class DefaultPermissions
             if ($module === PanelModule::CART_CLOSE_OUT) {
                 continue; // T-071 migration owns this grant so its rollback can remove it.
             }
-            self::insert(Role::ADMINISTRATOR, $module, self::FULL);
+            self::insert(Role::ADMINISTRATOR, $module,
+                $module === PanelModule::LOCATION_SETTINGS ? ['view', 'edit'] : self::FULL);
         }
         self::insert(Role::CONTENT_CREATOR, PanelModule::NEWS_FEED, self::FULL);
 
@@ -43,7 +44,8 @@ final class DefaultPermissions
         foreach ([Role::FINANCE, Role::MANAGEMENT] as $role) {
             foreach (PanelModule::cases() as $module) {
                 if ($module !== PanelModule::ROLE_MATRIX && $module !== PanelModule::CART_CLOSE_OUT) {
-                    self::insert($role, $module, self::FULL);
+                    self::insert($role, $module,
+                        $module === PanelModule::LOCATION_SETTINGS ? ['view', 'edit'] : self::FULL);
                 }
             }
         }
