@@ -6,6 +6,8 @@
  * rather than disabling a guard.
  */
 return [
+    // Enable after the Owner confirms every field phone has the updated APK.
+    'device_binding_enforce' => (bool) env('SOUL_DEVICE_BINDING_ENFORCE', false),
     // Historical sales-only operating days can still be reconciled. Current days require Closing.
     'closing_started_on' => '2026-10-18',
 

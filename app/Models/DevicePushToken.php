@@ -15,6 +15,7 @@ class DevicePushToken extends Model
         'token',
         'platform',
         'device_name',
+        'user_device_id',
         'last_seen_at',
         'failed_at',
     ];

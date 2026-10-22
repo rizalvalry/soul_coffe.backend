@@ -4,11 +4,15 @@ namespace App\Filament\Resources\Users\Schemas;
 
 use App\Enums\PanelModule;
 use App\Enums\Role;
+use App\Filament\Resources\DeviceLoginAttempts\DeviceLoginAttemptResource;
+use App\Models\DeviceLoginAttempt;
 use App\Models\User;
+use App\Models\UserDevice;
 use App\Services\Access\PermissionMatrix;
 use App\Support\PhoneNumber;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -19,6 +23,7 @@ use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\HtmlString;
 
 class UserForm
 {
@@ -152,6 +157,37 @@ class UserForm
                         && ! ($record?->is_super_admin ?? false) && ! (bool) $get('is_super_admin')),
 
                 self::accessSection(),
+
+                Section::make('Perangkat Login')->collapsed()->columnSpanFull()
+                    ->visible(fn (?User $record): bool => $record !== null
+                        && PermissionMatrix::can(Auth::user(), PanelModule::DEVICES, 'view'))
+                    ->schema([
+                        Placeholder::make('active_login_device')->label('HP aktif')
+                            ->content(function (?User $record): HtmlString {
+                                $device = UserDevice::query()->where('user_id', $record?->id)
+                                    ->where('status', UserDevice::ACTIVE)->first();
+                                $label = e($device?->model ?: $device?->device_name ?: 'Belum ada');
+                                $url = e(DeviceLoginAttemptResource::getUrl('index', [
+                                    'tableFilters' => ['user_id' => ['value' => $record?->id]],
+                                ]));
+
+                                return new HtmlString($label.' · <a href="'.$url.'">Lihat riwayat perangkat</a>');
+                            }),
+                        Placeholder::make('login_device_history')->label('Riwayat login terbaru')
+                            ->content(function (?User $record): HtmlString {
+                                $rows = DeviceLoginAttempt::query()->where('user_id', $record?->id)
+                                    ->latest()->limit(10)->get();
+                                if ($rows->isEmpty()) {
+                                    return new HtmlString('Belum ada riwayat login.');
+                                }
+
+                                return new HtmlString($rows->map(fn (DeviceLoginAttempt $row): string => e($row->created_at?->format('d M Y H:i') ?? '-').' · '
+                                    .e($row->device_name ?: 'HP tidak dikenal').' · '
+                                    .e(UserDevice::maskId($row->device_id)).' · '
+                                    .e($row->succeeded ? 'Berhasil' : 'Ditolak').' · '
+                                    .e($row->reasonLabel()))->implode('<br>'));
+                            }),
+                    ]),
 
                 // ── Biodata ───────────────────────────────────────────────────────────
                 // Collapsed by default: adding a person needs a name, a phone and a role, and

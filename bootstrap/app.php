@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\CustomerRevocationReplay;
 use App\Http\Middleware\EnsureActiveUser;
+use App\Http\Middleware\EnsureBoundDevice;
 use App\Http\Middleware\EnsurePermission;
 use App\Http\Middleware\EnsureRole;
 use App\Http\Middleware\Idempotency;
@@ -24,7 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
     // token, so the default web-guarded /broadcasting/auth would reject every subscription.
     ->withBroadcasting(
         __DIR__.'/../routes/channels.php',
-        ['prefix' => 'api/v1', 'middleware' => ['auth:sanctum', EnsureActiveUser::class, RecoverOutboxAfterResponse::class]],
+        ['prefix' => 'api/v1', 'middleware' => ['auth:sanctum', EnsureActiveUser::class, EnsureBoundDevice::class, RecoverOutboxAfterResponse::class]],
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->prependToGroup('api', CustomerRevocationReplay::class);

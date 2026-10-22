@@ -28,8 +28,10 @@ use App\Http\Controllers\Api\RiderLocationSetupController;
 use App\Http\Controllers\Api\SaleController;
 use App\Http\Controllers\Api\SettlementController;
 use App\Http\Controllers\Api\ShowcaseStockController;
+use App\Http\Controllers\Api\UserDeviceController;
 use App\Http\Middleware\CustomerGoogleIdempotency;
 use App\Http\Middleware\EnsureActiveUser;
+use App\Http\Middleware\EnsureBoundDevice;
 use App\Http\Middleware\EnsureCustomer;
 use App\Http\Middleware\RecoverOutboxAfterResponse;
 use App\Http\Middleware\VerifyCustomerGoogleBeforeReplay;
@@ -85,7 +87,7 @@ Route::post('auth/login-pin', [AuthController::class, 'loginWithPin'])
 Route::post('auth/pin-reset-requests', [PinResetRequestController::class, 'store'])
     ->middleware('throttle:auth-pin-reset');
 
-Route::middleware(['auth:sanctum', EnsureActiveUser::class, RecoverOutboxAfterResponse::class])->group(function (): void {
+Route::middleware(['auth:sanctum', EnsureActiveUser::class, EnsureBoundDevice::class, RecoverOutboxAfterResponse::class])->group(function (): void {
     Route::post('auth/logout', [AuthController::class, 'logout']);
     Route::get('me', [MeController::class, 'show']);
     Route::get('payroll/my-slips', [MyPayrollSlipsController::class, 'index']);
@@ -100,6 +102,15 @@ Route::middleware(['auth:sanctum', EnsureActiveUser::class, RecoverOutboxAfterRe
     // on a deliberate sign-out. See DeviceController.
     Route::post('me/devices', [DeviceController::class, 'store']);
     Route::delete('me/devices', [DeviceController::class, 'destroy']);
+
+    Route::get('login-devices', [UserDeviceController::class, 'index'])
+        ->middleware('permission:devices,view');
+    Route::prefix('login-devices/{device}')->middleware(['permission:devices,edit', 'idempotent:require'])
+        ->group(function (): void {
+            Route::post('approve', [UserDeviceController::class, 'approve']);
+            Route::post('reject', [UserDeviceController::class, 'reject']);
+            Route::post('revoke', [UserDeviceController::class, 'revoke']);
+        });
 
     // ── Master data (read-only for the mobile client) ───────────────────────
     Route::get('products', [ProductController::class, 'index']);
