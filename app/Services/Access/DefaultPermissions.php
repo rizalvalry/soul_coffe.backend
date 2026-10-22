@@ -4,9 +4,12 @@ namespace App\Services\Access;
 
 use App\Enums\PanelModule;
 use App\Enums\Role;
+use App\Models\AuditLog;
+use App\Models\RolePermission;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
-/** Initial grants from main@271ec22. Existing role rows always win. */
+/** Seeds initial grants and safely merges existing Management grants with Finance. */
 final class DefaultPermissions
 {
     private const FULL = ['view', 'create', 'edit', 'delete'];
@@ -55,6 +58,9 @@ final class DefaultPermissions
     /** Merge the Finance template into existing Management rows, snapshotting only changes. */
     public static function mergeManagement(): void
     {
+        // Matrix saves lock these same rows first, so the migration cannot race an access edit.
+        User::query()->where('role', Role::ADMINISTRATOR->value)
+            ->orderBy('id')->lockForUpdate()->get(['id']);
         foreach (PanelModule::cases() as $module) {
             if ($module === PanelModule::ROLE_MATRIX) {
                 continue;
@@ -64,9 +70,9 @@ final class DefaultPermissions
             }
 
             $finance = DB::table('role_permissions')->where('role', Role::FINANCE->value)
-                ->where('module', $module->value)->first();
+                ->where('module', $module->value)->lockForUpdate()->first();
             $management = DB::table('role_permissions')->where('role', Role::MANAGEMENT->value)
-                ->where('module', $module->value)->first();
+                ->where('module', $module->value)->lockForUpdate()->first();
             $current = $management ? json_decode($management->abilities, true, 512, JSON_THROW_ON_ERROR) : [];
             $financeAbilities = $finance ? json_decode($finance->abilities, true, 512, JSON_THROW_ON_ERROR) : [];
             $required = in_array($module, self::NEW_MODULES, true) ? self::FULL : [];
@@ -99,6 +105,10 @@ final class DefaultPermissions
                 'applied_role_permission_id' => DB::table('role_permissions')
                     ->where('role', Role::MANAGEMENT->value)->where('module', $module->value)->value('id'),
             ]);
+            self::auditManagementChange('role_permission.migration_merged', $module,
+                (int) DB::table('role_permissions')->where('role', Role::MANAGEMENT->value)
+                    ->where('module', $module->value)->value('id'),
+                $management ? $current : null, $merged);
         }
 
         PermissionMatrix::forget();
@@ -107,25 +117,62 @@ final class DefaultPermissions
     /** Restore migration-created grants only if nobody changed them afterward. */
     public static function restoreManagement(): void
     {
-        foreach (DB::table('management_permission_merge_snapshots')->get() as $snapshot) {
+        User::query()->where('role', Role::ADMINISTRATOR->value)
+            ->orderBy('id')->lockForUpdate()->get(['id']);
+        $snapshots = DB::table('management_permission_merge_snapshots')->orderBy('module')->get();
+        $toRestore = [];
+        foreach ($snapshots as $snapshot) {
             $current = DB::table('role_permissions')->where('role', Role::MANAGEMENT->value)
-                ->where('module', $snapshot->module)->first();
+                ->where('module', $snapshot->module)->lockForUpdate()->first();
+            if ($snapshot->role_permission_id === null && $current === null) {
+                continue;
+            }
+            if ($snapshot->role_permission_id !== null && $current?->id === $snapshot->role_permission_id
+                && json_decode($current->abilities, true, 512, JSON_THROW_ON_ERROR)
+                    === json_decode($snapshot->prior_abilities, true, 512, JSON_THROW_ON_ERROR)
+                && $current->updated_at === $snapshot->prior_updated_at) {
+                continue;
+            }
             if ($current === null || $current->id !== $snapshot->applied_role_permission_id
                 || json_decode($current->abilities, true, 512, JSON_THROW_ON_ERROR)
                     !== json_decode($snapshot->applied_abilities, true, 512, JSON_THROW_ON_ERROR)) {
-                continue;
+                throw new \RuntimeException('Hak Management berubah setelah migrasi untuk modul '.$snapshot->module.'. Rollback dibatalkan agar snapshot tetap tersimpan.');
             }
+            $toRestore[] = $snapshot;
+        }
 
+        foreach ($toRestore as $snapshot) {
+            $module = PanelModule::from($snapshot->module);
+            $applied = json_decode($snapshot->applied_abilities, true, 512, JSON_THROW_ON_ERROR);
+            $prior = $snapshot->prior_abilities === null ? null
+                : json_decode($snapshot->prior_abilities, true, 512, JSON_THROW_ON_ERROR);
             if ($snapshot->role_permission_id === null) {
-                DB::table('role_permissions')->where('id', $current->id)->delete();
+                DB::table('role_permissions')->where('id', $snapshot->applied_role_permission_id)->delete();
             } else {
-                DB::table('role_permissions')->where('id', $current->id)->update([
+                DB::table('role_permissions')->where('id', $snapshot->applied_role_permission_id)->update([
                     'abilities' => $snapshot->prior_abilities,
                     'updated_at' => $snapshot->prior_updated_at,
                 ]);
             }
+            self::auditManagementChange('role_permission.migration_restored', $module,
+                (int) $snapshot->applied_role_permission_id, $applied, $prior);
         }
         PermissionMatrix::forget();
+    }
+
+    private static function auditManagementChange(string $action, PanelModule $module, int $rowId, ?array $before, ?array $after): void
+    {
+        AuditLog::query()->create([
+            'actor_id' => null,
+            'actor_role' => 'SYSTEM',
+            'action' => $action,
+            'subject_type' => RolePermission::class,
+            'subject_id' => $rowId,
+            'before_json' => ['role' => Role::MANAGEMENT->value, 'module' => $module->value,
+                'abilities' => $before, 'reason' => 'Sinkronisasi hak Management dan Finance (T-057)'],
+            'after_json' => ['role' => Role::MANAGEMENT->value, 'module' => $module->value,
+                'abilities' => $after, 'reason' => 'Sinkronisasi hak Management dan Finance (T-057)'],
+        ]);
     }
 
     private static function insert(Role $role, PanelModule $module, array $abilities): void

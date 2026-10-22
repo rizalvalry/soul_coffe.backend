@@ -11,17 +11,16 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (Schema::hasTable('management_permission_merge_snapshots')) {
-            return;
+        if (! Schema::hasTable('management_permission_merge_snapshots')) {
+            Schema::create('management_permission_merge_snapshots', function (Blueprint $table): void {
+                $table->string('module')->primary();
+                $table->unsignedBigInteger('role_permission_id')->nullable();
+                $table->json('prior_abilities')->nullable();
+                $table->timestamp('prior_updated_at')->nullable();
+                $table->unsignedBigInteger('applied_role_permission_id')->nullable();
+                $table->json('applied_abilities');
+            });
         }
-        Schema::create('management_permission_merge_snapshots', function (Blueprint $table): void {
-            $table->string('module')->primary();
-            $table->unsignedBigInteger('role_permission_id')->nullable();
-            $table->json('prior_abilities')->nullable();
-            $table->timestamp('prior_updated_at')->nullable();
-            $table->unsignedBigInteger('applied_role_permission_id')->nullable();
-            $table->json('applied_abilities');
-        });
 
         DB::transaction(fn () => DefaultPermissions::mergeManagement());
     }

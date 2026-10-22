@@ -320,8 +320,18 @@ class PermissionMatrixTest extends TestCase
                 ->where('module', $module->value)->value('prior_abilities'), true));
         }
         $this->assertSame(count($modules), DB::table('management_permission_merge_snapshots')->count());
+        $this->assertSame(count($modules), AuditLog::query()
+            ->where('action', 'role_permission.migration_merged')->count());
+        $purchaseOrderAudit = AuditLog::query()->where('action', 'role_permission.migration_merged')
+            ->where('subject_type', RolePermission::class)
+            ->where('before_json->module', PanelModule::PURCHASE_ORDERS->value)->firstOrFail();
+        $this->assertSame('SYSTEM', $purchaseOrderAudit->actor_role);
+        $this->assertSame(['view'], $purchaseOrderAudit->before_json['abilities']);
+        $this->assertSame(['view', 'create', 'edit'], $purchaseOrderAudit->after_json['abilities']);
 
         DefaultPermissions::restoreManagement();
+        $this->assertSame(count($modules), AuditLog::query()
+            ->where('action', 'role_permission.migration_restored')->count());
         foreach ($modules as $module) {
             $this->assertSame(['view'], PermissionMatrix::abilitiesFor(Role::MANAGEMENT, $module), $module->value);
         }
@@ -329,7 +339,7 @@ class PermissionMatrixTest extends TestCase
             PermissionMatrix::abilitiesFor(Role::FINANCE, PanelModule::PURCHASE_ORDERS));
     }
 
-    public function test_management_migration_rollback_preserves_later_revocation_and_edits(): void
+    public function test_management_migration_rollback_refuses_later_edits_and_keeps_snapshot(): void
     {
         RolePermission::query()->where('role', Role::MANAGEMENT)
             ->where('module', PanelModule::PURCHASE_ORDERS->value)
@@ -340,10 +350,49 @@ class PermissionMatrixTest extends TestCase
         DefaultPermissions::mergeManagement();
         PermissionMatrix::set(Role::MANAGEMENT, PanelModule::PURCHASE_ORDERS, []);
         PermissionMatrix::set(Role::MANAGEMENT, PanelModule::SUPPLIERS, ['view']);
-        DefaultPermissions::restoreManagement();
+        try {
+            DefaultPermissions::restoreManagement();
+            $this->fail('Rollback should refuse to discard post-migration edits.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('Rollback dibatalkan', $exception->getMessage());
+        }
 
         $this->assertSame([], PermissionMatrix::abilitiesFor(Role::MANAGEMENT, PanelModule::PURCHASE_ORDERS));
         $this->assertSame(['view'], PermissionMatrix::abilitiesFor(Role::MANAGEMENT, PanelModule::SUPPLIERS));
+        $this->assertDatabaseHas('management_permission_merge_snapshots', ['module' => PanelModule::PURCHASE_ORDERS->value]);
+        $this->assertDatabaseHas('management_permission_merge_snapshots', ['module' => PanelModule::SUPPLIERS->value]);
+    }
+
+    public function test_management_migration_restores_a_missing_management_row(): void
+    {
+        RolePermission::query()->where('role', Role::MANAGEMENT)
+            ->where('module', PanelModule::SUPPLIERS->value)->delete();
+        PermissionMatrix::forget();
+
+        DefaultPermissions::mergeManagement();
+        $this->assertSame(['view', 'create', 'edit', 'delete'],
+            PermissionMatrix::abilitiesFor(Role::MANAGEMENT, PanelModule::SUPPLIERS));
+        $this->assertNull(DB::table('management_permission_merge_snapshots')
+            ->where('module', PanelModule::SUPPLIERS->value)->value('prior_abilities'));
+
+        DefaultPermissions::restoreManagement();
+        $this->assertDatabaseMissing('role_permissions', [
+            'role' => Role::MANAGEMENT->value, 'module' => PanelModule::SUPPLIERS->value,
+        ]);
+    }
+
+    public function test_management_migration_restore_can_retry_after_restore_commits(): void
+    {
+        RolePermission::query()->where('role', Role::MANAGEMENT)
+            ->where('module', PanelModule::PURCHASE_ORDERS->value)
+            ->firstOrFail()->update(['abilities' => ['view']]);
+
+        DefaultPermissions::mergeManagement();
+        DefaultPermissions::restoreManagement();
+        DefaultPermissions::restoreManagement();
+
+        $this->assertSame(['view'], PermissionMatrix::abilitiesFor(Role::MANAGEMENT, PanelModule::PURCHASE_ORDERS));
+        $this->assertSame(1, AuditLog::query()->where('action', 'role_permission.migration_restored')->count());
     }
 
     public function test_payroll_access_explanation_appears_in_matrix_and_account_form(): void
