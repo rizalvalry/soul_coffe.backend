@@ -8,6 +8,7 @@ use App\Models\JournalEntry;
 use App\Models\PayrollItem;
 use App\Models\PayrollPriorWithholding;
 use App\Models\PayrollRun;
+use App\Models\ThrItem;
 use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Crypt;
@@ -59,9 +60,13 @@ class PayrollRunService
         }, 3);
     }
 
-    public function preview(User $user, string $period): array
+    public function preview(User $user, string $period, int $additionalGross = 0, ?User $actor = null): array
     {
-        Gate::authorize('manage-payroll');
+        if ($actor) {
+            Gate::forUser($actor)->authorize('manage-payroll');
+        } else {
+            Gate::authorize('manage-payroll');
+        }
         if (! preg_match('/^\d{4}-(0[1-9]|1[0-2])$/D', $period)) {
             throw ValidationException::withMessages(['period' => 'Periode harus YYYY-MM ya.']);
         }
@@ -72,7 +77,7 @@ class PayrollRunService
         $from = $period.'-01';
         $settings = $this->verifiedSettings($from);
 
-        return $this->snapshotFor($user, $period, $from, $settings);
+        return $this->snapshotFor($user, $period, $from, $settings, $additionalGross);
     }
 
     private function calculate(PayrollRun $run): void
@@ -106,7 +111,7 @@ class PayrollRunService
         return $settings;
     }
 
-    private function snapshotFor(User $user, string $period, string $from, object $settings): array
+    private function snapshotFor(User $user, string $period, string $from, object $settings, int $additionalGross = 0): array
     {
         $ptkp = DB::table('ptkp_rates')->where('status', $user->employeeProfile->ptkp_status)
             ->where('effective_from', '<=', $from)->orderByDesc('effective_from')->first();
@@ -119,7 +124,18 @@ class PayrollRunService
             throw ValidationException::withMessages(['period' => 'TER kategori '.$ptkp->ter_category.' belum diterbitkan dan diverifikasi.']);
         }
         try {
-            $snapshot = $this->calculator->calculate($user, $period);
+            $thrItems = ThrItem::query()->where('user_id', $user->id)
+                ->whereHas('run', fn ($query) => $query->whereYear('planned_payment_date', substr($period, 0, 4))
+                    ->whereIn('status', ['APPROVED', 'PAID']))->with('run')->get();
+            $currentThrGross = 0;
+            $currentThrWithheld = 0;
+            foreach ($thrItems as $item) {
+                if ($item->run->planned_payment_date->format('Y-m') === $period) {
+                    $currentThrGross += (int) $item->snapshot['gross_minor'];
+                    $currentThrWithheld += (int) $item->snapshot['pph21_minor'];
+                }
+            }
+            $snapshot = $this->calculator->calculate($user, $period, $additionalGross + $currentThrGross);
             if (str_ends_with($period, '-12')) {
                 $history = PayrollItem::query()->where('user_id', $user->id)
                     ->whereHas('run', fn ($query) => $query->whereYear('period_start', substr($period, 0, 4))
@@ -128,10 +144,29 @@ class PayrollRunService
                 foreach ($history as $item) {
                     $months[(int) $item->run->period_start->format('n')] = $item->snapshot;
                 }
+                $thrHistory = [];
+                foreach ($thrItems as $item) {
+                    $month = (int) $item->run->planned_payment_date->format('n');
+                    if ($month < 12) {
+                        $thrHistory[$month]['gross'] = ($thrHistory[$month]['gross'] ?? 0) + (int) $item->snapshot['gross_minor'];
+                        $thrHistory[$month]['withheld'] = ($thrHistory[$month]['withheld'] ?? 0) + (int) $item->snapshot['pph21_minor'];
+                    }
+                }
+                foreach ($thrHistory as $month => $thr) {
+                    if (isset($months[$month])) {
+                        $months[$month]['taxable_gross_minor'] += $thr['gross'] - (int) ($months[$month]['thr_included_minor'] ?? 0);
+                        $months[$month]['pph21_minor'] += $thr['withheld'];
+                    }
+                }
                 $manual = PayrollPriorWithholding::query()->where('user_id', $user->id)
                     ->where('year', (int) substr($period, 0, 4))->first();
                 $snapshot = $this->calculator->reconcileDecember($user, $snapshot, $months, $manual);
             }
+            $snapshot['pph21_minor'] -= $currentThrWithheld;
+            $snapshot['gross_pay_minor'] -= $currentThrGross;
+            $snapshot['take_home_minor'] = $snapshot['gross_pay_minor'] - $snapshot['manual_deductions_minor']
+                - $snapshot['bpjs_employee_total_minor'] - $snapshot['pph21_minor'];
+            $snapshot['thr_included_minor'] = $currentThrGross;
             $snapshot['bpjs_settings_id'] = $settings->id;
             $snapshot['ptkp_rate_id'] = $ptkp->id;
             $snapshot['ter_version_id'] = $ter->id;

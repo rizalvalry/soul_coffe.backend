@@ -9,7 +9,7 @@ use Illuminate\Validation\ValidationException;
 class CashTransaction extends Model
 {
     protected $fillable = ['uuid', 'date', 'direction', 'cash_category_id', 'cash_account_id', 'amount_minor',
-        'description', 'office_item_id', 'quantity', 'evidence_path', 'recorded_by', 'status',
+        'description', 'office_item_id', 'quantity', 'evidence_path', 'cart_id', 'recorded_by', 'status',
         'voided_by', 'voided_at', 'void_reason'];
 
     protected function casts(): array
@@ -30,6 +30,11 @@ class CashTransaction extends Model
     public function cashAccount(): BelongsTo
     {
         return $this->belongsTo(CashAccount::class);
+    }
+
+    public function cart(): BelongsTo
+    {
+        return $this->belongsTo(Cart::class);
     }
 
     public function officeItem(): BelongsTo

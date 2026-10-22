@@ -33,6 +33,7 @@ class CashTransactionService
             'office_item_id' => ['nullable', 'integer', 'exists:office_items,id'],
             'quantity' => ['nullable', 'integer', 'min:1'],
             'evidence_path' => ['nullable', 'string', 'max:255'],
+            'cart_id' => ['nullable', 'integer', 'exists:carts,id'],
         ])->validate();
 
         if (isset($data['office_item_id']) !== isset($data['quantity'])) {
@@ -52,7 +53,7 @@ class CashTransactionService
             $existing = CashTransaction::query()->where('uuid', $data['uuid'])->lockForUpdate()->first();
             if ($existing) {
                 foreach (['date', 'cash_category_id', 'cash_account_id', 'amount_minor', 'description',
-                    'office_item_id', 'quantity', 'evidence_path'] as $field) {
+                    'office_item_id', 'quantity', 'evidence_path', 'cart_id'] as $field) {
                     $old = $field === 'date' ? $existing->date->toDateString() : $existing->$field;
                     if ((string) ($old ?? '') !== (string) ($data[$field] ?? '')) {
                         throw ValidationException::withMessages(['uuid' => 'UUID ini sudah dipakai untuk transaksi yang berbeda.']);
@@ -81,6 +82,9 @@ class CashTransactionService
             }
             if (isset($data['office_item_id']) && $category->direction !== 'OUT') {
                 throw ValidationException::withMessages(['office_item_id' => 'Barang kantor hanya untuk kas keluar.']);
+            }
+            if (isset($data['cart_id']) && ($category->direction !== 'OUT' || $category->account->type !== 'EXPENSE')) {
+                throw ValidationException::withMessages(['cart_id' => 'Coffee Bike hanya bisa ditandai untuk beban langsung ya.']);
             }
 
             if ($category->name === 'Setor tunai ke bank' && $cash->account->code !== '1-1200') {
@@ -117,7 +121,8 @@ class CashTransactionService
                 'purpose' => 'CASH_TX',
                 'posted_by' => $actor->id,
             ], [
-                ['account_id' => $debit, 'debit_minor' => $amount, 'credit_minor' => 0],
+                ['account_id' => $debit, 'debit_minor' => $amount, 'credit_minor' => 0,
+                    'cart_id' => $data['cart_id'] ?? null],
                 ['account_id' => $credit, 'debit_minor' => 0, 'credit_minor' => $amount],
             ]);
 
