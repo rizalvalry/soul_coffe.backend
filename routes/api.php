@@ -125,8 +125,10 @@ Route::middleware(['auth:sanctum', EnsureActiveUser::class, RecoverOutboxAfterRe
             Route::post('reject', [RefillTransitionController::class, 'reject']);
             Route::post('cancel', [RefillTransitionController::class, 'cancel']);
             // The requirement-4 gate. Returns 409 unless status is exactly APPROVED (R1).
-            Route::post('start-preparing', [RefillTransitionController::class, 'startPreparing']);
-            Route::post('ready', [RefillTransitionController::class, 'markReady']);
+            Route::post('start-preparing', [RefillTransitionController::class, 'startPreparing'])
+                ->middleware('permission:kitchen_operations,edit');
+            Route::post('ready', [RefillTransitionController::class, 'markReady'])
+                ->middleware('permission:kitchen_operations,edit');
             Route::post('claim', [RefillTransitionController::class, 'claim']);
             Route::post('deliver', [RefillTransitionController::class, 'deliver']);
             // Cups damaged on the way. Only while the request is in transit, only by the rider
@@ -158,6 +160,7 @@ Route::middleware(['auth:sanctum', EnsureActiveUser::class, RecoverOutboxAfterRe
     // are taps on a phone in a kitchen, and a retried tap must not brew, hand over, or write
     // off the same cups twice.
     Route::get('showcase/stock', [ShowcaseStockController::class, 'index']);
+    Route::get('showcase/kitchens', [ShowcaseStockController::class, 'kitchens']);
     Route::get('showcase/allowance/{cart}', [ShowcaseStockController::class, 'allowance']);
     // Every active staff member, not only those already rostered — the Add Stock form exists
     // for the case where nobody has been assigned yet.

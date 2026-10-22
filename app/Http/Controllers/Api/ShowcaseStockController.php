@@ -10,12 +10,14 @@ use App\Http\Requests\StoreShowcaseHandoverRequest;
 use App\Http\Resources\DailyCartAllowanceResource;
 use App\Http\Resources\StockRowResource;
 use App\Models\Cart;
+use App\Models\CentralKitchen;
 use App\Models\RiderClosing;
 use App\Models\StaffAssignment;
 use App\Models\User;
 use App\Services\AllocationService;
 use App\Services\CentralStockService;
 use App\Services\DailyAllowanceService;
+use App\Services\KitchenContext;
 use App\Services\ProductionService;
 use App\Services\StockLedgerService;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -46,20 +48,31 @@ class ShowcaseStockController extends Controller implements HasMiddleware
         private readonly ProductionService $production,
     ) {}
 
-    /**
-     * @return array<int, Middleware>
-     */
     public static function middleware(): array
     {
         return [
-            new Middleware('role:BARISTA'),
+            new Middleware('permission:kitchen_operations,view', only: [
+                'kitchens', 'index', 'allowance', 'staff', 'closeOutDraft',
+            ]),
+            new Middleware('permission:kitchen_operations,edit', only: ['brew', 'handToCart', 'closeOut']),
         ];
+    }
+
+    /**
+     * @return array<int, Middleware>
+     */
+    public function kitchens(Request $request): JsonResponse
+    {
+        KitchenContext::authorize($request->user());
+
+        return response()->json(['data' => CentralKitchen::query()->where('is_active', true)
+            ->orderBy('name')->get(['id', 'name'])]);
     }
 
     /** Cups currently sitting in this barista's showcase. */
     public function index(Request $request): AnonymousResourceCollection
     {
-        $kitchenId = $this->kitchenIdFor($request->user());
+        $kitchenId = KitchenContext::resolve($request);
 
         return StockRowResource::collection(
             $this->allocations->stockRows(StockLedgerService::KITCHEN, $kitchenId)
@@ -76,7 +89,7 @@ class ShowcaseStockController extends Controller implements HasMiddleware
         $user = $request->user();
         // kitchenIdFor() has already refused the request if this barista has no kitchen, so the
         // relation below is guaranteed present.
-        $kitchenId = $this->kitchenIdFor($user);
+        $kitchenId = KitchenContext::resolve($request, 'edit');
 
         try {
             $this->production->brew($kitchenId, $request->quantities(), $user);
@@ -96,7 +109,9 @@ class ShowcaseStockController extends Controller implements HasMiddleware
      */
     public function handToCart(StoreShowcaseHandoverRequest $request): JsonResponse
     {
+        $kitchenId = KitchenContext::resolve($request, 'edit');
         $cart = Cart::query()->findOrFail($request->integer('cart_id'));
+        KitchenContext::assertMatches($kitchenId, $cart->kitchen_id);
         $staff = User::query()->findOrFail($request->integer('staff_id'));
 
         try {
@@ -108,6 +123,7 @@ class ShowcaseStockController extends Controller implements HasMiddleware
                 $request->filled('allowance_amount') ? $request->integer('allowance_amount') : null,
                 $request->filled('operating_date') ? $request->date('operating_date') : null,
                 $request->filled('location_id') ? $request->integer('location_id') : null,
+                $kitchenId,
             );
         } catch (HttpResponseException $e) {
             throw $e;
@@ -139,7 +155,9 @@ class ShowcaseStockController extends Controller implements HasMiddleware
     /** End of day: unsold cups back to the showcase, or written off. */
     public function closeOut(StoreCartCloseOutRequest $request): JsonResponse
     {
+        $kitchenId = KitchenContext::resolve($request, 'edit');
         $cart = Cart::query()->findOrFail($request->integer('cart_id'));
+        KitchenContext::assertMatches($kitchenId, $cart->kitchen_id);
 
         try {
             $this->showcase->closeOutCart(
@@ -147,6 +165,7 @@ class ShowcaseStockController extends Controller implements HasMiddleware
                 $cart,
                 $request->quantities('returned'),
                 $request->quantities('rejected'),
+                $kitchenId,
             );
         } catch (RuntimeException $e) {
             abort(422, $e->getMessage());
@@ -162,15 +181,16 @@ class ShowcaseStockController extends Controller implements HasMiddleware
                 'showcase_stock' => StockRowResource::collection(
                     $this->allocations->stockRows(
                         StockLedgerService::KITCHEN,
-                        $this->kitchenIdFor($request->user()),
+                        $kitchenId,
                     )
                 ),
             ],
         ]);
     }
 
-    public function closeOutDraft(Cart $cart): JsonResponse
+    public function closeOutDraft(Request $request, Cart $cart): JsonResponse
     {
+        KitchenContext::assertCartMatches(KitchenContext::resolve($request), $cart);
         $closing = RiderClosing::query()->with('lines')->where('cart_id', $cart->id)
             ->whereDate('operating_date', today()->toDateString())->first();
         $liveStock = $this->allocations->stockRows(StockLedgerService::CART, $cart->id);
@@ -191,6 +211,8 @@ class ShowcaseStockController extends Controller implements HasMiddleware
     /** The pre-filled money field, fetched on its own when the form opens. */
     public function allowance(Request $request, Cart $cart): DailyCartAllowanceResource
     {
+        KitchenContext::assertCartMatches(KitchenContext::resolve($request), $cart);
+
         return new DailyCartAllowanceResource($this->allowances->forCart($cart));
     }
 
@@ -207,6 +229,7 @@ class ShowcaseStockController extends Controller implements HasMiddleware
      */
     public function staff(Request $request): JsonResponse
     {
+        KitchenContext::resolve($request);
         $date = now()->toDateString();
 
         $staff = User::query()
@@ -238,17 +261,5 @@ class ShowcaseStockController extends Controller implements HasMiddleware
                 ] : null,
             ])->all(),
         ]);
-    }
-
-    /**
-     * A barista is wired to exactly one kitchen; without it there is no showcase to speak of.
-     */
-    private function kitchenIdFor(User $user): int
-    {
-        if (! $user->kitchen_id) {
-            abort(422, 'Akun Produksi belum terhubung ke dapur pusat. Hubungi Administrator dulu ya.');
-        }
-
-        return (int) $user->kitchen_id;
     }
 }

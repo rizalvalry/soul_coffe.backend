@@ -8,6 +8,7 @@ use App\Enums\RefillStatus;
 use App\Enums\Role;
 use App\Enums\SignatureMethod;
 use App\Jobs\PostRefillStockLedger;
+use App\Models\AuditLog;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\Media;
@@ -350,7 +351,7 @@ class RefillRequestStateMachine
                 'RefillRequestRejected',
                 'Permintaan ditolak',
                 "{$locked->code} · {$reason}",
-                ['refill.'.$locked->id, 'user.'.$locked->staff_id],
+                ['refill.'.$locked->id, 'user.'.$locked->staff_id, 'kitchen.'.$locked->kitchen_id],
                 [$locked->staff_id],
                 $locked->id,
                 RefillStatus::REJECTED->value,
@@ -446,11 +447,11 @@ class RefillRequestStateMachine
      * APPROVED. The mobile UI's disabled button is convenience only; this is
      * the actual gate.
      */
-    public function startPreparing(RefillRequest $refill, User $barista, ?string $deviceId = null): RefillRequest
+    public function startPreparing(RefillRequest $refill, User $barista, ?string $deviceId = null, ?int $kitchenId = null): RefillRequest
     {
         $this->expireBeforeWrite($refill);
 
-        return DB::transaction(function () use ($refill, $barista, $deviceId): RefillRequest {
+        return DB::transaction(function () use ($refill, $barista, $deviceId, $kitchenId): RefillRequest {
             $locked = RefillRequest::query()->whereKey($refill->id)->lockForUpdate()->firstOrFail();
             $this->assertCurrentOperatingDate($locked);
 
@@ -458,7 +459,7 @@ class RefillRequestStateMachine
                 abort(409, 'Request belum disetujui Finance.');
             }
 
-            if ($barista->kitchen_id !== $locked->kitchen_id) {
+            if (($kitchenId ?? $barista->kitchen_id) !== $locked->kitchen_id) {
                 abort(403, 'Produksi tidak berada di dapur yang sesuai.');
             }
 
@@ -468,12 +469,15 @@ class RefillRequestStateMachine
             $locked->save();
 
             $this->history($locked, RefillStatus::APPROVED, RefillStatus::PREPARING, $barista, null, $deviceId);
+            AuditLog::recordAction($barista, 'refill.start_preparing', $locked,
+                ['status' => RefillStatus::APPROVED->value],
+                ['status' => RefillStatus::PREPARING->value, 'kitchen_id' => $locked->kitchen_id]);
 
             $this->events->publish(
                 'RefillPreparingStarted',
                 'Produksi mulai menyiapkan',
                 "{$locked->code} · Coffee Bike {$locked->cart->code}",
-                ['refill.'.$locked->id, 'user.'.$locked->staff_id],
+                ['refill.'.$locked->id, 'user.'.$locked->staff_id, 'kitchen.'.$locked->kitchen_id],
                 [$locked->staff_id],
                 $locked->id,
                 RefillStatus::PREPARING->value,
@@ -486,13 +490,16 @@ class RefillRequestStateMachine
     /**
      * @param  array{lines: array<int, array{line_id: int, qty_prepared: int}>, shortfall_reason?: string|null}  $data
      */
-    public function markReady(RefillRequest $refill, User $barista, array $data, ?string $deviceId = null): RefillRequest
+    public function markReady(RefillRequest $refill, User $barista, array $data, ?string $deviceId = null, ?int $kitchenId = null): RefillRequest
     {
         $this->expireBeforeWrite($refill);
 
-        return DB::transaction(function () use ($refill, $barista, $data, $deviceId): RefillRequest {
+        return DB::transaction(function () use ($refill, $barista, $data, $deviceId, $kitchenId): RefillRequest {
             $locked = RefillRequest::query()->whereKey($refill->id)->lockForUpdate()->firstOrFail();
             $this->assertCurrentOperatingDate($locked);
+            if (($kitchenId ?? $barista->kitchen_id) !== $locked->kitchen_id) {
+                abort(403, 'Produksi tidak berada di dapur yang sesuai.');
+            }
 
             if ($locked->status !== RefillStatus::PREPARING) {
                 abort(409, 'Request tidak dalam status sedang disiapkan.');
@@ -554,12 +561,15 @@ class RefillRequestStateMachine
             $locked->save();
 
             $this->history($locked, RefillStatus::PREPARING, RefillStatus::READY_TO_PICK, $barista, $shortfallReason, $deviceId);
+            AuditLog::recordAction($barista, 'refill.ready', $locked,
+                ['status' => RefillStatus::PREPARING->value],
+                ['status' => RefillStatus::READY_TO_PICK->value, 'kitchen_id' => $locked->kitchen_id]);
 
             $this->events->publish(
                 'RefillReadyToPick',
                 'Siap diambil',
                 "{$locked->code} · Coffee Bike {$locked->cart->code}",
-                ['refill.'.$locked->id, 'user.'.$locked->staff_id, 'role.RIDER'],
+                ['refill.'.$locked->id, 'user.'.$locked->staff_id, 'role.RIDER', 'kitchen.'.$locked->kitchen_id],
                 array_merge($this->userIdsWithRole(Role::RIDER), [$locked->staff_id]),
                 $locked->id,
                 RefillStatus::READY_TO_PICK->value,

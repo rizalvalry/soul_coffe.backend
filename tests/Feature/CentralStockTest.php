@@ -18,6 +18,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
 /**
@@ -467,10 +468,9 @@ class CentralStockTest extends TestCase
         );
     }
 
-    public function test_only_a_barista_may_move_showcase_stock(): void
+    public function test_an_account_without_kitchen_operations_may_not_move_showcase_stock(): void
     {
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Hanya Produksi');
+        $this->expectException(HttpException::class);
 
         $this->service->handToCart($this->staff, $this->cart, $this->staff, [$this->product->id => 5]);
     }

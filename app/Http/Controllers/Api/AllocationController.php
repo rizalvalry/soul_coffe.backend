@@ -2,14 +2,19 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\PanelModule;
+use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreAllocationRequest;
 use App\Http\Resources\AllocationResource;
 use App\Http\Resources\StaffOnShiftResource;
 use App\Http\Resources\StockRowResource;
+use App\Models\Cart;
 use App\Models\DailyAllocation;
 use App\Models\StaffAssignment;
+use App\Services\Access\PermissionMatrix;
 use App\Services\AllocationService;
+use App\Services\KitchenContext;
 use App\Services\StockLedgerService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -36,7 +41,8 @@ class AllocationController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('role:BARISTA', only: ['today', 'store', 'kitchenStock']),
+            new Middleware('permission:kitchen_operations,view', only: ['today', 'kitchenStock']),
+            new Middleware('permission:kitchen_operations,edit', only: ['store']),
             new Middleware('role:STAFF', only: ['mine', 'myStock']),
         ];
     }
@@ -44,19 +50,27 @@ class AllocationController extends Controller implements HasMiddleware
     public function today(Request $request): AnonymousResourceCollection
     {
         $date = $request->query('date', now()->toDateString());
+        $kitchenId = KitchenContext::resolve($request);
 
-        return StaffOnShiftResource::collection($this->service->staffOnShift($date));
+        return StaffOnShiftResource::collection($this->service->staffOnShift($date, $kitchenId));
     }
 
     public function store(StoreAllocationRequest $request): JsonResponse
     {
-        $allocation = $this->service->create($request->validated(), $request->user());
+        $kitchenId = KitchenContext::resolve($request, 'edit');
+        KitchenContext::assertMatches($kitchenId, Cart::query()->findOrFail($request->integer('cart_id'))->kitchen_id);
+        $allocation = $this->service->create($request->validated(), $request->user(), $kitchenId);
 
         return (new AllocationResource($allocation))->response()->setStatusCode(201);
     }
 
     public function show(Request $request, DailyAllocation $allocation): AllocationResource
     {
+        if ($request->user()->role !== Role::STAFF
+            && ($request->user()->role === Role::BARISTA || $request->filled('kitchen_id')
+                || ! PermissionMatrix::can($request->user(), PanelModule::ALLOCATIONS, 'view'))) {
+            KitchenContext::assertMatches(KitchenContext::resolve($request), $allocation->kitchen_id);
+        }
         if ($request->user()->cannot('view', $allocation)) {
             abort(403, 'Anda tidak berhak melihat alokasi ini.');
         }
@@ -98,7 +112,7 @@ class AllocationController extends Controller implements HasMiddleware
 
     public function kitchenStock(Request $request): AnonymousResourceCollection
     {
-        $kitchenId = $request->user()->kitchen_id;
+        $kitchenId = KitchenContext::resolve($request);
 
         $rows = $kitchenId
             ? $this->service->stockRows(StockLedgerService::KITCHEN, $kitchenId)

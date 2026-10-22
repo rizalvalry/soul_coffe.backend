@@ -59,8 +59,9 @@ class PermissionMatrixTest extends TestCase
                         Role::FINANCE, Role::MANAGEMENT => $module !== PanelModule::ROLE_MATRIX,
                         Role::CONTENT_CREATOR => $module === PanelModule::NEWS_FEED
                             || ($module === PanelModule::PAYROLL && $ability === 'view'),
-                        Role::BARISTA => ($module === PanelModule::RIDER_LOCATION_SETUP || $module === PanelModule::PAYROLL)
-                            && $ability === 'view',
+                        Role::BARISTA => $module === PanelModule::KITCHEN_OPERATIONS
+                            || (($module === PanelModule::RIDER_LOCATION_SETUP || $module === PanelModule::PAYROLL)
+                                && $ability === 'view'),
                         Role::STAFF, Role::RIDER => $module === PanelModule::PAYROLL && $ability === 'view',
                     };
                     $this->assertSame($expected, PermissionMatrix::can($user, $module, $ability),

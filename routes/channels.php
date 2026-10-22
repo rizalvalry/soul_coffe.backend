@@ -42,7 +42,16 @@ Broadcast::channel('role.{role}', function ($user, string $role) use ($roleOf): 
 Broadcast::channel('kitchen.{kitchenId}', function ($user, string $kitchenId) use ($roleOf): bool {
     $role = $roleOf($user);
 
-    return $role === 'BARISTA' && (string) $user->kitchen_id === (string) $kitchenId;
+    if (! $user->is_active || ! ctype_digit($kitchenId)) {
+        return false;
+    }
+    if ($role === 'BARISTA') {
+        return PermissionMatrix::can($user, PanelModule::KITCHEN_OPERATIONS, 'view')
+            && (string) $user->kitchen_id === $kitchenId;
+    }
+
+    return PermissionMatrix::can($user, PanelModule::KITCHEN_OPERATIONS, 'view')
+        && DB::table('central_kitchens')->where('id', (int) $kitchenId)->where('is_active', true)->exists();
 });
 
 Broadcast::channel('cart.{cartId}', function ($user, string $cartId) use ($roleOf): bool {
@@ -83,7 +92,8 @@ Broadcast::channel('refill.{refillId}', function ($user, string $refillId) use (
 
     return match ($role) {
         'STAFF' => (string) $refill->staff_id === (string) $user->id,
-        'BARISTA' => (string) $refill->kitchen_id === (string) $user->kitchen_id,
+        'BARISTA' => PermissionMatrix::can($user, PanelModule::KITCHEN_OPERATIONS, 'view')
+            && (string) $refill->kitchen_id === (string) $user->kitchen_id,
         // A rider sees a request it has claimed, plus the unclaimed pool it may claim from.
         'RIDER' => (string) $refill->rider_id === (string) $user->id
             || ($refill->rider_id === null && $refill->status === 'READY_TO_PICK'),

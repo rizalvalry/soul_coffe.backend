@@ -28,7 +28,7 @@ class DailyAllocationPolicy
     /** Who may create an allocation. Requirement 1: barista-owned. */
     public function create(User $user): bool
     {
-        return $user->role === Role::BARISTA;
+        return PermissionMatrix::can($user, PanelModule::KITCHEN_OPERATIONS, 'edit');
     }
 
     /** Who may view one allocation record. */
@@ -39,6 +39,10 @@ class DailyAllocationPolicy
         }
 
         if (PermissionMatrix::can($user, PanelModule::ALLOCATIONS, 'view')) {
+            return true;
+        }
+
+        if (PermissionMatrix::can($user, PanelModule::KITCHEN_OPERATIONS, 'view')) {
             return true;
         }
 

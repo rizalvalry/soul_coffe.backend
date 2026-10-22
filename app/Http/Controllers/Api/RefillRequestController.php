@@ -10,6 +10,7 @@ use App\Http\Requests\StoreRefillRequestRequest;
 use App\Http\Resources\RefillRequestResource;
 use App\Models\RefillRequest;
 use App\Services\Access\PermissionMatrix;
+use App\Services\KitchenContext;
 use App\Services\RefillExpiryService;
 use App\Services\RefillRequestStateMachine;
 use Illuminate\Database\Eloquent\Builder;
@@ -37,6 +38,7 @@ class RefillRequestController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
+        $selectedKitchenId = $request->filled('kitchen_id') ? KitchenContext::resolve($request) : null;
         match ($user->role) {
             Role::STAFF => $this->expiry->expire(staffId: $user->id),
             Role::BARISTA => $this->expiry->expire(kitchenId: $user->kitchen_id),
@@ -45,11 +47,15 @@ class RefillRequestController extends Controller
         };
 
         $query = RefillRequest::query()->with(self::EAGER);
+        if ($selectedKitchenId !== null) {
+            $query->where('kitchen_id', $selectedKitchenId);
+        }
 
-        if (! PermissionMatrix::can($user, PanelModule::REFILL_APPROVAL, 'view')) {
+        if ($selectedKitchenId === null && ! PermissionMatrix::can($user, PanelModule::REFILL_APPROVAL, 'view')) {
             match ($user->role) {
                 Role::STAFF => $query->where('staff_id', $user->id),
-                Role::BARISTA => $query->where('kitchen_id', $user->kitchen_id),
+                Role::BARISTA => PermissionMatrix::can($user, PanelModule::KITCHEN_OPERATIONS, 'view')
+                    ? $query->where('kitchen_id', $user->kitchen_id) : abort(403),
                 Role::RIDER => $this->scopeRider($query, $user->id, (string) $request->query('scope')),
                 default => abort(403),
             };
@@ -74,6 +80,9 @@ class RefillRequestController extends Controller
 
     public function show(Request $request, RefillRequest $refill)
     {
+        if ($request->filled('kitchen_id')) {
+            KitchenContext::assertMatches(KitchenContext::resolve($request), $refill->kitchen_id);
+        }
         Gate::authorize('view', $refill);
 
         $this->expiry->expire(refillId: $refill->id);

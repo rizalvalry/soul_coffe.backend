@@ -51,6 +51,7 @@ final class DefaultPermissions
         }
 
         self::insert(Role::BARISTA, PanelModule::RIDER_LOCATION_SETUP, ['view']);
+        self::insert(Role::BARISTA, PanelModule::KITCHEN_OPERATIONS, self::FULL);
 
         PermissionMatrix::forget();
     }

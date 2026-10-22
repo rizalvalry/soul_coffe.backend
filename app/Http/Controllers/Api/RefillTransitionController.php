@@ -9,6 +9,7 @@ use App\Http\Requests\MarkReadyRefillRequestRequest;
 use App\Http\Requests\RejectRefillRequestRequest;
 use App\Http\Resources\RefillRequestResource;
 use App\Models\RefillRequest;
+use App\Services\KitchenContext;
 use App\Services\RefillRequestStateMachine;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -69,15 +70,19 @@ class RefillTransitionController extends Controller
 
     public function startPreparing(Request $request, RefillRequest $refill)
     {
+        $kitchenId = KitchenContext::resolve($request, 'edit');
+        KitchenContext::assertMatches($kitchenId, $refill->kitchen_id);
         Gate::authorize('startPreparing', $refill);
 
-        $updated = $this->stateMachine->startPreparing($refill, $request->user(), $request->input('device_id'));
+        $updated = $this->stateMachine->startPreparing($refill, $request->user(), $request->input('device_id'), $kitchenId);
 
         return new RefillRequestResource($updated->load(self::EAGER));
     }
 
     public function markReady(MarkReadyRefillRequestRequest $request, RefillRequest $refill)
     {
+        $kitchenId = KitchenContext::resolve($request, 'edit');
+        KitchenContext::assertMatches($kitchenId, $refill->kitchen_id);
         Gate::authorize('markReady', $refill);
 
         $updated = $this->stateMachine->markReady(
@@ -85,6 +90,7 @@ class RefillTransitionController extends Controller
             $request->user(),
             $request->validated(),
             $request->input('device_id'),
+            $kitchenId,
         );
 
         return new RefillRequestResource($updated->load(self::EAGER));
