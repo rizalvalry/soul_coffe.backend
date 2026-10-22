@@ -565,6 +565,24 @@ class RefillFlowTest extends TestCase
 
     // ── R15 cost visibility ──────────────────────────────────────────────
 
+    public function test_refill_list_and_detail_include_the_cms_product_image_url_or_null(): void
+    {
+        $this->product->update(['image_path' => 'products/t065-refill.jpg']);
+        $refill = $this->submitRefill();
+
+        foreach (['/api/v1/refills?status=SUBMITTED', "/api/v1/refills/{$refill->id}"] as $path) {
+            $response = $this->actingAs($this->staff)->getJson($path)->assertOk();
+            $url = str_contains($path, '?')
+                ? $response->json('data.0.lines.0.image_url')
+                : $response->json('data.lines.0.image_url');
+            $this->assertSame(url('/storage/products/t065-refill.jpg'), $url);
+        }
+
+        $this->product->update(['image_path' => null]);
+        $this->actingAs($this->staff)->getJson("/api/v1/refills/{$refill->id}")
+            ->assertOk()->assertJsonPath('data.lines.0.image_url', null);
+    }
+
     public function test_r15_barista_response_never_contains_cost_fields(): void
     {
         $refill = $this->submitRefill(5);

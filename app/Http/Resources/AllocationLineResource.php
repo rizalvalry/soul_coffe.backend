@@ -19,6 +19,7 @@ class AllocationLineResource extends JsonResource
         return [
             'product_id' => $this->product_id,
             'product_name' => $this->whenLoaded('product', fn () => $this->product?->name),
+            'image_url' => $this->whenLoaded('product', fn () => $this->product?->imageUrl()),
             'target_qty' => $this->target_qty,
             'qty_issued' => $this->qty_issued,
         ];

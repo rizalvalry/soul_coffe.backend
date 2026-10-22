@@ -94,6 +94,36 @@ class AllocationTest extends TestCase
         $this->assertSame(195, $ledger->stockFor(StockLedgerService::KITCHEN, $this->cart->kitchen_id, $this->product->id));
     }
 
+    public function test_allocation_line_includes_the_absolute_cms_product_image_url(): void
+    {
+        $this->product->update(['image_path' => 'products/t065-allocation.jpg']);
+        $expected = url('/storage/products/t065-allocation.jpg');
+
+        $created = $this->actingAs($this->barista, 'sanctum')
+            ->postJson('/api/v1/allocations', $this->payload(1), ['Idempotency-Key' => 'alloc-image-1'])
+            ->assertCreated()
+            ->assertJsonPath('data.lines.0.image_url', $expected);
+
+        $this->actingAs($this->barista, 'sanctum')
+            ->getJson('/api/v1/allocations/'.$created->json('data.id'))
+            ->assertOk()->assertJsonPath('data.lines.0.image_url', $expected);
+        $this->actingAs($this->staff, 'sanctum')
+            ->getJson('/api/v1/me/allocation/today')
+            ->assertOk()->assertJsonPath('data.lines.0.image_url', $expected);
+
+        foreach ([
+            [$this->staff, '/api/v1/me/stock'],
+            [$this->barista, '/api/v1/kitchen/stock'],
+        ] as [$viewer, $path]) {
+            $response = $this->actingAs($viewer, 'sanctum')->getJson($path)->assertOk();
+            $this->assertSame($expected, collect($response->json('data'))->firstWhere('product_id', $this->product->id)['image_url']);
+        }
+
+        $this->product->update(['image_path' => null]);
+        $response = $this->actingAs($this->staff, 'sanctum')->getJson('/api/v1/me/stock')->assertOk();
+        $this->assertNull(collect($response->json('data'))->firstWhere('product_id', $this->product->id)['image_url']);
+    }
+
     public function test_allocation_rejects_manual_and_superseded_cart_assignments(): void
     {
         $assignment = StaffAssignment::query()->where('user_id', $this->staff->id)

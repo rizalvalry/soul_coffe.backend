@@ -306,6 +306,19 @@ class SettlementTest extends TestCase
         $this->assertSame(38, $line['qty_remaining']);
     }
 
+    public function test_settlement_draft_includes_absolute_cms_product_image_url_or_null(): void
+    {
+        $this->issue(1);
+        $this->coffee->update(['image_path' => 'products/t065-settlement.jpg']);
+
+        $this->asFinance()->getJson("/api/v1/settlements/draft/{$this->cart->id}")
+            ->assertOk()->assertJsonPath('data.lines.0.image_url', url('/storage/products/t065-settlement.jpg'));
+
+        $this->coffee->update(['image_path' => null]);
+        $this->asFinance()->getJson("/api/v1/settlements/draft/{$this->cart->id}")
+            ->assertOk()->assertJsonPath('data.lines.0.image_url', null);
+    }
+
     public function test_the_queue_lists_todays_carts_with_the_undeposited_ones_first(): void
     {
         $this->issue(20);
