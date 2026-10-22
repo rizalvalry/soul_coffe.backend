@@ -4,8 +4,8 @@ namespace App\Filament\Pages;
 
 use App\Enums\PanelModule;
 use App\Filament\Concerns\RenameableModule;
-use App\Services\Access\PermissionMatrix;
 use App\Models\AiSetting;
+use App\Services\Access\PermissionMatrix;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Forms\Components\TextInput;
@@ -58,7 +58,8 @@ class ManageAiSettings extends Page
         $setting = AiSetting::current();
 
         $this->form->fill([
-            'gemini_api_key' => $setting->gemini_api_key,
+            'gemini_api_key' => PermissionMatrix::can(Auth::user(), PanelModule::AI_SETTINGS, 'edit')
+                ? $setting->gemini_api_key : null,
             'gemini_model' => $setting->gemini_model,
         ]);
     }
@@ -95,6 +96,7 @@ class ManageAiSettings extends Page
                         Actions::make([
                             Action::make('save')
                                 ->label('Simpan')
+                                ->visible(fn (): bool => PermissionMatrix::can(Auth::user(), PanelModule::AI_SETTINGS, 'edit'))
                                 ->submit('save'),
                         ]),
                     ]),
@@ -103,6 +105,7 @@ class ManageAiSettings extends Page
 
     public function save(): void
     {
+        abort_unless(PermissionMatrix::can(Auth::user(), PanelModule::AI_SETTINGS, 'edit'), 403);
         $data = $this->form->getState();
 
         AiSetting::current()->update([

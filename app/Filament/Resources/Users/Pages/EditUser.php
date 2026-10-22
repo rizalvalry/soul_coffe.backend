@@ -2,9 +2,12 @@
 
 namespace App\Filament\Resources\Users\Pages;
 
+use App\Enums\PanelModule;
 use App\Enums\Role;
+use App\Filament\Resources\Users\UserAccessForm;
 use App\Filament\Resources\Users\UserResource;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\EditRecord;
 use Illuminate\Database\Eloquent\Model;
@@ -21,9 +24,17 @@ class EditUser extends EditRecord
         /** @var User $user */
         $user = $this->record;
         foreach (['national_id', 'bank_account_number'] as $field) {
-            $data[$field] = (Auth::user()?->role->grants(Role::MANAGEMENT) ?? false)
+            $data[$field] = PermissionMatrix::can(Auth::user(), PanelModule::PAYROLL, 'edit')
                 ? $user->getAttribute($field)
                 : User::maskSensitiveValue($user->getAttribute($field));
+        }
+
+        $data['access_grants'] = [];
+        $data['access_reasons'] = [];
+        foreach ($user->permissions as $permission) {
+            $data['access_grants'][$permission->module] = $permission->abilities === [] ? 'none'
+                : (array_intersect($permission->abilities, ['create', 'edit', 'delete']) ? 'edit' : 'view');
+            $data['access_reasons'][$permission->module] = $permission->reason;
         }
 
         return $data;
@@ -31,7 +42,28 @@ class EditUser extends EditRecord
 
     protected function handleRecordUpdate(Model $record, array $data): Model
     {
-        return DB::transaction(fn (): Model => parent::handleRecordUpdate($record, $data));
+        $requestedRole = (string) ($this->data['role'] ?? $data['role'] ?? $record->role->value);
+
+        return DB::transaction(function () use ($record, $data, $requestedRole): Model {
+            User::query()->where('role', Role::ADMINISTRATOR->value)
+                ->orderBy('id')->lockForUpdate()->get(['id']);
+            $actor = Auth::user()->refresh();
+            $record->refresh();
+            if (! PermissionMatrix::canManagePermissions($actor)
+                && ($record->role === Role::ADMINISTRATOR || $requestedRole !== $record->role->value)) {
+                abort(403);
+            }
+            [$choices, $reasons, $superAdmin] = UserAccessForm::extract($data, $actor);
+            $updated = parent::handleRecordUpdate($record, $data);
+            if ($superAdmin !== null && $updated->is_super_admin !== $superAdmin) {
+                $updated->forceFill(['is_super_admin' => $superAdmin])->save();
+            }
+            if ($choices !== [] || $reasons !== []) {
+                UserAccessForm::apply($actor, $updated, $choices, $reasons);
+            }
+
+            return $updated;
+        });
     }
 
     protected function mutateFormDataBeforeSave(array $data): array

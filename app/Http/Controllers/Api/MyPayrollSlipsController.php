@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\PanelModule;
 use App\Http\Controllers\Controller;
 use App\Models\PayrollItem;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -13,7 +15,7 @@ class MyPayrollSlipsController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        abort_unless($request->user()->is_active, 403);
+        abort_unless(PermissionMatrix::can($request->user(), PanelModule::PAYROLL, 'view'), 403);
         $items = PayrollItem::query()->where('user_id', $request->user()->id)
             ->whereHas('run', fn ($query) => $query->whereIn('status', ['APPROVED', 'PAID', 'CANCELLED']))
             ->with('run')->orderByDesc('id')->get();
@@ -31,7 +33,7 @@ class MyPayrollSlipsController extends Controller
 
     public function download(Request $request, PayrollItem $item): StreamedResponse
     {
-        abort_unless($request->user()->is_active, 403);
+        abort_unless(PermissionMatrix::can($request->user(), PanelModule::PAYROLL, 'view'), 403);
         abort_unless($item->user_id === $request->user()->id, 403);
         abort_unless(in_array($item->run->status, ['APPROVED', 'PAID', 'CANCELLED'], true), 404);
         $expectedPath = 'payroll-slips/'.$item->run_id.'/item-'.$item->id

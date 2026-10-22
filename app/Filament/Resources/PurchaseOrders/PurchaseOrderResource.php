@@ -3,7 +3,6 @@
 namespace App\Filament\Resources\PurchaseOrders;
 
 use App\Enums\PanelModule;
-use App\Enums\Role;
 use App\Filament\Concerns\MatrixGoverned;
 use App\Filament\Resources\PurchaseOrders\Pages\CreatePurchaseOrder;
 use App\Filament\Resources\PurchaseOrders\Pages\ListPurchaseOrders;
@@ -78,7 +77,7 @@ class PurchaseOrderResource extends Resource
 
     public static function canCreate(): bool
     {
-        return (Auth::user()?->role->grants(Role::FINANCE) ?? false)
+        return PermissionMatrix::can(Auth::user(), PanelModule::PURCHASE_ORDER_ACTIONS, 'edit')
             && PermissionMatrix::can(Auth::user(), PanelModule::PURCHASE_ORDERS, 'create');
     }
 

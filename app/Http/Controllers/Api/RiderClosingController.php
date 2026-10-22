@@ -22,7 +22,7 @@ class RiderClosingController extends Controller implements HasMiddleware
     {
         return [
             new Middleware('role:STAFF', only: ['draft', 'store']),
-            new Middleware('role:FINANCE', only: ['correct']),
+            new Middleware('permission:settlements,edit', only: ['correct']),
         ];
     }
 

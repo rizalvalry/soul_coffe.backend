@@ -1,5 +1,7 @@
 <?php
 
+use App\Enums\PanelModule;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\DB;
 
@@ -30,7 +32,7 @@ $roleOf = static function (object $user): string {
 };
 
 Broadcast::channel('user.{userId}', function ($user, string $userId): bool {
-    return (string) $user->id === (string) $userId;
+    return (bool) $user->is_active && (string) $user->id === (string) $userId;
 });
 
 Broadcast::channel('role.{role}', function ($user, string $role) use ($roleOf): bool {
@@ -40,17 +42,13 @@ Broadcast::channel('role.{role}', function ($user, string $role) use ($roleOf): 
 Broadcast::channel('kitchen.{kitchenId}', function ($user, string $kitchenId) use ($roleOf): bool {
     $role = $roleOf($user);
 
-    if (in_array($role, ['ADMINISTRATOR', 'FINANCE', 'MANAGEMENT'], true)) {
-        return true;
-    }
-
     return $role === 'BARISTA' && (string) $user->kitchen_id === (string) $kitchenId;
 });
 
 Broadcast::channel('cart.{cartId}', function ($user, string $cartId) use ($roleOf): bool {
     $role = $roleOf($user);
 
-    if (in_array($role, ['ADMINISTRATOR', 'FINANCE', 'MANAGEMENT', 'BARISTA'], true)) {
+    if (PermissionMatrix::can($user, PanelModule::SETTLEMENTS, 'view') || $role === 'BARISTA') {
         return true;
     }
     if ($role !== 'STAFF') {
@@ -70,7 +68,7 @@ Broadcast::channel('cart.{cartId}', function ($user, string $cartId) use ($roleO
 Broadcast::channel('refill.{refillId}', function ($user, string $refillId) use ($roleOf): bool {
     $role = $roleOf($user);
 
-    if (in_array($role, ['ADMINISTRATOR', 'FINANCE', 'MANAGEMENT'], true)) {
+    if (PermissionMatrix::can($user, PanelModule::REFILL_APPROVAL, 'view')) {
         return true;
     }
 

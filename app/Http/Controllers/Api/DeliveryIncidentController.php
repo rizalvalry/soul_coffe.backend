@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Enums\IncidentStatus;
+use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreDeliveryIncidentRequest;
 use App\Http\Resources\DeliveryIncidentResource;
 use App\Models\DeliveryIncident;
 use App\Models\RefillRequest;
+use App\Services\Access\PermissionMatrix;
 use App\Services\DeliveryIncidentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -50,7 +52,7 @@ class DeliveryIncidentController extends Controller
 
         $query = DeliveryIncident::query()->with(self::EAGER)->latest('reported_at');
 
-        if (! $user->role->grants(Role::FINANCE)) {
+        if (! PermissionMatrix::can($user, PanelModule::DELIVERY_INCIDENT_DECISIONS, 'view')) {
             $query->where(function ($scoped) use ($user): void {
                 $scoped->where('rider_id', $user->id)
                     ->orWhereHas('refillRequest', fn ($refill) => $refill->where('staff_id', $user->id));

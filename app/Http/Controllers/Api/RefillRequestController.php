@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\PanelModule;
 use App\Enums\RefillStatus;
 use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreRefillRequestRequest;
 use App\Http\Resources\RefillRequestResource;
 use App\Models\RefillRequest;
+use App\Services\Access\PermissionMatrix;
 use App\Services\RefillExpiryService;
 use App\Services\RefillRequestStateMachine;
 use Illuminate\Database\Eloquent\Builder;
@@ -44,7 +46,7 @@ class RefillRequestController extends Controller
 
         $query = RefillRequest::query()->with(self::EAGER);
 
-        if (! $user->role->grants(Role::FINANCE)) {
+        if (! PermissionMatrix::can($user, PanelModule::REFILL_APPROVAL, 'view')) {
             match ($user->role) {
                 Role::STAFF => $query->where('staff_id', $user->id),
                 Role::BARISTA => $query->where('kitchen_id', $user->kitchen_id),

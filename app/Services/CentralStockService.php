@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\MovementType;
+use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Models\AuditLog;
 use App\Models\Cart;
@@ -11,6 +12,7 @@ use App\Models\RiderClosing;
 use App\Models\StaffAssignment;
 use App\Models\StockLedger;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -361,8 +363,7 @@ class CentralStockService
             }
 
             if ($varianceFlagged) {
-                $recipients = User::query()->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE])
-                    ->where('is_active', true)->pluck('id')->all();
+                $recipients = PermissionMatrix::usersWith(PanelModule::SETTLEMENTS, 'edit');
                 $this->events->publish(
                     'CartCloseOutVarianceFlagged',
                     'Selisih Tutup Coffee Bike',
@@ -463,11 +464,11 @@ class CentralStockService
         ]);
 
         if ($setupMissing) {
-            $recipientIds = User::query()->where('role', Role::MANAGEMENT)->where('is_active', true)->pluck('id')->all();
+            $recipientIds = PermissionMatrix::usersWith(PanelModule::RIDER_LOCATION_SETUP, 'edit');
             $this->events->publish(
                 'RiderLocationSetupMissing',
                 'Rider belum punya setup',
-                "Setup Lokasi Rider {$staff->name} belum diisi. Yuk, lengkapi di Management.",
+                "Setup Lokasi Rider {$staff->name} belum diisi. Yuk, lengkapi ya.",
                 ['role.MANAGEMENT'],
                 notifyUserIds: $recipientIds,
                 context: ['cart_id' => $cart->id, 'operating_date' => $dateString, 'source_id' => $assignment->id],

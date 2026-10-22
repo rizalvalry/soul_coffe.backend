@@ -2,7 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\Role;
+use App\Enums\PanelModule;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -29,7 +30,7 @@ class NewsInlineImageController extends Controller
     {
         $user = $request->user();
 
-        if (! $user || ! in_array($user->role, [Role::ADMINISTRATOR, Role::CONTENT_CREATOR], true)) {
+        if (! PermissionMatrix::can($user, PanelModule::NEWS_FEED, 'edit')) {
             abort(403, 'Anda tidak memiliki akses untuk aksi ini.');
         }
 

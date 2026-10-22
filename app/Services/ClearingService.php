@@ -2,13 +2,14 @@
 
 namespace App\Services;
 
-use App\Enums\Role;
+use App\Enums\PanelModule;
 use App\Models\Account;
 use App\Models\AuditLog;
 use App\Models\ClearingAllocation;
 use App\Models\ClearingReceipt;
 use App\Models\JournalEntry;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -252,6 +253,6 @@ class ClearingService
 
     private function authorize(User $actor): void
     {
-        abort_unless($actor->role->grants(Role::FINANCE), 403);
+        abort_unless(PermissionMatrix::can($actor, PanelModule::CLEARING, 'edit'), 403);
     }
 }

@@ -185,6 +185,6 @@ class DeliveryIncidentsTable
      */
     private static function mayDecide(): bool
     {
-        return PermissionMatrix::can(Auth::user(), PanelModule::DELIVERY_INCIDENTS, 'edit');
+        return PermissionMatrix::can(Auth::user(), PanelModule::DELIVERY_INCIDENT_DECISIONS, 'edit');
     }
 }

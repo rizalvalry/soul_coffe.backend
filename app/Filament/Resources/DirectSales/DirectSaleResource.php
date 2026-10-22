@@ -9,12 +9,14 @@ use App\Filament\Resources\DirectSales\Pages\ListDirectSales;
 use App\Filament\Resources\DirectSales\Schemas\DirectSaleForm;
 use App\Filament\Resources\DirectSales\Tables\DirectSalesTable;
 use App\Models\DirectSale;
+use App\Services\Access\PermissionMatrix;
 use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Auth;
 use UnitEnum;
 
 /**
@@ -75,6 +77,13 @@ class DirectSaleResource extends Resource
     public static function canEdit(Model $record): bool
     {
         return false;
+    }
+
+    public static function canCreate(): bool
+    {
+        return static::canViewAny()
+            && PermissionMatrix::can(Auth::user(),
+                PanelModule::DIRECT_SALE_ACTIONS, 'edit');
     }
 
     public static function canDelete(Model $record): bool

@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Enums\AllocationStatus;
+use App\Enums\PanelModule;
 use App\Enums\RefillStatus;
 use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\DailyAllocation;
 use App\Models\RefillRequest;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -32,12 +34,14 @@ class BadgeController extends Controller
             'myRequests' => 0,
         ];
 
-        switch ($user->role) {
-            case Role::FINANCE:
-            case Role::MANAGEMENT:
-                $counts['pendingApprovals'] = $this->pendingApprovalsCount();
-                break;
+        if (PermissionMatrix::can($user, PanelModule::REFILL_APPROVAL, 'edit')) {
+            $counts['pendingApprovals'] += RefillRequest::query()->where('status', RefillStatus::SUBMITTED)->count();
+        }
+        if (PermissionMatrix::can($user, PanelModule::ALLOCATIONS, 'edit')) {
+            $counts['pendingApprovals'] += DailyAllocation::query()->where('status', AllocationStatus::PENDING_FINANCE)->count();
+        }
 
+        switch ($user->role) {
             case Role::BARISTA:
                 $counts['incomingRequests'] = RefillRequest::query()
                     ->where('kitchen_id', $user->kitchen_id)
@@ -61,21 +65,16 @@ class BadgeController extends Controller
 
             case Role::ADMINISTRATOR:
                 // Admin sees everything (docs/02 §2.1) — fleet-wide, unscoped by kitchen.
-                $counts['pendingApprovals'] = $this->pendingApprovalsCount();
-                $counts['incomingRequests'] = RefillRequest::query()
-                    ->where('status', RefillStatus::APPROVED)
-                    ->count();
-                $counts['readyToPick'] = $this->unclaimedReadyToPickCount();
+                if (PermissionMatrix::can($user, PanelModule::REFILL_APPROVAL, 'view')) {
+                    $counts['incomingRequests'] = RefillRequest::query()
+                        ->where('status', RefillStatus::APPROVED)
+                        ->count();
+                    $counts['readyToPick'] = $this->unclaimedReadyToPickCount();
+                }
                 break;
         }
 
         return response()->json(['data' => $counts]);
-    }
-
-    private function pendingApprovalsCount(): int
-    {
-        return RefillRequest::query()->where('status', RefillStatus::SUBMITTED)->count()
-            + DailyAllocation::query()->where('status', AllocationStatus::PENDING_FINANCE)->count();
     }
 
     private function unclaimedReadyToPickCount(): int

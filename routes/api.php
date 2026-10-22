@@ -87,9 +87,9 @@ Route::middleware(['auth:sanctum', EnsureActiveUser::class, RecoverOutboxAfterRe
     Route::get('carts', [CartController::class, 'index']);
     Route::get('locations', [LocationController::class, 'index']);
     Route::get('rider-location-setups', [RiderLocationSetupController::class, 'index'])
-        ->middleware('role:MANAGEMENT,BARISTA,ADMINISTRATOR,FINANCE');
+        ->middleware('permission:rider_location_setup,view');
     Route::patch('rider-location-setups/{rider}', [RiderLocationSetupController::class, 'update'])
-        ->middleware(['role:MANAGEMENT', 'idempotent:require']);
+        ->middleware(['permission:rider_location_setup,edit', 'idempotent:require']);
 
     // ── Flow A — daily allocation (requirement 1) ──────────────────────────
     Route::get('allocations/today', [AllocationController::class, 'today']);
@@ -140,7 +140,7 @@ Route::middleware(['auth:sanctum', EnsureActiveUser::class, RecoverOutboxAfterRe
     // deliveries.
     Route::get('incidents', [DeliveryIncidentController::class, 'index']);
     Route::post('incidents/{incident}/resolve', [DeliveryIncidentController::class, 'resolve'])
-        ->middleware(['role:FINANCE,ADMINISTRATOR', 'idempotent:require']);
+        ->middleware(['permission:delivery_incident_decisions,edit', 'idempotent:require']);
 
     // ── News feed (authored in the Filament panel by CONTENT_CREATOR) ──────
     // Read-only from the client. The only writes are the reader's own receipt and reaction,

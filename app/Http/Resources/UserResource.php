@@ -5,6 +5,7 @@ namespace App\Http\Resources;
 use App\Enums\Role;
 use App\Models\StaffAssignment;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -59,6 +60,9 @@ class UserResource extends JsonResource
             'id' => $user->id,
             'name' => $user->name,
             'role' => $user->role->value,
+            'role_label' => $user->is_super_admin ? 'Super Administrator' : $user->role->label(),
+            'is_super_admin' => (bool) $user->is_super_admin,
+            'abilities' => PermissionMatrix::allFor($user),
             'cart_code' => $cartCode,
             'cart_id' => $cartId,
             'today_cart' => $todayCart,

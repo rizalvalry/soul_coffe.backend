@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsureActiveUser;
+use App\Http\Middleware\EnsurePermission;
 use App\Http\Middleware\EnsureRole;
 use App\Http\Middleware\Idempotency;
 use App\Http\Middleware\RecoverOutboxAfterResponse;
@@ -43,6 +44,7 @@ return Application::configure(basePath: dirname(__DIR__))
             // interface (e.g. AllocationController::middleware()) rather than in
             // routes/api.php, which is owned by another workstream.
             'role' => EnsureRole::class,
+            'permission' => EnsurePermission::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

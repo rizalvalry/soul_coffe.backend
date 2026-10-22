@@ -299,7 +299,8 @@ class SaleTest extends TestCase
         $this->actingAs(User::factory()->role(Role::RIDER)->create(), 'sanctum')
             ->postJson('/api/v1/broadcasting/auth', $body)->assertForbidden();
         $assignment->update(['superseded_at' => null]);
-        $this->staff->forceFill(['role' => Role::RIDER])->save();
+        DB::table('users')->where('id', $this->staff->id)->update(['role' => Role::RIDER->value]);
+        $this->staff->refresh();
         $this->actingAs($this->staff, 'sanctum')
             ->postJson('/api/v1/broadcasting/auth', $body)->assertForbidden();
     }

@@ -2,11 +2,12 @@
 
 namespace App\Filament\Resources\Journals;
 
-use App\Enums\Role;
+use App\Enums\PanelModule;
 use App\Filament\Resources\Journals\Pages\ListJournals;
 use App\Filament\Resources\Journals\Pages\ViewJournal;
 use App\Models\Account;
 use App\Models\JournalEntry;
+use App\Services\Access\PermissionMatrix;
 use App\Services\JournalService;
 use App\Services\Menu\MenuLabels;
 use BackedEnum;
@@ -28,7 +29,6 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Gate;
 use UnitEnum;
 
 class JournalResource extends Resource
@@ -52,7 +52,7 @@ class JournalResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return Auth::user()?->role->grants(Role::FINANCE) ?? false;
+        return PermissionMatrix::can(Auth::user(), PanelModule::JOURNALS, 'view');
     }
 
     public static function canView(Model $record): bool
@@ -110,12 +110,12 @@ class JournalResource extends Resource
         ])->recordActions([
             ViewAction::make(),
             Action::make('reverse')->label('Balik jurnal')->color('danger')->requiresConfirmation()
-                ->visible(fn (JournalEntry $record): bool => (Auth::user()?->role->grants(Role::MANAGEMENT) ?? false)
+                ->visible(fn (JournalEntry $record): bool => PermissionMatrix::can(Auth::user(), PanelModule::JOURNAL_REVERSALS, 'edit')
                     && ! in_array($record->source_type, ['payroll_run', 'payroll_run_payment_retry', 'payroll_run_accrual_retry'], true)
                     && $record->reverses_entry_id === null && ! $record->reversal()->exists())
                 ->schema([Textarea::make('reason')->label('Alasan')->required()->maxLength(225)])
                 ->action(function (JournalEntry $record, array $data): void {
-                    Gate::authorize('manage-accounting-periods');
+                    abort_unless(PermissionMatrix::can(Auth::user(), PanelModule::JOURNAL_REVERSALS, 'edit'), 403);
                     app(JournalService::class)->reverse($record, $data['reason']);
                 }),
         ]);

@@ -149,6 +149,6 @@ class DirectSalesTable
 
     private static function mayVoid(): bool
     {
-        return PermissionMatrix::can(Auth::user(), PanelModule::DIRECT_SALES, 'edit');
+        return PermissionMatrix::can(Auth::user(), PanelModule::DIRECT_SALE_ACTIONS, 'edit');
     }
 }

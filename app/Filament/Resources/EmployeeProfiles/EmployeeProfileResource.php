@@ -2,12 +2,13 @@
 
 namespace App\Filament\Resources\EmployeeProfiles;
 
-use App\Enums\Role;
+use App\Enums\PanelModule;
 use App\Filament\Resources\EmployeeProfiles\Pages\EditEmployeeProfile;
 use App\Filament\Resources\EmployeeProfiles\Pages\ListEmployeeProfiles;
 use App\Filament\Resources\EmployeeProfiles\Schemas\EmployeeProfileForm;
 use App\Filament\Resources\EmployeeProfiles\Tables\EmployeeProfilesTable;
 use App\Models\EmployeeProfile;
+use App\Services\Access\PermissionMatrix;
 use App\Services\Menu\MenuLabels;
 use BackedEnum;
 use Filament\Resources\Resource;
@@ -18,7 +19,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 use UnitEnum;
 
-/** HR access is fixed by business policy, outside the configurable operational access matrix. */
+/** HR access follows the employee module in the access matrix. */
 class EmployeeProfileResource extends Resource
 {
     protected static ?string $model = EmployeeProfile::class;
@@ -47,7 +48,7 @@ class EmployeeProfileResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return Auth::user()?->role->grants(Role::FINANCE) ?? false;
+        return PermissionMatrix::can(Auth::user(), PanelModule::EMPLOYEES, 'view');
     }
 
     public static function canView(mixed $record): bool
@@ -57,12 +58,11 @@ class EmployeeProfileResource extends Resource
 
     public static function canEdit(mixed $record): bool
     {
-        if (! static::canViewAny()) {
+        if (! PermissionMatrix::can(Auth::user(), PanelModule::EMPLOYEES, 'edit')) {
             return false;
         }
 
-        return $record instanceof EmployeeProfile
-            && ($record->user?->role !== Role::MANAGEMENT || (Auth::user()?->role->grants(Role::MANAGEMENT) ?? false));
+        return $record instanceof EmployeeProfile;
     }
 
     public static function canCreate(): bool

@@ -180,6 +180,7 @@ class DeliveryIncidentPanelTest extends TestCase
     public function test_a_role_without_the_module_cannot_open_the_list(): void
     {
         $finance = User::factory()->role(Role::FINANCE)->create();
+        PermissionMatrix::set(Role::FINANCE, PanelModule::DELIVERY_INCIDENTS, []);
 
         $this->actingAs($finance)->get(DeliveryIncidentResource::getUrl())->assertForbidden();
 
@@ -199,7 +200,7 @@ class DeliveryIncidentPanelTest extends TestCase
     {
         $finance = User::factory()->role(Role::FINANCE)->create();
 
-        PermissionMatrix::set(Role::FINANCE, PanelModule::DELIVERY_INCIDENTS, ['view']);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::DELIVERY_INCIDENT_DECISIONS, ['view']);
         PermissionMatrix::forget();
 
         $this->actingAs($finance)->get(DeliveryIncidentResource::getUrl())->assertSuccessful();

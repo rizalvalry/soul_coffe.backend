@@ -5,6 +5,7 @@ namespace Tests\Feature\Filament;
 use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Filament\Pages\MenuNaming;
+use App\Filament\Pages\RoleAccessMatrix;
 use App\Filament\Pages\StaffActivity;
 use App\Filament\Resources\Carts\CartResource;
 use App\Filament\Resources\NewsPosts\NewsPostResource;
@@ -213,7 +214,7 @@ class MenuNamingTest extends TestCase
 
     // ── Who may rename ───────────────────────────────────────────────────
 
-    public function test_only_an_administrator_reaches_the_naming_screen(): void
+    public function test_finance_can_reach_the_naming_screen_without_access_settings(): void
     {
         $this->actingAs($this->admin)->get(MenuNaming::getUrl())->assertSuccessful();
 
@@ -223,7 +224,8 @@ class MenuNamingTest extends TestCase
 
         // Finance can reach the panel, but not this page — the screen that renames every menu,
         // including the one that hands out permissions, is not itself a permission.
-        $this->actingAs($finance)->get(MenuNaming::getUrl())->assertForbidden();
+        $this->actingAs($finance)->get(MenuNaming::getUrl())->assertSuccessful();
+        $this->assertFalse(RoleAccessMatrix::canAccess());
     }
 
     public function test_the_naming_screen_shows_the_immutable_key_beside_each_name(): void

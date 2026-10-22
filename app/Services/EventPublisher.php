@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Enums\PanelModule;
 use App\Jobs\PublishOutboxEvent;
 use App\Models\AppNotification;
 use App\Models\OutboxEvent;
+use App\Services\Access\PermissionMatrix;
 use App\Services\Push\PushNotifier;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -47,6 +49,34 @@ class EventPublisher
         array $context = [],
     ): string {
         $eventId = (string) Str::uuid();
+
+        // Add each current holder's private channel to the existing outbox row. Role channels
+        // still carry field-flow and informative events; a new permission needs no extra event.
+        $module = match ($type) {
+            'RefillRequestSubmitted', 'RefillRequestExpired' => PanelModule::REFILL_APPROVAL,
+            'SettlementRecorded', 'SettlementApproved', 'SettlementExpectedStale',
+            'SettlementVarianceFlagged', 'SettlementMethodVarianceFlagged',
+            'SettlementSelfApproved', 'CartCloseOutVarianceFlagged',
+            'RiderClosingRecorded', 'RiderClosingCorrected', 'SaleRecorded', 'SaleVoided',
+            'CartArrivalChanged' => PanelModule::SETTLEMENTS,
+            'RiderLocationSetupMissing', 'RiderLocationSetupChanged' => PanelModule::RIDER_LOCATION_SETUP,
+            'AccountingPeriodReopened' => PanelModule::ACCOUNTING_PERIODS,
+            default => null,
+        };
+        if ($module !== null) {
+            foreach (PermissionMatrix::usersWith($module) as $id) {
+                $channels[] = 'user.'.$id;
+            }
+        }
+
+        if (in_array($type, ['RefillRequestSubmitted', 'RefillRequestExpired',
+            'SettlementVarianceFlagged', 'SettlementMethodVarianceFlagged',
+            'SettlementExpectedStale', 'CartCloseOutVarianceFlagged',
+            'RiderLocationSetupMissing', 'AccountingPeriodReopened'], true)) {
+            $channels = array_values(array_filter($channels,
+                fn (string $channel): bool => ! in_array($channel,
+                    ['role.FINANCE', 'role.MANAGEMENT', 'role.ADMINISTRATOR'], true)));
+        }
 
         if (array_intersect(['role.FINANCE', 'role.MANAGEMENT'], $channels)
             && ! in_array('role.ADMINISTRATOR', $channels, true)) {

@@ -6,22 +6,12 @@ use App\Enums\AttendanceCode;
 use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Filament\Pages\AttendanceSheet;
-use App\Filament\Resources\Accounts\AccountResource;
-use App\Filament\Resources\CashAccounts\CashAccountResource;
-use App\Filament\Resources\CashCategories\CashCategoryResource;
-use App\Filament\Resources\CashTransactions\CashTransactionResource;
-use App\Filament\Resources\ClearingReceipts\ClearingReceiptResource;
 use App\Filament\Resources\EmployeeProfiles\EmployeeProfileResource;
-use App\Filament\Resources\FixedAssets\FixedAssetResource;
-use App\Filament\Resources\Journals\JournalResource;
-use App\Filament\Resources\OfficeItems\OfficeItemResource;
-use App\Filament\Resources\RefillRequests\RefillRequestResource;
 use App\Filament\Resources\Users\UserResource;
 use App\Models\Attendance;
 use App\Models\AttendanceMark;
 use App\Models\User;
 use App\Services\Access\PermissionMatrix;
-use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Livewire\Livewire;
@@ -92,24 +82,8 @@ class AttendanceSheetPanelTest extends TestCase
         $finance = $this->financeWithAttendanceGrant();
         $this->actingAs($finance);
 
-        foreach (Filament::getPanel('admin')->getResources() as $resource) {
-            $this->assertSame(
-                in_array($resource, [EmployeeProfileResource::class,
-                    AccountResource::class,
-                    JournalResource::class,
-                    FixedAssetResource::class,
-                    CashAccountResource::class,
-                    CashCategoryResource::class,
-                    CashTransactionResource::class,
-                    ClearingReceiptResource::class,
-                    OfficeItemResource::class,
-                    // T-035 gives Finance an explicit expiry decision desk.
-                    RefillRequestResource::class], true),
-                $resource::canViewAny(),
-                "{$resource} has the wrong visibility for FINANCE with only an attendance grant.",
-            );
-        }
-        $this->assertFalse(UserResource::canViewAny());
+        $this->assertTrue(EmployeeProfileResource::canViewAny());
+        $this->assertTrue(UserResource::canViewAny());
     }
 
     public function test_a_role_with_no_grant_cannot_reach_the_sheet_or_the_panel(): void

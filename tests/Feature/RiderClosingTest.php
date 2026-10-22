@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\MovementType;
+use App\Enums\PanelModule;
 use App\Enums\RefillStatus;
 use App\Enums\Role;
 use App\Models\Account;
@@ -23,6 +24,7 @@ use App\Models\StaffAssignment;
 use App\Models\StaffLocationPing;
 use App\Models\StockLedger;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use App\Services\AttendanceService;
 use App\Services\PendingStockCostService;
 use App\Services\RefillRequestStateMachine;
@@ -111,6 +113,8 @@ class RiderClosingTest extends TestCase
 
     public function test_finance_role_matrix_for_closing_corrections(): void
     {
+        $management = User::factory()->role(Role::MANAGEMENT)->create();
+        $administrator = User::factory()->role(Role::ADMINISTRATOR)->create();
         $this->issue(10, MovementType::ALLOCATION_IN);
         $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
             ->postJson('/api/v1/me/closing', $this->body(3, 0))->assertCreated();
@@ -125,7 +129,11 @@ class RiderClosingTest extends TestCase
         }
 
         foreach ([Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR] as $index => $role) {
-            $actor = $role === Role::FINANCE ? $this->finance : User::factory()->role($role)->create();
+            $actor = match ($role) {
+                Role::FINANCE => $this->finance,
+                Role::MANAGEMENT => $management,
+                Role::ADMINISTRATOR => $administrator,
+            };
             $this->actingAs($actor, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
                 ->postJson("/api/v1/closings/{$closing->id}/corrections", [
                     ...$this->body(3, 0), 'qris' => 90000 + $index * 10000,
@@ -321,6 +329,8 @@ class RiderClosingTest extends TestCase
 
     public function test_approved_closing_method_correction_updates_flag_and_notifies_management(): void
     {
+        $super = User::factory()->role(Role::ADMINISTRATOR)->create(['is_super_admin' => true]);
+        $holder = User::factory()->role(Role::CONTENT_CREATOR)->create();
         $this->issue(10, MovementType::ALLOCATION_IN);
         $management = User::factory()->role(Role::MANAGEMENT)->create();
         $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
@@ -336,6 +346,8 @@ class RiderClosingTest extends TestCase
             ->postJson("/api/v1/settlements/{$id}/approve", [
                 'lines' => [['product_id' => $this->product->id, 'qty_returned' => 3, 'qty_rejected' => 0]],
             ])->assertOk();
+        PermissionMatrix::setForUser($super, $this->finance, PanelModule::SETTLEMENTS, []);
+        PermissionMatrix::setForUser($super, $holder, PanelModule::SETTLEMENTS, ['view', 'edit']);
         $this->actingAs($management, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
             ->postJson("/api/v1/closings/{$closing->id}/corrections", [
                 ...$this->body(3, 0), 'qris' => 30000, 'transfer' => 0,
@@ -349,6 +361,10 @@ class RiderClosingTest extends TestCase
         $event = OutboxEvent::query()->where('name', 'SettlementMethodVarianceFlagged')->sole();
         $this->assertSame(1, AppNotification::query()->where('event_id', $event->event_id)
             ->where('user_id', $management->id)->count());
+        $this->assertSame(1, AppNotification::query()->where('event_id', $event->event_id)
+            ->where('user_id', $holder->id)->count());
+        $this->assertSame(0, AppNotification::query()->where('event_id', $event->event_id)
+            ->where('user_id', $this->finance->id)->count());
     }
 
     public function test_day_gate_and_legacy_sale_are_respected(): void
@@ -375,6 +391,12 @@ class RiderClosingTest extends TestCase
 
     public function test_production_closeout_prefills_and_flags_a_difference_without_blocking(): void
     {
+        $super = User::factory()->role(Role::ADMINISTRATOR)->create(['is_super_admin' => true]);
+        $holder = User::factory()->role(Role::CONTENT_CREATOR)->create();
+        $otherFinance = User::factory()->role(Role::FINANCE)->create();
+        PermissionMatrix::setForUser($super, $this->finance, PanelModule::SETTLEMENTS, []);
+        PermissionMatrix::setForUser($super, $holder, PanelModule::SETTLEMENTS, ['view', 'edit']);
+        $this->assertContains($holder->id, PermissionMatrix::usersWith(PanelModule::SETTLEMENTS, 'edit'));
         $this->issue(10, MovementType::ALLOCATION_IN);
         $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
             ->postJson('/api/v1/me/closing', [...$this->body(3, 0), 'qris' => 20000, 'transfer' => 0])
@@ -392,7 +414,11 @@ class RiderClosingTest extends TestCase
             'qty_closing_remaining' => 3, 'qty_counted' => 2, 'variance_qty' => -1,
         ]);
         $this->assertTrue(OutboxEvent::query()->where('name', 'CartCloseOutVarianceFlagged')->exists());
-        $this->actingAs($this->finance, 'sanctum')->getJson('/api/v1/settlements/queue')
+        $recipients = AppNotification::query()->where('type', 'CartCloseOutVarianceFlagged')->pluck('user_id')->all();
+        $this->assertContains($holder->id, $recipients);
+        $this->assertContains($otherFinance->id, $recipients);
+        $this->assertNotContains($this->finance->id, $recipients);
+        $this->actingAs($otherFinance, 'sanctum')->getJson('/api/v1/settlements/queue')
             ->assertOk()->assertJsonPath('data.0.closeout_variance_count', 1);
     }
 

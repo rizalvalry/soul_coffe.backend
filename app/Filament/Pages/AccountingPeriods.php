@@ -2,11 +2,12 @@
 
 namespace App\Filament\Pages;
 
-use App\Enums\Role;
+use App\Enums\PanelModule;
 use App\Filament\Resources\ClearingReceipts\ClearingReceiptResource;
 use App\Filament\Resources\FixedAssets\FixedAssetResource;
 use App\Filament\Resources\Settlements\SettlementResource;
 use App\Models\AccountingPeriod;
+use App\Services\Access\PermissionMatrix;
 use App\Services\AccountingPeriodService;
 use App\Services\Menu\MenuLabels;
 use BackedEnum;
@@ -71,7 +72,7 @@ class AccountingPeriods extends Page implements HasTable
 
     public static function canAccess(): bool
     {
-        return Auth::user()?->role->grants(Role::MANAGEMENT) ?? false;
+        return PermissionMatrix::can(Auth::user(), PanelModule::ACCOUNTING_PERIODS, 'view');
     }
 
     public function periods(): mixed

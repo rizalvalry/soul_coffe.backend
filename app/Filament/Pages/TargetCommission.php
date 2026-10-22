@@ -73,7 +73,7 @@ class TargetCommission extends Page
 
     private static function allowedRole(): bool
     {
-        return Auth::user()?->role->grants(Role::FINANCE) ?? false;
+        return PermissionMatrix::can(Auth::user(), PanelModule::RIDER_COMMISSIONS, 'view');
     }
 
     public function mount(): void

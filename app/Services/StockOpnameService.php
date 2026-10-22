@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Enums\MovementType;
-use App\Enums\Role;
+use App\Enums\PanelModule;
 use App\Enums\StockOpnameStatus;
 use App\Models\AuditLog;
 use App\Models\Cart;
@@ -12,6 +12,7 @@ use App\Models\Product;
 use App\Models\StockOpname;
 use App\Models\StockOpnameLine;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -227,7 +228,7 @@ class StockOpnameService
 
     private function assertMayOperate(User $actor): void
     {
-        if (! $actor->role->grants(Role::FINANCE)) {
+        if (! PermissionMatrix::can($actor, PanelModule::STOCK_OPNAME_ACTIONS, 'edit')) {
             throw new RuntimeException('Hanya Administrator atau Finance yang dapat melakukan stock opname.');
         }
     }

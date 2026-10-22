@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Enums\Role;
+use App\Enums\PanelModule;
 use App\Models\AuditLog;
 use App\Models\CashAccount;
 use App\Models\CashCategory;
@@ -10,6 +10,7 @@ use App\Models\CashTransaction;
 use App\Models\JournalEntry;
 use App\Models\OfficeItem;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
@@ -164,6 +165,6 @@ class CashTransactionService
 
     private function authorize(User $actor): void
     {
-        abort_unless($actor->role->grants(Role::FINANCE), 403);
+        abort_unless(PermissionMatrix::can($actor, PanelModule::CASH, 'edit'), 403);
     }
 }

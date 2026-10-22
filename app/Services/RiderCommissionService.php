@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -166,7 +168,7 @@ class RiderCommissionService
      */
     public function save(array $riderIds, string $date, array $rows, User $actor, string $requestKey): void
     {
-        if (! $actor->role->grants(Role::FINANCE)) {
+        if (! PermissionMatrix::can($actor, PanelModule::RIDER_COMMISSIONS, 'edit')) {
             abort(403);
         }
         $riderIds = array_values(array_unique(array_map('intval', $riderIds)));

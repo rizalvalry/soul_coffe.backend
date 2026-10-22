@@ -3,12 +3,15 @@
 namespace Tests\Feature;
 
 use App\Enums\MovementType;
+use App\Enums\PanelModule;
 use App\Enums\Role;
+use App\Models\AppNotification;
 use App\Models\Cart;
 use App\Models\Location;
 use App\Models\Product;
 use App\Models\StaffAssignment;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use App\Services\AllocationService;
 use App\Services\AttendanceService;
 use App\Services\StockLedgerService;
@@ -129,6 +132,12 @@ class AllocationTest extends TestCase
 
     public function test_allocation_at_25_percent_over_target_is_pending_finance_and_stock_is_not_moved(): void
     {
+        $admin = User::query()->where('role', Role::ADMINISTRATOR->value)->firstOrFail();
+        $revoked = User::factory()->role(Role::FINANCE)->create();
+        $inactive = User::factory()->role(Role::FINANCE)->create(['is_active' => false]);
+        $holder = User::factory()->role(Role::CONTENT_CREATOR)->create();
+        PermissionMatrix::setForUser($admin, $revoked, PanelModule::ALLOCATIONS, []);
+        PermissionMatrix::setForUser($admin, $holder, PanelModule::ALLOCATIONS, ['view', 'edit']);
         $products = Product::query()->where('is_sellable', true)->orderBy('sort_order')->take(4)->get();
 
         // Seeded target is 5 per product => total target 20. Requesting 25 total is +25%.
@@ -152,6 +161,10 @@ class AllocationTest extends TestCase
         $response->assertStatus(201)
             ->assertJsonPath('data.status', 'PENDING_FINANCE')
             ->assertJsonPath('data.over_target_pct', 25);
+        $recipients = AppNotification::query()->where('type', 'AllocationOverTarget')->pluck('user_id')->all();
+        $this->assertContains($holder->id, $recipients);
+        $this->assertNotContains($revoked->id, $recipients);
+        $this->assertNotContains($inactive->id, $recipients);
 
         $ledger = app(StockLedgerService::class);
 

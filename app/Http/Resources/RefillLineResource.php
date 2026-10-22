@@ -2,8 +2,9 @@
 
 namespace App\Http\Resources;
 
-use App\Enums\Role;
+use App\Enums\PanelModule;
 use App\Models\RefillRequestLine;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -33,7 +34,7 @@ class RefillLineResource extends JsonResource
 
         $viewer = $request->user();
 
-        if ($viewer && $viewer->role->grants(Role::FINANCE)) {
+        if (PermissionMatrix::can($viewer, PanelModule::INVENTORY_COSTS, 'view')) {
             $data['unit_cost'] = $this->unit_cost_minor;
             $data['line_cost'] = $this->line_cost_minor;
         }

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\IncidentStatus;
 use App\Enums\MovementType;
+use App\Enums\PanelModule;
 use App\Enums\RefillStatus;
 use App\Enums\Role;
 use App\Models\DeliveryIncident;
@@ -11,6 +12,7 @@ use App\Models\DeliveryIncidentLine;
 use App\Models\RefillRequest;
 use App\Models\RefillStatusHistory;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -164,12 +166,12 @@ class DeliveryIncidentService
                 'DeliveryIncidentReported',
                 'Insiden pengiriman',
                 sprintf(
-                    '%s · %d cups rusak dalam perjalanan. Menunggu keputusan Finance/Administrator.',
+                    '%s · %d cups rusak dalam perjalanan. Menunggu keputusan tim yang pegang akses.',
                     (string) $locked->code,
                     $damaged,
                 ),
-                $this->channelsFor($locked),
-                $this->recipientsFor($locked, $rider),
+                $this->channelsFor($locked, decision: true),
+                $this->recipientsFor($locked, $rider, decision: true),
                 $locked->id,
                 $locked->status->value,
             );
@@ -187,7 +189,7 @@ class DeliveryIncidentService
         string $mode,
         ?string $note = null,
     ): DeliveryIncident {
-        if (! $decider->role->grants(Role::FINANCE)) {
+        if (! PermissionMatrix::can($decider, PanelModule::DELIVERY_INCIDENT_DECISIONS, 'edit')) {
             abort(403, 'Hanya Finance atau Administrator yang memutuskan insiden.');
         }
 
@@ -290,14 +292,17 @@ class DeliveryIncidentService
     /**
      * @return array<int, string>
      */
-    private function channelsFor(RefillRequest $refill): array
+    private function channelsFor(RefillRequest $refill, bool $decision = false): array
     {
+        $supervisors = $decision
+            ? array_map(fn (int $id): string => 'user.'.$id,
+                PermissionMatrix::usersWith(PanelModule::DELIVERY_INCIDENT_DECISIONS, 'edit'))
+            : ['role.ADMINISTRATOR', 'role.FINANCE', 'role.MANAGEMENT'];
+
         return array_values(array_filter([
             'refill.'.$refill->id,
             'kitchen.'.$refill->kitchen_id,
-            'role.ADMINISTRATOR',
-            'role.FINANCE',
-            'role.MANAGEMENT',
+            ...$supervisors,
             // The one staff member this concerns, by name. `role.STAFF` would tell every cart in
             // the city about an accident on somebody else's route.
             $refill->staff_id ? 'user.'.$refill->staff_id : null,
@@ -308,13 +313,12 @@ class DeliveryIncidentService
     /**
      * @return array<int, int>
      */
-    private function recipientsFor(RefillRequest $refill, ?User $rider): array
+    private function recipientsFor(RefillRequest $refill, ?User $rider, bool $decision = false): array
     {
-        $supervisors = User::query()
-            ->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT])
-            ->where('is_active', true)
-            ->pluck('id')
-            ->all();
+        $supervisors = $decision
+            ? PermissionMatrix::usersWith(PanelModule::DELIVERY_INCIDENT_DECISIONS, 'edit')
+            : User::query()->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT])
+                ->where('is_active', true)->pluck('id')->all();
 
         $kitchenBaristas = User::query()
             ->where('role', Role::BARISTA)

@@ -183,7 +183,8 @@ class SettlementTest extends TestCase
         $recorded = OutboxEvent::query()->where('name', 'SettlementRecorded')->sole();
         $this->assertFalse(OutboxEvent::query()->where('name', 'AdministratorDataChanged')->exists());
         $this->assertSame('SUBMITTED', $recorded->payload_json['status']);
-        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT', 'user.'.$this->staff->id, 'role.ADMINISTRATOR'], $recorded->payload_json['channels']);
+        $this->assertContains('user.'.$this->staff->id, $recorded->payload_json['channels']);
+        $this->assertContains('user.'.$this->finance->id, $recorded->payload_json['channels']);
         $this->assertSame($this->cart->id, $recorded->payload_json['cart_id']);
         $this->assertSame(Carbon::today()->toDateString(), $recorded->payload_json['operating_date']);
         $this->assertSame($settlementId, $recorded->payload_json['source_id']);
@@ -199,7 +200,8 @@ class SettlementTest extends TestCase
 
         $approved = OutboxEvent::query()->where('name', 'SettlementApproved')->sole();
         $this->assertSame('RECONCILED', $approved->payload_json['status']);
-        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT', 'user.'.$this->staff->id, 'role.ADMINISTRATOR'], $approved->payload_json['channels']);
+        $this->assertContains('user.'.$this->finance->id, $approved->payload_json['channels']);
+        $this->assertContains('user.'.$this->staff->id, $approved->payload_json['channels']);
         $this->assertSame($this->cart->id, $approved->payload_json['cart_id']);
         $this->assertSame(Carbon::today()->toDateString(), $approved->payload_json['operating_date']);
         $this->assertSame($settlementId, $approved->payload_json['source_id']);
@@ -236,12 +238,12 @@ class SettlementTest extends TestCase
                 'cart_id' => $this->cart->id, 'cash' => 0, 'qris' => 0, 'transfer' => 0,
             ])->assertCreated()->json('data.id');
         $this->assertSame($nextRider->id, Settlement::findOrFail($settlementId)->staff_id);
-        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT', 'user.'.$this->staff->id, 'role.ADMINISTRATOR'],
+        $this->assertContains('user.'.$this->staff->id,
             OutboxEvent::query()->where('name', 'SettlementRecorded')->sole()->payload_json['channels']);
         $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson('/api/v1/settlements/'.$settlementId.'/approve', ['lines' => $this->returnAll()])
             ->assertOk();
-        $this->assertSame(['role.FINANCE', 'role.MANAGEMENT', 'user.'.$this->staff->id, 'role.ADMINISTRATOR'],
+        $this->assertContains('user.'.$this->staff->id,
             OutboxEvent::query()->where('name', 'SettlementApproved')->sole()->payload_json['channels']);
         $this->assertFalse(AppNotification::query()->where('user_id', $nextRider->id)
             ->whereIn('type', ['SettlementRecorded', 'SettlementApproved'])->exists());

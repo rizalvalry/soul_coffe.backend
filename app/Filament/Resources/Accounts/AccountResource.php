@@ -2,10 +2,11 @@
 
 namespace App\Filament\Resources\Accounts;
 
-use App\Enums\Role;
+use App\Enums\PanelModule;
 use App\Filament\Resources\Accounts\Pages\CreateAccount;
 use App\Filament\Resources\Accounts\Pages\ListAccounts;
 use App\Models\Account;
+use App\Services\Access\PermissionMatrix;
 use App\Services\Menu\MenuLabels;
 use BackedEnum;
 use Filament\Actions\Action;
@@ -18,7 +19,6 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Gate;
 use UnitEnum;
 
 class AccountResource extends Resource
@@ -42,7 +42,7 @@ class AccountResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return Auth::user()?->role->grants(Role::FINANCE) ?? false;
+        return PermissionMatrix::can(Auth::user(), PanelModule::CHART_OF_ACCOUNTS, 'view');
     }
 
     public static function canView(Model $record): bool
@@ -52,7 +52,7 @@ class AccountResource extends Resource
 
     public static function canCreate(): bool
     {
-        return Auth::user()?->role->grants(Role::MANAGEMENT) ?? false;
+        return PermissionMatrix::can(Auth::user(), PanelModule::CHART_OF_ACCOUNTS, 'edit');
     }
 
     public static function canEdit(Model $record): bool
@@ -100,7 +100,7 @@ class AccountResource extends Resource
             Action::make('deactivate')->label('Nonaktifkan')->requiresConfirmation()
                 ->visible(fn (Account $record): bool => static::canCreate() && ! $record->is_system && $record->is_active)
                 ->action(function (Account $record): void {
-                    Gate::authorize('manage-accounting-periods');
+                    abort_unless(PermissionMatrix::can(Auth::user(), PanelModule::CHART_OF_ACCOUNTS, 'edit'), 403);
                     if ($record->is_system) {
                         abort(403);
                     }

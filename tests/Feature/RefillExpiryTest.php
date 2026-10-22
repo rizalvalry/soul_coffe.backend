@@ -128,7 +128,7 @@ class RefillExpiryTest extends TestCase
         $this->assertSame(5, OutboxEvent::where('name', 'RefillRequestExpired')->count());
         $events = OutboxEvent::where('name', 'RefillRequestExpired')->get();
         $payload = $events->first(fn (OutboxEvent $event): bool => $event->payload_json['refill_request_id'] === $requests[0]->id)->payload_json;
-        $this->assertContains('role.FINANCE', $payload['channels']);
+        $this->assertContains('user.'.$this->finance->id, $payload['channels']);
         $this->assertContains('user.'.$this->staff->id, $payload['channels']);
         $this->assertNotContains('role.RIDER', $payload['channels']);
         $this->assertContains('kitchen.'.$this->kitchen->id, $payload['channels']);

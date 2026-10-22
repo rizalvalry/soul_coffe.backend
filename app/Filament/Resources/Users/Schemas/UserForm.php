@@ -2,9 +2,12 @@
 
 namespace App\Filament\Resources\Users\Schemas;
 
+use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use App\Support\PhoneNumber;
+use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -12,6 +15,7 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -50,17 +54,12 @@ class UserForm
 
                 Select::make('role')
                     ->label('Role')
-                    ->options(collect(Role::cases())->filter(
-                        fn (Role $role): bool => $role !== Role::MANAGEMENT || self::canManageSensitiveData()
-                    )->mapWithKeys(
+                    ->options(collect(Role::cases())->mapWithKeys(
                         fn (Role $role) => [$role->value => $role->label()]
                     ))
                     ->required()
-                    ->rule(fn () => function (string $attribute, mixed $value, callable $fail): void {
-                        if ($value === Role::MANAGEMENT->value && ! self::canManageSensitiveData()) {
-                            $fail('Hanya Management yang dapat menetapkan role Management.');
-                        }
-                    })
+                    ->disabled(fn (?User $record): bool => $record !== null
+                        && ! PermissionMatrix::canManagePermissions(Auth::user()))
                     ->live(),
 
                 // ── Employment profile ────────────────────────────────────────────────
@@ -135,6 +134,15 @@ class UserForm
                     ->label('Aktif')
                     ->default(true)
                     ->helperText('Akun impor baru dapat diaktifkan setelah nomor HP, kata sandi, dan PIN Rider (bila role Rider) diisi.'),
+
+                Toggle::make('is_super_admin')
+                    ->label('Super Administrator')
+                    ->default(false)
+                    ->visible(fn (Get $get): bool => Auth::user()?->is_super_admin
+                        && $get('role') === Role::ADMINISTRATOR->value)
+                    ->dehydrated(fn (): bool => Auth::user()?->is_super_admin === true),
+
+                self::accessSection(),
 
                 // ── Biodata ───────────────────────────────────────────────────────────
                 // Collapsed by default: adding a person needs a name, a phone and a role, and
@@ -237,6 +245,60 @@ class UserForm
 
     private static function canManageSensitiveData(): bool
     {
-        return Auth::user()?->role->grants(Role::MANAGEMENT) ?? false;
+        return PermissionMatrix::can(Auth::user(), PanelModule::PAYROLL, 'edit');
+    }
+
+    private static function accessSection(): Section
+    {
+        $groups = collect(PanelModule::cases())
+            ->reject(fn (PanelModule $module): bool => $module === PanelModule::ROLE_MATRIX)
+            ->groupBy(fn (PanelModule $module): string => $module->group());
+
+        return Section::make('Hak akses akun ini')
+            ->description('Pilih hak khusus akun ini. Templat role tetap jadi nilai awal.')
+            ->collapsed()
+            ->columnSpanFull()
+            ->visible(fn (?User $record): bool => PermissionMatrix::canManagePermissions(Auth::user())
+                && ! ($record?->is_super_admin ?? false))
+            ->headerActions([
+                Action::make('reset_access')->label('Kembalikan ke templat role')
+                    ->action(function (Set $set): void {
+                        foreach (PanelModule::cases() as $module) {
+                            $set('access_grants.'.$module->value, 'template');
+                            $set('access_reasons.'.$module->value, null);
+                        }
+                    }),
+            ])
+            ->schema($groups->map(function ($modules, string $name): Section {
+                $fields = [];
+                foreach ($modules as $module) {
+                    $fields[] = Select::make('access_grants.'.$module->value)
+                        ->label($module->label())
+                        ->options([
+                            'template' => 'Templat role',
+                            'none' => 'Tidak ada',
+                            'view' => 'Lihat',
+                            'edit' => 'Kelola',
+                        ])
+                        ->default('template')
+                        ->live()
+                        ->helperText(function (Get $get, ?User $record) use ($module): string {
+                            $role = Role::tryFrom((string) $get('role')) ?? $record?->role;
+                            $abilities = $role ? PermissionMatrix::abilitiesFor($role, $module) : [];
+                            $level = $abilities === [] ? 'Tidak ada'
+                                : (array_intersect($abilities, ['edit', 'create', 'delete']) ? 'Kelola' : 'Lihat');
+                            $changed = ($get('access_grants.'.$module->value) ?? 'template') !== 'template';
+
+                            return 'Templat role: '.$level.($changed ? ' · diubah' : '')
+                                .($module->accessHint() ? ' · '.$module->accessHint() : '');
+                        });
+                    $fields[] = TextInput::make('access_reasons.'.$module->value)
+                        ->label('Alasan '.$module->label())
+                        ->maxLength(255)
+                        ->visible(fn (Get $get): bool => $get('access_grants.'.$module->value) !== 'template');
+                }
+
+                return Section::make($name)->collapsed()->columns(2)->schema($fields);
+            })->values()->all());
     }
 }

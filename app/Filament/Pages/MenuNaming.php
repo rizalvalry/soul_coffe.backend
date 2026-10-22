@@ -2,8 +2,9 @@
 
 namespace App\Filament\Pages;
 
-use App\Enums\Role;
+use App\Enums\PanelModule;
 use App\Models\ModuleLabel;
+use App\Services\Access\PermissionMatrix;
 use App\Services\Menu\MenuLabels;
 use BackedEnum;
 use Filament\Notifications\Notification;
@@ -76,7 +77,7 @@ class MenuNaming extends Page
 
     public static function canAccess(): bool
     {
-        return Auth::user()?->role === Role::ADMINISTRATOR;
+        return PermissionMatrix::can(Auth::user(), PanelModule::MENU_NAMING, 'view');
     }
 
     public function mount(): void
@@ -103,7 +104,7 @@ class MenuNaming extends Page
 
     public function save(): void
     {
-        abort_unless(static::canAccess(), 403);
+        abort_unless(PermissionMatrix::can(Auth::user(), PanelModule::MENU_NAMING, 'edit'), 403);
 
         foreach ($this->modules as $key => $label) {
             MenuLabels::set(ModuleLabel::SCOPE_MODULE, (string) $key, $label);
@@ -127,7 +128,7 @@ class MenuNaming extends Page
     /** Puts every name back to the one this build shipped with. */
     public function resetAll(): void
     {
-        abort_unless(static::canAccess(), 403);
+        abort_unless(PermissionMatrix::can(Auth::user(), PanelModule::MENU_NAMING, 'edit'), 403);
 
         ModuleLabel::query()->delete();
         MenuLabels::forget();

@@ -3,11 +3,12 @@
 namespace App\Services;
 
 use App\Enums\MovementType;
+use App\Enums\PanelModule;
 use App\Enums\RefillStatus;
-use App\Enums\Role;
 use App\Models\RefillExpiryDecision;
 use App\Models\RefillRequest;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -23,7 +24,7 @@ class RefillExpiryDecisionService
      */
     public function decide(RefillRequest $refill, User $actor, string $outcome, string $reason, array $lines = []): RefillExpiryDecision
     {
-        abort_unless($actor->role->grants(Role::FINANCE), 403);
+        abort_unless(PermissionMatrix::can($actor, PanelModule::REFILL_APPROVAL, 'edit'), 403);
 
         if (! in_array($outcome, ['failed', 'recognized'], true)) {
             throw ValidationException::withMessages(['outcome' => 'Keputusan tidak dikenal.']);

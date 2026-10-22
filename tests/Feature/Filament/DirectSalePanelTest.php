@@ -85,7 +85,7 @@ class DirectSalePanelTest extends TestCase
         $finance = User::factory()->role(Role::FINANCE)->create();
         $sale = $this->directSale();
 
-        PermissionMatrix::set(Role::FINANCE, PanelModule::DIRECT_SALES, ['view']);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::DIRECT_SALE_ACTIONS, ['view']);
         PermissionMatrix::forget();
 
         Livewire::actingAs($finance)
@@ -93,12 +93,21 @@ class DirectSalePanelTest extends TestCase
             ->assertTableActionHidden('void', $sale);
     }
 
+    public function test_a_view_only_action_grant_cannot_create_a_direct_sale(): void
+    {
+        $finance = User::factory()->role(Role::FINANCE)->create();
+        PermissionMatrix::set(Role::FINANCE, PanelModule::DIRECT_SALE_ACTIONS, ['view']);
+        $this->actingAs($finance);
+        $this->assertTrue(DirectSaleResource::canViewAny());
+        $this->assertFalse(DirectSaleResource::canCreate());
+    }
+
     public function test_a_role_with_the_edit_ability_can_void(): void
     {
         $finance = User::factory()->role(Role::FINANCE)->create();
         $sale = $this->directSale();
 
-        PermissionMatrix::set(Role::FINANCE, PanelModule::DIRECT_SALES, ['view', 'edit']);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::DIRECT_SALE_ACTIONS, ['view', 'edit']);
         PermissionMatrix::forget();
 
         Livewire::actingAs($finance)
@@ -166,6 +175,7 @@ class DirectSalePanelTest extends TestCase
     public function test_a_role_without_the_module_cannot_open_the_list(): void
     {
         $finance = User::factory()->role(Role::FINANCE)->create();
+        PermissionMatrix::set(Role::FINANCE, PanelModule::DIRECT_SALES, []);
 
         $this->actingAs($finance)
             ->get(DirectSaleResource::getUrl())

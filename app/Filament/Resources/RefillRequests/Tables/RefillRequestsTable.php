@@ -2,9 +2,10 @@
 
 namespace App\Filament\Resources\RefillRequests\Tables;
 
+use App\Enums\PanelModule;
 use App\Enums\RefillStatus;
-use App\Enums\Role;
 use App\Models\RefillRequest;
+use App\Services\Access\PermissionMatrix;
 use App\Services\RefillExpiryDecisionService;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Hidden;
@@ -101,7 +102,7 @@ class RefillRequestsTable
 
     private static function mayDecide(RefillRequest $record): bool
     {
-        return (Auth::user()?->role->grants(Role::FINANCE) ?? false)
+        return PermissionMatrix::can(Auth::user(), PanelModule::REFILL_APPROVAL, 'edit')
             && $record->status === RefillStatus::EXPIRED && $record->expiryDecision === null;
     }
 }

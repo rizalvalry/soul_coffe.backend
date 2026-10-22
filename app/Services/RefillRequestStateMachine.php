@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\MovementType;
+use App\Enums\PanelModule;
 use App\Enums\RefillStatus;
 use App\Enums\Role;
 use App\Enums\SignatureMethod;
@@ -17,6 +18,7 @@ use App\Models\RefillStatusHistory;
 use App\Models\RiderClosing;
 use App\Models\StaffAssignment;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
@@ -219,7 +221,7 @@ class RefillRequestStateMachine
                 'Request refill baru',
                 "{$refill->code} · Coffee Bike {$refill->cart->code} · {$totalQty} cups",
                 ['refill.'.$refill->id, 'user.'.$staff->id, 'role.FINANCE', 'role.MANAGEMENT', 'kitchen.'.$kitchenId],
-                array_merge($this->userIdsWithRole(Role::FINANCE), [$staff->id]),
+                array_merge(PermissionMatrix::usersWith(PanelModule::REFILL_APPROVAL, 'edit'), [$staff->id]),
                 $refill->id,
                 RefillStatus::SUBMITTED->value,
             );
@@ -426,7 +428,7 @@ class RefillRequestStateMachine
                 ),
                 array_values(array_unique(array_filter(array_merge(
                     [$locked->staff_id, $locked->barista_id, $locked->rider_id],
-                    $this->userIdsWithRole(Role::FINANCE),
+                    PermissionMatrix::usersWith(PanelModule::REFILL_APPROVAL, 'edit'),
                 )))),
                 $locked->id,
                 RefillStatus::EXPIRED->value,

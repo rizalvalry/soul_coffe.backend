@@ -2,13 +2,14 @@
 
 namespace App\Filament\Resources\NewsPosts;
 
-use App\Enums\Role;
+use App\Enums\PanelModule;
 use App\Filament\Resources\NewsPosts\Pages\CreateNewsPost;
 use App\Filament\Resources\NewsPosts\Pages\EditNewsPost;
 use App\Filament\Resources\NewsPosts\Pages\ListNewsPosts;
 use App\Filament\Resources\NewsPosts\Schemas\NewsPostForm;
 use App\Filament\Resources\NewsPosts\Tables\NewsPostsTable;
 use App\Models\NewsPost;
+use App\Services\Access\PermissionMatrix;
 use App\Services\Menu\MenuLabels;
 use BackedEnum;
 use Filament\Resources\Resource;
@@ -70,27 +71,27 @@ class NewsPostResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return in_array(Auth::user()?->role, [Role::ADMINISTRATOR, Role::CONTENT_CREATOR], true);
+        return PermissionMatrix::can(Auth::user(), PanelModule::NEWS_FEED, 'view');
     }
 
     public static function canView(mixed $record): bool
     {
-        return static::canViewAny();
+        return PermissionMatrix::can(Auth::user(), PanelModule::NEWS_FEED, 'view');
     }
 
     public static function canCreate(): bool
     {
-        return static::canViewAny();
+        return PermissionMatrix::can(Auth::user(), PanelModule::NEWS_FEED, 'edit');
     }
 
     public static function canEdit(mixed $record): bool
     {
-        return static::canViewAny();
+        return PermissionMatrix::can(Auth::user(), PanelModule::NEWS_FEED, 'edit');
     }
 
     public static function canDelete(mixed $record): bool
     {
-        return static::canViewAny();
+        return PermissionMatrix::can(Auth::user(), PanelModule::NEWS_FEED, 'edit');
     }
 
     public static function form(Schema $schema): Schema

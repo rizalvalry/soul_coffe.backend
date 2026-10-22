@@ -59,6 +59,7 @@ class PendingStockCostTest extends TestCase
         $this->assertSame(0, app(InventoryAccountingReportService::class)->pendingCosts()[0]['estimated_minor']);
         $this->assertSame(6, app(InventoryAccountingReportService::class)->pendingCosts()[0]['unpriced_count']);
         PermissionMatrix::set(Role::FINANCE, PanelModule::PRODUCTS, ['view']);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::MANAGEMENT_REPORTS, []);
         $this->actingAs($finance)->get(InventoryAccounting::getUrl())->assertForbidden();
         $this->get(PendingInventoryCosts::getUrl())->assertOk()
             ->assertSee('Biaya Stok Tertunda');

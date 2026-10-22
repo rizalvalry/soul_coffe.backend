@@ -12,6 +12,12 @@ class UserSeeder extends Seeder
 {
     public function run(): void
     {
+        if (! app()->environment(['local', 'testing'])) {
+            $this->command?->warn('Akun uji dilewati di lingkungan ini.');
+
+            return;
+        }
+
         $kitchen = CentralKitchen::query()->firstOrFail();
 
         $users = [

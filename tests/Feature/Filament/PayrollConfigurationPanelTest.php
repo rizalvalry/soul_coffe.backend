@@ -2,9 +2,11 @@
 
 namespace Tests\Feature\Filament;
 
+use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Filament\Pages\PayrollConfiguration;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use Database\Seeders\AccountSeeder;
 use Database\Seeders\PayrollConfigurationSeeder;
 use Database\Seeders\RolePermissionSeeder;
@@ -61,6 +63,7 @@ class PayrollConfigurationPanelTest extends TestCase
     public function test_finance_and_other_roles_get_403_on_payroll_page_and_livewire_writes(): void
     {
         $this->seed(RolePermissionSeeder::class);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::PAYROLL, []);
         $manager = User::factory()->role(Role::MANAGEMENT)->create();
         $this->actingAs(User::factory()->role(Role::ADMINISTRATOR)->create())
             ->get(PayrollConfiguration::getUrl())->assertOk();

@@ -11,6 +11,7 @@ use App\Filament\Resources\Users\Pages\ListUsers;
 use App\Filament\Resources\Users\Schemas\UserForm;
 use App\Filament\Resources\Users\Tables\UsersTable;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
@@ -22,6 +23,7 @@ use UnitEnum;
 class UserResource extends Resource
 {
     use MatrixGoverned {
+        canCreate as matrixCanCreate;
         canEdit as matrixCanEdit;
         canDelete as matrixCanDelete;
     }
@@ -50,15 +52,22 @@ class UserResource extends Resource
     public static function canEdit(mixed $record): bool
     {
         return static::matrixCanEdit($record)
-            && ($record->role !== Role::MANAGEMENT || (Auth::user()?->role->grants(Role::MANAGEMENT) ?? false));
+            && ($record->role !== Role::ADMINISTRATOR || PermissionMatrix::canManagePermissions(Auth::user()))
+            && (! $record->is_super_admin || Auth::user()?->is_super_admin);
+    }
+
+    public static function canCreate(): bool
+    {
+        return static::matrixCanCreate();
     }
 
     public static function canDelete(mixed $record): bool
     {
         return static::matrixCanDelete($record)
             && ($record instanceof User
+                && ($record->role !== Role::ADMINISTRATOR || PermissionMatrix::canManagePermissions(Auth::user()))
                 && ! $record->employeeProfile()->exists()
-                && ($record->role !== Role::MANAGEMENT || (Auth::user()?->role->grants(Role::MANAGEMENT) ?? false)));
+                && ! $record->is_super_admin);
     }
 
     public static function canDeleteAny(): bool

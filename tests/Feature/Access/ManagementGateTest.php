@@ -2,11 +2,13 @@
 
 namespace Tests\Feature\Access;
 
+use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Models\RefillRequest;
 use App\Models\User;
 use App\Policies\DailyAllocationPolicy;
 use App\Policies\RefillRequestPolicy;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Gate;
 use Tests\TestCase;
@@ -15,27 +17,27 @@ class ManagementGateTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_every_gate_uses_role_inheritance_and_rejects_inactive_accounts(): void
+    public function test_every_gate_uses_the_matrix_and_rejects_inactive_accounts(): void
     {
         $gates = [
-            'view-management-reports' => Role::MANAGEMENT,
-            'manage-payroll' => Role::MANAGEMENT,
-            'manage-tax-settings' => Role::MANAGEMENT,
-            'manage-accounting-periods' => Role::MANAGEMENT,
-            'view-fixed-assets' => Role::FINANCE,
-            'record-fixed-assets' => Role::FINANCE,
-            'post-fixed-asset-depreciation' => Role::MANAGEMENT,
-            'void-production' => Role::FINANCE,
-            'revalue-inventory' => Role::FINANCE,
-            'post-manual-journal' => Role::FINANCE,
+            'view-management-reports' => [PanelModule::MANAGEMENT_REPORTS, 'view'],
+            'manage-payroll' => [PanelModule::PAYROLL, 'edit'],
+            'manage-tax-settings' => [PanelModule::TAX_SETTINGS, 'edit'],
+            'manage-accounting-periods' => [PanelModule::ACCOUNTING_PERIODS, 'edit'],
+            'view-fixed-assets' => [PanelModule::FIXED_ASSETS, 'view'],
+            'record-fixed-assets' => [PanelModule::FIXED_ASSETS, 'edit'],
+            'post-fixed-asset-depreciation' => [PanelModule::FIXED_ASSET_DEPRECIATION, 'edit'],
+            'void-production' => [PanelModule::INVENTORY_COSTS, 'edit'],
+            'revalue-inventory' => [PanelModule::INVENTORY_COSTS, 'edit'],
+            'post-manual-journal' => [PanelModule::JOURNALS, 'edit'],
         ];
 
-        foreach ($gates as $ability => $required) {
+        foreach ($gates as $ability => [$module, $operation]) {
             foreach (Role::cases() as $role) {
                 $user = User::factory()->role($role)->create();
 
                 $this->assertSame(
-                    $role->grants($required),
+                    PermissionMatrix::can($user, $module, $operation),
                     Gate::forUser($user)->allows($ability),
                     "{$role->value} got the wrong result for {$ability}.",
                 );

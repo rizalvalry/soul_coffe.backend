@@ -23,10 +23,11 @@
 
         <div class="bsi-note">
             <span class="bsi-kicker">Yang perlu diketahui</span>
+            @if ($this->needsSuperAdmin())
+                <p><strong>Belum ada Super Administrator.</strong> Administrator bisa atur centang sementara ya.</p>
+            @endif
             <p>
-                <strong>Administrator tidak ada dalam daftar ini.</strong> Peran itu selalu punya
-                akses penuh ke seluruh menu dan tidak bisa dibatasi dari sini — supaya tidak ada
-                cara untuk mengunci diri sendiri keluar dari halaman ini.
+                Setiap role punya templat sendiri. Super Administrator selalu punya semua hak.
             </p>
             <p>
                 Peran tanpa centang apa pun tidak melihat menu tersebut sama sekali. Mencentang
@@ -34,12 +35,8 @@
                 otomatis menyertakan <strong>Lihat</strong>.
             </p>
             <p>
-                Peran operasional otomatis bisa masuk panel begitu diberi minimal satu menu.
-                Content Creator tetap khusus News Feed dan tidak diatur dari sini.
+                Peran operasional bisa masuk panel begitu punya minimal satu fitur.
             </p>
-            @if ($this->role === \App\Enums\Role::MANAGEMENT->value)
-                <p>Management mewarisi hak Finance. Centang hak Finance terkunci dan berubah bersama hak Finance.</p>
-            @endif
         </div>
 
         <div class="bsi-sheet">
@@ -68,6 +65,9 @@
                             <td>
                                 {{-- The renamed name, so this screen and the sidebar never disagree about what a menu is called. --}}
                                 <span class="bsi-matrix__module">{{ \App\Services\Menu\MenuLabels::for($module) }}</span>
+                                @if ($module->accessHint())
+                                    <span class="bsi-matrix__hint">{{ $module->accessHint() }}</span>
+                                @endif
                                 @if ($module->isReadOnly())
                                     <span class="bsi-matrix__hint">hanya baca</span>
                                 @endif
@@ -80,7 +80,7 @@
                                             type="checkbox"
                                             class="bsi-check"
                                             wire:model="grants.{{ $module->value }}.{{ $ability }}"
-                                            @disabled($this->isInherited($module, $ability))
+                                            @disabled(! $this->canSave())
                                             aria-label="{{ \App\Services\Menu\MenuLabels::for($module) }} — {{ $label }}"
                                         >
                                     @else
@@ -96,7 +96,7 @@
 
         <div>
             {{-- Emphasis is inverted ink, never a colour. --}}
-            <button type="button" class="bsi-btn bsi-btn--ink" wire:click="save">
+            <button type="button" class="bsi-btn bsi-btn--ink" wire:click="save" @disabled(! $this->canSave())>
                 <svg class="bsi-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
                 Simpan hak akses
             </button>

@@ -4,7 +4,6 @@ namespace App\Filament\Resources\PurchaseOrders\Tables;
 
 use App\Enums\PanelModule;
 use App\Enums\PurchaseOrderStatus;
-use App\Enums\Role;
 use App\Models\CashAccount;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderLine;
@@ -55,7 +54,7 @@ class PurchaseOrdersTable
                     ->label('Bahan Baku')
                     ->wrap()
                     ->state(fn (PurchaseOrder $record): string => $record->lines
-                        ->map(fn (PurchaseOrderLine $line): string => (Auth::user()?->role->grants(Role::FINANCE) ?? false)
+                        ->map(fn (PurchaseOrderLine $line): string => PermissionMatrix::can(Auth::user(), PanelModule::PURCHASE_ORDER_ACTIONS, 'view')
                             ? sprintf('%s %dx@Rp%s', $line->rawMaterial?->name ?? '-', $line->qty_ordered, number_format($line->unit_cost_minor, 0, ',', '.'))
                             : sprintf('%s %dx', $line->rawMaterial?->name ?? '-', $line->qty_ordered))
                         ->implode(', ')),
@@ -91,7 +90,7 @@ class PurchaseOrdersTable
                     ->toggleable(),
                 TextColumn::make('unpaid_minor')
                     ->label('Sisa hutang')
-                    ->visible(fn (): bool => Auth::user()?->role->grants(Role::FINANCE) ?? false)
+                    ->visible(fn (): bool => PermissionMatrix::can(Auth::user(), PanelModule::PURCHASE_ORDER_ACTIONS, 'edit'))
                     ->state(fn (PurchaseOrder $record): ?int => $record->status->isReceived() && $record->payment_method === 'CREDIT'
                         ? $record->unpaidMinor() : null)
                     ->money('IDR', 0)
@@ -263,7 +262,7 @@ class PurchaseOrdersTable
 
     private static function mayOperate(): bool
     {
-        return (Auth::user()?->role->grants(Role::FINANCE) ?? false)
+        return PermissionMatrix::can(Auth::user(), PanelModule::PURCHASE_ORDER_ACTIONS, 'edit')
             && PermissionMatrix::can(Auth::user(), PanelModule::PURCHASE_ORDERS, 'edit');
     }
 

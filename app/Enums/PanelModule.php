@@ -5,9 +5,7 @@ namespace App\Enums;
 /**
  * Every menu in the admin panel that the access matrix can grant or withhold, by name.
  *
- * Every case here governs something real. News Feed is deliberately ABSENT: its
- * Administrator + Content Creator pairing is the feature itself (see NewsPostResource), so it
- * stays hardcoded rather than becoming a switch an administrator could turn off.
+ * Every case here governs a real CMS or back-office feature, including News Feed and access settings.
  *
  * A closed list rather than free strings so that a typo in a resource's `permissionModule()`
  * is a compile-time class error, not a silently-unreachable menu — and so the matrix editor can
@@ -28,6 +26,14 @@ enum PanelModule: string
     case SALES = 'sales';
     case SETTLEMENTS = 'settlements';
     case DELIVERY_INCIDENTS = 'delivery_incidents';
+    case DELIVERY_INCIDENT_DECISIONS = 'delivery_incident_decisions';
+    case SALE_CORRECTIONS = 'sale_corrections';
+    case ALLOCATIONS = 'allocations';
+    case CLOSING_LOCATION_EVIDENCE = 'closing_location_evidence';
+    case DIRECT_SALE_ACTIONS = 'direct_sale_actions';
+    case PURCHASE_ORDER_ACTIONS = 'purchase_order_actions';
+    case STOCK_OPNAME_ACTIONS = 'stock_opname_actions';
+    case STOCK_ADJUSTMENTS = 'stock_adjustments';
     case STAFF_ACTIVITY = 'staff_activity';
     case ATTENDANCE = 'attendance';
     case ABSEN_EXEMPTIONS = 'absen_exemptions';
@@ -45,10 +51,31 @@ enum PanelModule: string
     case PURCHASE_ORDERS = 'purchase_orders';
     case PRODUCTION = 'production';
 
-    // Phase 3 — a walk-in buyer at the kitchen/office, recorded by Finance/Administrator
-    // straight into a cart's stock. Not read-only, for the same reason SALES is not: the one
-    // legitimate correction is a void, and the matrix's `edit` ability is what gates it.
+    // Walk-in sales at the kitchen or office, recorded by an account with action access
+    // straight into a cart's stock. Its listing is read-only; direct_sale_actions governs
+    // both recording and voiding.
     case DIRECT_SALES = 'direct_sales';
+    case RIDER_LOCATION_SETUP = 'rider_location_setup';
+    case MANAGEMENT_REPORTS = 'management_reports';
+    case PAYROLL = 'payroll';
+    case PAYROLL_PRIOR_WITHHOLDING = 'payroll_prior_withholding';
+    case TAX_SETTINGS = 'tax_settings';
+    case ACCOUNTING_PERIODS = 'accounting_periods';
+    case OPENING_BALANCES = 'opening_balances';
+    case CHART_OF_ACCOUNTS = 'chart_of_accounts';
+    case JOURNALS = 'journals';
+    case JOURNAL_REVERSALS = 'journal_reversals';
+    case GENERAL_LEDGER = 'general_ledger';
+    case CASH = 'cash';
+    case CLEARING = 'clearing';
+    case FIXED_ASSETS = 'fixed_assets';
+    case FIXED_ASSET_DEPRECIATION = 'fixed_asset_depreciation';
+    case INVENTORY_COSTS = 'inventory_costs';
+    case REFILL_APPROVAL = 'refill_approval';
+    case EMPLOYEES = 'employees';
+    case ROLE_MATRIX = 'role_matrix';
+    case MENU_NAMING = 'menu_naming';
+    case NEWS_FEED = 'news_feed';
 
     public function label(): string
     {
@@ -66,6 +93,14 @@ enum PanelModule: string
             self::SALES => 'Penjualan Coffee Bike',
             self::SETTLEMENTS => 'Setoran Harian',
             self::DELIVERY_INCIDENTS => 'Insiden Pengiriman',
+            self::DELIVERY_INCIDENT_DECISIONS => 'Keputusan Insiden',
+            self::SALE_CORRECTIONS => 'Pembatalan Penjualan',
+            self::ALLOCATIONS => 'Alokasi Harian',
+            self::CLOSING_LOCATION_EVIDENCE => 'Bukti Lokasi Closing',
+            self::DIRECT_SALE_ACTIONS => 'Aksi Penjualan Langsung',
+            self::PURCHASE_ORDER_ACTIONS => 'Aksi Pembelian',
+            self::STOCK_OPNAME_ACTIONS => 'Aksi Stock Opname',
+            self::STOCK_ADJUSTMENTS => 'Koreksi Stok',
             self::STAFF_ACTIVITY => 'Aktivitas Rider',
             self::ATTENDANCE => 'Laporan Absensi',
             self::ABSEN_EXEMPTIONS => 'Izin Absen Luar Lokasi',
@@ -79,40 +114,74 @@ enum PanelModule: string
             self::PURCHASE_ORDERS => 'Pembelian Bahan Baku',
             self::PRODUCTION => 'Produksi',
             self::DIRECT_SALES => 'Penjualan Langsung Kantor',
+            self::RIDER_LOCATION_SETUP => 'Setup Lokasi Rider',
+            self::MANAGEMENT_REPORTS => 'Laporan Management',
+            self::PAYROLL => 'Payroll',
+            self::PAYROLL_PRIOR_WITHHOLDING => 'PPh Sebelumnya',
+            self::TAX_SETTINGS => 'Pengaturan Pajak',
+            self::ACCOUNTING_PERIODS => 'Periode Akuntansi',
+            self::OPENING_BALANCES => 'Saldo Awal',
+            self::CHART_OF_ACCOUNTS => 'Bagan Akun',
+            self::JOURNALS => 'Jurnal',
+            self::JOURNAL_REVERSALS => 'Balik Jurnal',
+            self::GENERAL_LEDGER => 'Buku Besar',
+            self::CASH => 'Kas dan Barang Kantor',
+            self::CLEARING => 'Dana Masuk',
+            self::FIXED_ASSETS => 'Aset Tetap',
+            self::FIXED_ASSET_DEPRECIATION => 'Penyusutan Aset',
+            self::INVENTORY_COSTS => 'Biaya Stok',
+            self::REFILL_APPROVAL => 'Approval Refill',
+            self::EMPLOYEES => 'Karyawan',
+            self::ROLE_MATRIX => 'Management Users Role',
+            self::MENU_NAMING => 'Penamaan Menu',
+            self::NEWS_FEED => 'News Feed',
         };
     }
 
+    public function accessHint(): ?string
+    {
+        return $this === self::PAYROLL
+            ? 'Lihat = slip gaji sendiri di aplikasi; Kelola = halaman Payroll CMS'
+            : null;
+    }
+
     /**
-     * Modules that are read-only by nature — there is nothing to create or edit, so the matrix
-     * editor offers them only as "Lihat", never "Kelola".
-     *
-     * SALES is deliberately NOT on this list, even though the resource still hardcodes
-     * `canCreate`/`canEdit`/`canDelete` to false and offers no free-form edit form. A sale can be
-     * VOIDED — the one legitimate correction, which reverses the cups through the stock ledger
-     * rather than rewriting the row — and that single action is what the matrix's "edit" ability
-     * governs here (SalesTable::mayVoid()). The same pattern DELIVERY_INCIDENTS already uses for
-     * its two decision buttons.
-     *
-     * STAFF_ACTIVITY stays read-only: the GPS trail is evidence, and evidence that can be edited
-     * is not evidence.
-     *
-     * CENTRAL_STOCK is deliberately NOT on this list, even though the grid itself is still never
-     * edited directly and the page creates and deletes nothing of its own. The matrix's `edit`
-     * ability now governs the one legitimate write on this page — posting a manual stock
-     * adjustment (StockAdjustmentService), a compensating ledger row with a mandatory reason,
-     * the same "correction is an action, not a cell edit" pattern SALES and DIRECT_SALES already
-     * use for their own single write.
+     * Read-only listing modules offer only Lihat. Their separate action modules govern writes
+     * such as voids, incident decisions, stock opname, and stock adjustments.
      */
     public function isReadOnly(): bool
     {
         return in_array($this, [
             self::DASHBOARD,
             self::REPORTS,
+            self::MANAGEMENT_REPORTS,
+            self::GENERAL_LEDGER,
             self::AUDIT_LOGS,
             self::STAFF_ACTIVITY,
+            self::CENTRAL_STOCK,
+            self::STOCK_OPNAME,
+            self::SALES,
+            self::DELIVERY_INCIDENTS,
+            self::DIRECT_SALES,
             // A brew is a fact about what happened in the kitchen, backed by ledger rows that are
             // themselves append-only — there is nothing here to create or edit, only to read.
             self::PRODUCTION,
         ], true);
+    }
+
+    public function group(): string
+    {
+        return match ($this) {
+            self::USERS, self::EMPLOYEES, self::ROLE_MATRIX, self::AUDIT_LOGS,
+            self::PIN_RESET_REQUESTS, self::AI_SETTINGS, self::MENU_NAMING,
+            self::NEWS_FEED => 'Pengguna & Pengaturan',
+            self::REPORTS, self::MANAGEMENT_REPORTS, self::PAYROLL,
+            self::PAYROLL_PRIOR_WITHHOLDING, self::TAX_SETTINGS, self::ACCOUNTING_PERIODS,
+            self::OPENING_BALANCES, self::CHART_OF_ACCOUNTS, self::JOURNALS,
+            self::JOURNAL_REVERSALS, self::GENERAL_LEDGER, self::CASH,
+            self::CLEARING, self::FIXED_ASSETS, self::FIXED_ASSET_DEPRECIATION,
+            self::INVENTORY_COSTS => 'Keuangan',
+            default => 'Operasional',
+        };
     }
 }

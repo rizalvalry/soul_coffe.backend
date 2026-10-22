@@ -26,7 +26,7 @@ class EnsureRole
         $user = $request->user();
 
         if (! $user || ! $user->is_active || ! collect($roles)->contains(
-            fn (string $role): bool => ($required = Role::tryFrom($role)) !== null && $user->role->grants($required)
+            fn (string $role): bool => ($required = Role::tryFrom($role)) !== null && $user->role === $required
         )) {
             abort(403, 'Anda tidak memiliki akses untuk aksi ini.');
         }
