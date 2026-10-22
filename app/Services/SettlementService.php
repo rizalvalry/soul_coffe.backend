@@ -725,7 +725,7 @@ class SettlementService
 
     private function isInsideKitchen(?StaffLocationPing $ping, ?CentralKitchen $kitchen): bool
     {
-        if (! $ping || ! $kitchen || $kitchen->lat === null || $kitchen->lng === null || ! $kitchen->geofence_m) {
+        if (! $ping || ! $kitchen || $kitchen->lat === null || $kitchen->lng === null) {
             return false;
         }
 
@@ -734,7 +734,7 @@ class SettlementService
         $north = ($lat2 - $lat1) * 111_320;
         $east = ((float) $ping->lng - (float) $kitchen->lng) * 111_320 * cos(deg2rad(($lat1 + $lat2) / 2));
 
-        return sqrt($north ** 2 + $east ** 2) <= $kitchen->geofence_m;
+        return sqrt($north ** 2 + $east ** 2) <= app(LocationSettings::class)->radiusFor($kitchen);
     }
 
     /** Current locking read, unaffected by an earlier MySQL REPEATABLE READ snapshot. */

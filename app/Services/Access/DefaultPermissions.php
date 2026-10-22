@@ -31,7 +31,8 @@ final class DefaultPermissions
     public static function seed(): void
     {
         foreach (PanelModule::cases() as $module) {
-            self::insert(Role::ADMINISTRATOR, $module, self::FULL);
+            self::insert(Role::ADMINISTRATOR, $module,
+                $module === PanelModule::LOCATION_SETTINGS ? ['view', 'edit'] : self::FULL);
         }
         self::insert(Role::CONTENT_CREATOR, PanelModule::NEWS_FEED, self::FULL);
 
@@ -40,7 +41,8 @@ final class DefaultPermissions
         foreach ([Role::FINANCE, Role::MANAGEMENT] as $role) {
             foreach (PanelModule::cases() as $module) {
                 if ($module !== PanelModule::ROLE_MATRIX) {
-                    self::insert($role, $module, self::FULL);
+                    self::insert($role, $module,
+                        $module === PanelModule::LOCATION_SETTINGS ? ['view', 'edit'] : self::FULL);
                 }
             }
         }

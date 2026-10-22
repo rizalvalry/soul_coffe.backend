@@ -9,6 +9,7 @@ use App\Models\AttendanceExemption;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\Location;
+use App\Models\LocationSetting;
 use App\Models\StaffAssignment;
 use App\Models\User;
 use App\Services\AttendanceService;
@@ -251,9 +252,9 @@ class AbsenGeofenceTest extends TestCase
     }
 
     /** The master switch, for a fleet of handsets that cannot hold a fix. */
-    public function test_the_whole_rule_can_be_switched_off_by_config(): void
+    public function test_the_whole_rule_can_be_switched_off_by_location_setting(): void
     {
-        config(['soul.absen_requires_gps' => false]);
+        LocationSetting::query()->findOrFail(1)->update(['absen_requires_gps' => false]);
 
         $this->service()->clockIn($this->barista);
         $this->service()->openStaffWindow($this->barista);

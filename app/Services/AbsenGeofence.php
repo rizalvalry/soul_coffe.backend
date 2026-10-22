@@ -63,13 +63,13 @@ class AbsenGeofence
             'basis' => 'untagged',
             'lat' => null,
             'lng' => null,
-            'radius_m' => (int) config('soul.absen_geofence_m', 10),
+            'radius_m' => app(LocationSettings::class)->absenRadius(),
             'label' => null,
             'exemption_reason' => null,
         ];
 
-        if (! (bool) config('soul.absen_requires_gps', true)) {
-            return $none + ['basis' => 'disabled'];
+        if (! app(LocationSettings::class)->requiresGps()) {
+            return array_replace($none, ['basis' => 'disabled']);
         }
 
         $assignment = $user->role === Role::STAFF
@@ -128,7 +128,7 @@ class AbsenGeofence
                     'lng' => (float) $location->lng,
                     // A selling point is a pavement, not a doorway, so it uses its own geofence
                     // rather than the kitchen's 10 m.
-                    'radius_m' => (int) ($location->geofence_m ?: config('soul.absen_geofence_m', 10)),
+                    'radius_m' => app(LocationSettings::class)->radiusFor($location),
                     'label' => $location->name,
                     'exemption_reason' => $exemption->reason,
                 ];
@@ -143,7 +143,7 @@ class AbsenGeofence
                 'basis' => 'selling_location',
                 'lat' => (float) $location->lat,
                 'lng' => (float) $location->lng,
-                'radius_m' => (int) ($location->geofence_m ?: config('soul.absen_geofence_m', 10)),
+                'radius_m' => app(LocationSettings::class)->radiusFor($location),
                 'label' => $location->name,
                 'exemption_reason' => null,
             ];
@@ -161,7 +161,7 @@ class AbsenGeofence
             'basis' => 'kitchen',
             'lat' => (float) $kitchen->lat,
             'lng' => (float) $kitchen->lng,
-            'radius_m' => (int) ($kitchen->geofence_m ?: config('soul.absen_geofence_m', 10)),
+            'radius_m' => app(LocationSettings::class)->radiusFor($kitchen),
             'label' => $kitchen->name,
             'exemption_reason' => null,
         ];
