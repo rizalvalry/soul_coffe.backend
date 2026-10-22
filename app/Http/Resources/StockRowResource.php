@@ -20,6 +20,7 @@ class StockRowResource extends JsonResource
         return [
             'product_id' => $this->resource['product_id'],
             'product_name' => $this->resource['product_name'],
+            'image_url' => $this->resource['image_url'],
             'qty' => $this->resource['qty'],
         ];
     }

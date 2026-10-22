@@ -292,7 +292,7 @@ class AllocationService
      * Projected stock for every product with a movement at one location, ordered by the
      * paper-form product order (§3.1).
      *
-     * @return array<int, array{product_id:int, product_name:string, qty:int}>
+     * @return array<int, array{product_id:int, product_name:string, image_url:?string, qty:int}>
      */
     public function stockRows(string $locationType, int $locationId): array
     {
@@ -302,17 +302,18 @@ class AllocationService
             return [];
         }
 
-        $names = Product::query()
+        $products = Product::query()
             ->whereIn('id', array_keys($map))
             ->orderBy('sort_order')
-            ->pluck('name', 'id');
+            ->get(['id', 'name', 'image_path']);
 
         $rows = [];
-        foreach ($names as $productId => $name) {
+        foreach ($products as $product) {
             $rows[] = [
-                'product_id' => $productId,
-                'product_name' => $name,
-                'qty' => $map[$productId],
+                'product_id' => $product->id,
+                'product_name' => $product->name,
+                'image_url' => $product->imageUrl(),
+                'qty' => $map[$product->id],
             ];
         }
 

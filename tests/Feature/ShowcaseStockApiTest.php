@@ -74,6 +74,40 @@ class ShowcaseStockApiTest extends TestCase
             ->assertJsonStructure(['data' => [['product_id', 'product_name', 'qty']]]);
     }
 
+    public function test_showcase_stock_write_responses_include_the_absolute_cms_product_image_url(): void
+    {
+        $this->product->update(['image_path' => 'products/t065-stock.jpg']);
+        $expected = url('/storage/products/t065-stock.jpg');
+
+        $stock = $this->actingAs($this->barista, 'sanctum')->getJson('/api/v1/showcase/stock')->assertOk();
+        $this->assertSame($expected, collect($stock->json('data'))->firstWhere('product_id', $this->product->id)['image_url']);
+
+        $brew = $this->actingAs($this->barista, 'sanctum')
+            ->withHeader('Idempotency-Key', $this->key())
+            ->postJson('/api/v1/showcase/brew', [
+                'lines' => [['product_id' => $this->product->id, 'qty' => 1]],
+            ])->assertOk();
+        $this->assertSame($expected, collect($brew->json('data'))->firstWhere('product_id', $this->product->id)['image_url']);
+
+        $handover = $this->actingAs($this->barista, 'sanctum')
+            ->withHeader('Idempotency-Key', $this->key())
+            ->postJson('/api/v1/showcase/hand-to-cart', [
+                'cart_id' => $this->cart->id,
+                'staff_id' => $this->staff->id,
+                'lines' => [['product_id' => $this->product->id, 'qty' => 1]],
+            ])->assertCreated();
+        $this->assertSame($expected, collect($handover->json('data.cart_stock'))->firstWhere('product_id', $this->product->id)['image_url']);
+        $this->assertSame($expected, collect($handover->json('data.showcase_stock'))->firstWhere('product_id', $this->product->id)['image_url']);
+
+        $closeOut = $this->actingAs($this->barista, 'sanctum')
+            ->withHeader('Idempotency-Key', $this->key())
+            ->postJson('/api/v1/showcase/close-out', [
+                'cart_id' => $this->cart->id,
+                'returned' => [['product_id' => $this->product->id, 'qty' => 1]],
+            ])->assertOk();
+        $this->assertSame($expected, collect($closeOut->json('data.showcase_stock'))->firstWhere('product_id', $this->product->id)['image_url']);
+    }
+
     public function test_brewing_raises_the_showcase_and_returns_the_new_totals(): void
     {
         $response = $this->actingAs($this->barista, 'sanctum')

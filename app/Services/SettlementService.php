@@ -284,7 +284,7 @@ class SettlementService
         $products = Product::query()
             ->whereIn('id', $productIds)
             ->orderBy('sort_order')
-            ->get(['id', 'name', 'unit']);
+            ->get(['id', 'name', 'unit', 'image_path']);
 
         return [
             'cart_id' => $cart->id,
@@ -305,6 +305,7 @@ class SettlementService
             'lines' => $products->map(fn (Product $product): array => [
                 'product_id' => $product->id,
                 'product_name' => $product->name,
+                'image_url' => $product->imageUrl(),
                 'unit' => $product->unit,
                 'qty_issued' => $closing ? ($closingLines->get($product->id)?->qty_in ?? 0) + ($closingLines->get($product->id)?->qty_carry ?? 0) : ($issued[$product->id] ?? 0),
                 'qty_carry' => $closingLines->get($product->id)?->qty_carry ?? 0,
