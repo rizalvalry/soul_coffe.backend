@@ -130,9 +130,8 @@ class PermissionMatrix
     public static function hasAnyAccess(User $user): bool
     {
         foreach (PanelModule::cases() as $module) {
-            $abilities = static::effectiveAbilitiesFor($user, $module);
-            // Payroll view alone serves the personal slip API; it opens no CMS page.
-            if ($abilities !== [] && ! ($module === PanelModule::PAYROLL && $abilities === ['view'])) {
+            $entryAbility = $module->panelEntryAbility();
+            if ($entryAbility !== null && in_array($entryAbility, static::effectiveAbilitiesFor($user, $module), true)) {
                 return true;
             }
         }

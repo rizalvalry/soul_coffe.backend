@@ -3,7 +3,6 @@
 namespace Tests\Feature\Filament;
 
 use App\Enums\Role;
-use App\Filament\Pages\SetupLokasiRider;
 use App\Filament\Resources\NewsPosts\NewsPostResource;
 use App\Models\NewsPost;
 use App\Models\User;
@@ -134,7 +133,7 @@ class ContentCreatorPanelTest extends TestCase
     {
         $this->actingAs($this->makeUser(Role::FINANCE))->get('/admin')->assertSuccessful();
         $this->flushSession();
-        $this->actingAs(User::factory()->role(Role::BARISTA)->create())->get(SetupLokasiRider::getUrl())->assertSuccessful();
+        $this->actingAs(User::factory()->role(Role::BARISTA)->create())->get('/admin')->assertForbidden();
         foreach ([Role::RIDER, Role::STAFF] as $role) {
             $this->flushSession();
             $this->actingAs($this->makeUser($role))->get('/admin')->assertForbidden();

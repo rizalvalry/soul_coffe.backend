@@ -111,7 +111,7 @@ class RiderLocationSetupTest extends TestCase
         foreach ([$this->rider] as $blocked) {
             $this->actingAs($blocked)->get(SetupLokasiRider::getUrl())->assertForbidden();
         }
-        $this->actingAs($this->barista)->get(SetupLokasiRider::getUrl())->assertOk();
+        $this->actingAs($this->barista)->get(SetupLokasiRider::getUrl())->assertForbidden();
         Livewire::actingAs($this->finance)->test(SetupLokasiRider::class)
             ->assertTableActionVisible('setup', $this->rider);
         Livewire::actingAs($this->management)->test(SetupLokasiRider::class)
@@ -132,7 +132,7 @@ class RiderLocationSetupTest extends TestCase
 
     public function test_management_and_administrator_can_write_while_allowed_roles_can_read_and_history_is_preserved(): void
     {
-        foreach ([$this->management, $this->barista, $this->admin, $this->finance] as $reader) {
+        foreach ([$this->management, $this->admin, $this->finance] as $reader) {
             $this->actingAs($reader, 'sanctum')->getJson('/api/v1/rider-location-setups')->assertOk()
                 ->assertJsonPath('data.0.id', $this->rider->id);
         }
@@ -140,7 +140,7 @@ class RiderLocationSetupTest extends TestCase
             $this->rider, User::factory()->role(Role::RIDER)->create(),
             User::factory()->role(Role::CONTENT_CREATOR)->create()] as $blocked) {
             $this->writeAs($blocked, $this->point->id, 'selling_location')->assertForbidden();
-            if (! in_array($blocked->role, [Role::BARISTA, Role::ADMINISTRATOR, Role::FINANCE], true)) {
+            if (! in_array($blocked->role, [Role::ADMINISTRATOR, Role::FINANCE], true)) {
                 $this->actingAs($blocked, 'sanctum')->getJson('/api/v1/rider-location-setups')->assertForbidden();
             }
         }
@@ -166,6 +166,9 @@ class RiderLocationSetupTest extends TestCase
     public function test_selling_setup_applies_before_add_stock_and_management_location_wins(): void
     {
         $this->writeAs($this->management, $this->point->id, 'selling_location')->assertOk();
+        $this->actingAs($this->barista, 'sanctum')->getJson('/api/v1/showcase/staff')->assertOk()
+            ->assertJsonPath('data.0.location_setup.location_id', $this->point->id)
+            ->assertJsonPath('data.0.location_setup.location_name', $this->point->name);
         $this->open();
         $this->assertSame(0, StaffAssignment::query()->count());
         $this->actingAs($this->rider, 'sanctum')->getJson('/api/v1/absen/status')

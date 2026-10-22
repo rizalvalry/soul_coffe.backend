@@ -50,7 +50,7 @@ final class DefaultPermissions
             self::insert($role, PanelModule::PAYROLL, ['view']);
         }
 
-        self::insert(Role::BARISTA, PanelModule::RIDER_LOCATION_SETUP, ['view']);
+        // Add Stock reads the Rider location through showcase/staff under this mobile permission.
         self::insert(Role::BARISTA, PanelModule::KITCHEN_OPERATIONS, self::FULL);
 
         PermissionMatrix::forget();

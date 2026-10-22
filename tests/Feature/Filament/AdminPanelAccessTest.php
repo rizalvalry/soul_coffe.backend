@@ -2,10 +2,13 @@
 
 namespace Tests\Feature\Filament;
 
+use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Filament\Auth\Login;
+use App\Filament\Pages\RoleAccessMatrix;
 use App\Filament\Pages\SetupLokasiRider;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Livewire\Livewire;
@@ -40,15 +43,28 @@ class AdminPanelAccessTest extends TestCase
 
     public function test_panel_entry_follows_configured_backoffice_access(): void
     {
-        $this->actingAs($this->makeUser(Role::FINANCE))->get('/admin')->assertSuccessful();
-        $this->flushSession();
-        $this->actingAs(User::factory()->role(Role::BARISTA)->create())->get(SetupLokasiRider::getUrl())->assertSuccessful();
+        foreach ([Role::FINANCE, Role::MANAGEMENT, Role::ADMINISTRATOR, Role::CONTENT_CREATOR] as $role) {
+            $this->flushSession();
+            $this->actingAs($this->makeUser($role))->get('/admin')->assertSuccessful();
+        }
 
-        foreach ([Role::RIDER, Role::STAFF] as $role) {
+        foreach ([Role::BARISTA, Role::RIDER, Role::STAFF] as $role) {
             $this->flushSession();
             $user = $this->makeUser($role);
             $this->actingAs($user)->get('/admin')->assertForbidden();
         }
+    }
+
+    public function test_production_account_override_opens_only_its_granted_menu(): void
+    {
+        $super = User::factory()->role(Role::ADMINISTRATOR)->create(['is_super_admin' => true]);
+        $barista = User::factory()->role(Role::BARISTA)->create();
+        PermissionMatrix::setForUser($super, $barista, PanelModule::RIDER_LOCATION_SETUP, ['view']);
+
+        $this->actingAs($barista)->get(SetupLokasiRider::getUrl())
+            ->assertOk()->assertSee('Setup Lokasi Rider')
+            ->assertDontSee('Dashboard')->assertDontSee('Setoran Harian')->assertDontSee('News Feed');
+        $this->actingAs($barista)->get(RoleAccessMatrix::getUrl())->assertForbidden();
     }
 
     public function test_a_deactivated_administrator_is_refused(): void

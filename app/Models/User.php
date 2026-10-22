@@ -203,10 +203,8 @@ class User extends Authenticatable implements FilamentUser, HasName
     /**
      * Who may open the admin panel.
      *
-     * The panel is a second front door onto the same data the API guards by role, so it applies
-     * the same two conditions the API applies at login: the account must be active, and only
-     * ADMINISTRATOR may enter. Without this method Filament lets every authenticated user in --
-     * which would hand a STAFF account the user-management screen.
+     * The panel is a second front door onto the same data the API guards. Only active accounts
+     * with a CMS menu grant may enter; resource and page checks still guard the data itself.
      */
     public function canAccessPanel(Panel $panel): bool
     {
@@ -214,16 +212,13 @@ class User extends Authenticatable implements FilamentUser, HasName
             return false;
         }
 
-        // ADMINISTRATOR runs the panel; CONTENT_CREATOR is let in for the news feed alone, which
-        // is hardcoded rather than matrix-driven (see NewsPostResource).
+        // The Super Administrator always has panel access.
         if ($this->is_super_admin) {
             return true;
         }
 
-        // Every other role gets in only once the access matrix has actually granted it a menu —
-        // FINANCE ships with the absensi module, so it reaches the panel and sees nothing else.
-        // Deriving the door from the matrix is what stops the two from disagreeing: a granted
-        // module that cannot be reached, or a role in the building with nowhere to go.
+        // Every other role gets in only when its effective grants open a CMS menu. Mobile-only
+        // grants and action abilities behind other pages do not open the panel by themselves.
         //
         // Panel access is still not the authorisation. Each resource re-checks the matrix in its
         // own `canViewAny()`, so being through the door never implies sight of a refill, a price,

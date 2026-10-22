@@ -60,8 +60,7 @@ class PermissionMatrixTest extends TestCase
                         Role::CONTENT_CREATOR => $module === PanelModule::NEWS_FEED
                             || ($module === PanelModule::PAYROLL && $ability === 'view'),
                         Role::BARISTA => $module === PanelModule::KITCHEN_OPERATIONS
-                            || (($module === PanelModule::RIDER_LOCATION_SETUP || $module === PanelModule::PAYROLL)
-                                && $ability === 'view'),
+                            || ($module === PanelModule::PAYROLL && $ability === 'view'),
                         Role::STAFF, Role::RIDER => $module === PanelModule::PAYROLL && $ability === 'view',
                     };
                     $this->assertSame($expected, PermissionMatrix::can($user, $module, $ability),
@@ -69,6 +68,73 @@ class PermissionMatrixTest extends TestCase
                 }
             }
         }
+    }
+
+    public function test_only_grants_that_open_a_cms_menu_allow_panel_entry(): void
+    {
+        $super = User::factory()->role(Role::ADMINISTRATOR)->create(['is_super_admin' => true]);
+        $barista = User::factory()->role(Role::BARISTA)->create();
+
+        $this->assertFalse(PermissionMatrix::hasAnyAccess($barista));
+        $this->assertDatabaseMissing('role_permissions', [
+            'role' => Role::BARISTA->value, 'module' => PanelModule::RIDER_LOCATION_SETUP->value,
+        ]);
+        DefaultPermissions::seed();
+        $this->assertFalse(PermissionMatrix::hasAnyAccess($barista));
+
+        PermissionMatrix::setForUser($super, $barista, PanelModule::DIRECT_SALE_ACTIONS, ['edit']);
+        PermissionMatrix::setForUser($super, $barista, PanelModule::PAYROLL, ['view', 'create']);
+        $this->assertFalse(PermissionMatrix::hasAnyAccess($barista));
+
+        // Account grants normalize edit to include view, which opens this CMS menu.
+        PermissionMatrix::setForUser($super, $barista, PanelModule::RIDER_LOCATION_SETUP, ['edit']);
+        $this->assertTrue(PermissionMatrix::hasAnyAccess($barista));
+
+        PermissionMatrix::setForUser($super, $barista, PanelModule::RIDER_LOCATION_SETUP, ['view']);
+        $this->assertTrue(PermissionMatrix::hasAnyAccess($barista));
+    }
+
+    public function test_production_grant_migration_snapshots_and_removes_untouched_legacy_template(): void
+    {
+        DB::table('role_permissions')->insert([
+            'role' => Role::BARISTA->value,
+            'module' => PanelModule::RIDER_LOCATION_SETUP->value,
+            'abilities' => json_encode(['view'], JSON_THROW_ON_ERROR),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $rowId = DB::table('role_permissions')->where('role', Role::BARISTA->value)
+            ->where('module', PanelModule::RIDER_LOCATION_SETUP->value)->value('id');
+
+        $migration = require database_path('migrations/2026_10_22_000062_remove_default_production_panel_grant.php');
+        $migration->up();
+
+        $this->assertDatabaseMissing('role_permissions', [
+            'role' => Role::BARISTA->value, 'module' => PanelModule::RIDER_LOCATION_SETUP->value,
+        ]);
+        $this->assertDatabaseHas('production_panel_grant_snapshots', [
+            'role_permission_id' => $rowId,
+        ]);
+        $this->assertSame(['view'], json_decode(DB::table('production_panel_grant_snapshots')
+            ->where('role_permission_id', $rowId)->value('abilities'), true, 512, JSON_THROW_ON_ERROR));
+    }
+
+    public function test_production_grant_migration_keeps_a_template_touched_by_administrator(): void
+    {
+        // Start from a custom template without an outstanding default-grant snapshot.
+        DB::table('production_panel_grant_snapshots')->delete();
+        $super = User::factory()->role(Role::ADMINISTRATOR)->create(['is_super_admin' => true]);
+        PermissionMatrix::set(Role::BARISTA, PanelModule::RIDER_LOCATION_SETUP, ['view'], $super, notify: false);
+
+        $migration = require database_path('migrations/2026_10_22_000062_remove_default_production_panel_grant.php');
+        $migration->up();
+
+        $this->assertDatabaseHas('role_permissions', [
+            'role' => Role::BARISTA->value,
+            'module' => PanelModule::RIDER_LOCATION_SETUP->value,
+            'updated_by' => $super->id,
+        ]);
+        $this->assertDatabaseCount('production_panel_grant_snapshots', 0);
     }
 
     public function test_ordinary_administrator_obeys_matrix_and_super_administrator_bypasses_it(): void
@@ -137,6 +203,7 @@ class PermissionMatrixTest extends TestCase
         $target = User::factory()->role(Role::BARISTA)->create();
         $other = User::factory()->role(Role::BARISTA)->create();
         $finance = User::factory()->role(Role::FINANCE)->create();
+        PermissionMatrix::set(Role::BARISTA, PanelModule::RIDER_LOCATION_SETUP, ['view'], $super, notify: false);
 
         PermissionMatrix::setForUser($super, $target, PanelModule::RIDER_LOCATION_SETUP, ['view', 'edit']);
         $event = OutboxEvent::query()->where('name', 'AccessChanged')->sole();

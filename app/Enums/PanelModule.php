@@ -3,9 +3,10 @@
 namespace App\Enums;
 
 /**
- * Every menu in the admin panel that the access matrix can grant or withhold, by name.
+ * Every named permission the access matrix can grant or withhold.
  *
- * Every case here governs a real CMS or back-office feature, including News Feed and access settings.
+ * Some cases govern mobile flows or actions inside another CMS page; panelEntryAbility() marks
+ * which ones have their own CMS menu.
  *
  * A closed list rather than free strings so that a typo in a resource's `permissionModule()`
  * is a compile-time class error, not a silently-unreachable menu — and so the matrix editor can
@@ -147,6 +148,26 @@ enum PanelModule: string
         return $this === self::PAYROLL
             ? 'Lihat = slip gaji sendiri di aplikasi; Kelola = halaman Payroll CMS'
             : null;
+    }
+
+    /** The ability that exposes a CMS menu; null means this grant only supports another flow. */
+    public function panelEntryAbility(): ?string
+    {
+        return match ($this) {
+            self::KITCHEN_OPERATIONS,
+            self::CLOSING_LOCATION_EVIDENCE,
+            self::DIRECT_SALE_ACTIONS,
+            self::PURCHASE_ORDER_ACTIONS,
+            self::STOCK_OPNAME_ACTIONS,
+            self::STOCK_ADJUSTMENTS,
+            self::DELIVERY_INCIDENT_DECISIONS,
+            self::SALE_CORRECTIONS,
+            self::JOURNAL_REVERSALS,
+            self::FIXED_ASSET_DEPRECIATION,
+            self::INVENTORY_COSTS => null,
+            self::PAYROLL => 'edit',
+            default => 'view',
+        };
     }
 
     /**
