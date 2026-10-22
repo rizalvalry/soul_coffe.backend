@@ -7,6 +7,7 @@ use App\Models\AccountingPeriod;
 use App\Models\AuditLog;
 use App\Models\FixedAsset;
 use App\Models\JournalEntry;
+use App\Models\PayrollRemittance;
 use App\Models\PayrollRun;
 use App\Models\User;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -262,18 +263,29 @@ class JournalService
         return $entry;
     }
 
-    public function reverse(JournalEntry $entry, string $reason, ?PayrollRun $payrollRun = null, ?User $payrollActor = null): JournalEntry
+    public function reverse(JournalEntry $entry, string $reason, ?PayrollRun $payrollRun = null, ?User $payrollActor = null,
+        ?PayrollRemittance $remittance = null, ?User $remittanceActor = null): JournalEntry
     {
         if (trim($reason) === '' || mb_strlen($reason) > 225) {
             throw ValidationException::withMessages(['reason' => 'Alasan pembalik wajib diisi, maksimal 225 karakter.']);
         }
 
-        return DB::transaction(function () use ($entry, $reason, $payrollRun, $payrollActor): JournalEntry {
-            if ($payrollRun) {
+        return DB::transaction(function () use ($entry, $reason, $payrollRun, $payrollActor, $remittance, $remittanceActor): JournalEntry {
+            if ($payrollRun || $remittance) {
                 Account::query()->orderBy('id')->lockForUpdate()->firstOrFail();
             }
             $run = $payrollRun ? PayrollRun::query()->whereKey($payrollRun->id)->lockForUpdate()->firstOrFail() : null;
             $original = JournalEntry::query()->lockForUpdate()->findOrFail($entry->id);
+            if (in_array($original->source_type, ['thr_run', 'thr_provision'], true)) {
+                throw ValidationException::withMessages(['journal' => 'Jurnal THR ini dikelola dari halaman THR ya.']);
+            }
+            if ($original->source_type === 'payroll_remittance') {
+                if (! $remittance || ! $remittanceActor || $remittance->id !== $original->source_id
+                    || $remittance->status !== 'POSTED') {
+                    throw ValidationException::withMessages(['journal' => 'Balik jurnal setoran lewat halaman Setor PPh 21 & BPJS ya.']);
+                }
+                Gate::forUser($remittanceActor)->authorize('manage-payroll');
+            }
             $isPayroll = in_array($original->source_type, ['payroll_run', 'payroll_run_payment_retry', 'payroll_run_accrual_retry'], true);
             if ($isPayroll) {
                 if (! $run || ! $payrollActor) {
@@ -310,7 +322,7 @@ class JournalService
                 'source_type' => 'journal_reversal',
                 'source_id' => $original->id,
                 'purpose' => 'REVERSAL',
-                'posted_by' => $payrollActor?->id ?? Auth::id() ?? $original->posted_by,
+                'posted_by' => $payrollActor?->id ?? $remittanceActor?->id ?? Auth::id() ?? $original->posted_by,
                 'reverses_entry_id' => $original->id,
             ], $lines);
 
@@ -339,8 +351,8 @@ class JournalService
             }
 
             AuditLog::query()->create([
-                'actor_id' => $payrollActor?->id ?? Auth::id(),
-                'actor_role' => $payrollActor?->role->value ?? Auth::user()?->role?->value,
+                'actor_id' => $payrollActor?->id ?? $remittanceActor?->id ?? Auth::id(),
+                'actor_role' => $payrollActor?->role->value ?? $remittanceActor?->role->value ?? Auth::user()?->role?->value,
                 'action' => 'journal.reversed',
                 'subject_type' => JournalEntry::class,
                 'subject_id' => $original->id,

@@ -4,6 +4,7 @@ use App\Enums\PanelModule;
 use App\Http\Controllers\NewsInlineImageController;
 use App\Models\CashTransaction;
 use App\Models\PayrollItem;
+use App\Models\ThrItem;
 use App\Services\Access\PermissionMatrix;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
@@ -43,3 +44,14 @@ Route::middleware(['web', 'auth'])->get('/admin/payroll-slips/{item}', function 
 
     return Storage::disk('local')->download($item->slip_path, 'slip-gaji-'.$item->run->period_start->format('Y-m').'.pdf');
 })->name('admin.payroll-slips.download');
+
+Route::middleware(['web', 'auth'])->get('/admin/thr-slips/{item}', function (ThrItem $item) {
+    abort_unless(auth()->user()?->is_active, 403);
+    Gate::authorize('manage-payroll');
+    $expectedPath = 'thr-slips/'.$item->run_id.'/item-'.$item->id.'.pdf';
+    abort_unless(in_array($item->run->status, ['APPROVED', 'PAID'], true)
+        && $item->slip_path === $expectedPath
+        && Storage::disk('local')->exists($expectedPath), 404);
+
+    return Storage::disk('local')->download($expectedPath, 'slip-thr-'.$item->run->holiday_date->format('Y-m-d').'.pdf');
+})->name('admin.thr-slips.download');

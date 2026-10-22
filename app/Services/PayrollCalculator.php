@@ -20,7 +20,7 @@ class PayrollCalculator
      *
      * @return array<string, mixed>
      */
-    public function calculate(User $user, string $period): array
+    public function calculate(User $user, string $period, int $additionalGross = 0): array
     {
         if (! preg_match('/^\d{4}-(0[1-9]|1[0-2])$/D', $period)) {
             throw new InvalidArgumentException('Periode payroll harus format YYYY-MM ya.');
@@ -29,6 +29,9 @@ class PayrollCalculator
         $start = DateTimeImmutable::createFromFormat('!Y-m-d', $period.'-01');
         if (! $start || $start->format('Y-m') !== $period) {
             throw new InvalidArgumentException('Periode payroll belum valid ya.');
+        }
+        if ($additionalGross < 0) {
+            throw new InvalidArgumentException('Tambahan bruto payroll harus rupiah bulat ya.');
         }
         $from = $start->format('Y-m-d');
         $through = $start->format('Y-m-t');
@@ -106,7 +109,7 @@ class PayrollCalculator
             throw new DomainException('Tarif PTKP/TER belum diisi dan diverifikasi akuntan, jadi payroll belum bisa dihitung.');
         }
 
-        $taxableGross = self::add(self::add($baseSalary, $incentive), $taxableEarnings);
+        $taxableGross = self::add(self::add(self::add($baseSalary, $incentive), $taxableEarnings), $additionalGross);
         $bracketVersion = DB::table('payroll_ter_versions')->where('category', $ptkp->ter_category)
             ->whereNotNull('published_at')->where('effective_from', '<=', $from)->max('effective_from');
         $bracket = $bracketVersion === null ? null : DB::table('pph21_ter_brackets')
@@ -119,7 +122,7 @@ class PayrollCalculator
             throw new DomainException('Tarif TER belum diisi dan diverifikasi akuntan untuk gaji ini, jadi payroll belum bisa dihitung.');
         }
         $pph21 = self::percent($taxableGross, (int) $bracket->rate_bps);
-        $grossPay = self::add(self::add($baseSalary, $incentive), $manualEarnings);
+        $grossPay = self::add(self::add(self::add($baseSalary, $incentive), $manualEarnings), $additionalGross);
         $employeeContribution = array_reduce($bpjsEmployee, fn (int $sum, int $amount): int => self::add($sum, $amount), 0);
         $employerContribution = array_reduce($bpjsEmployer, fn (int $sum, int $amount): int => self::add($sum, $amount), 0);
         $totalDeductions = self::add(self::add($manualDeductions, $employeeContribution), $pph21);

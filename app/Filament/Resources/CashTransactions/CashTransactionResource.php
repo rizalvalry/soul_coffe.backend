@@ -6,6 +6,7 @@ use App\Filament\Concerns\CashFinanceOnly;
 use App\Filament\Resources\CashTransactions\Pages\CreateCashTransaction;
 use App\Filament\Resources\CashTransactions\Pages\ListCashTransactions;
 use App\Models\AuditLog;
+use App\Models\Cart;
 use App\Models\CashAccount;
 use App\Models\CashCategory;
 use App\Models\CashTransaction;
@@ -80,11 +81,22 @@ class CashTransactionResource extends Resource
                         $set('office_item_id', null);
                         $set('quantity', null);
                     }
+                    if (! CashCategory::query()->join('accounts', 'accounts.id', '=', 'cash_categories.account_id')
+                        ->where('cash_categories.id', $state)->where('cash_categories.direction', 'OUT')
+                        ->where('accounts.type', 'EXPENSE')->exists()) {
+                        $set('cart_id', null);
+                    }
                 }),
             Select::make('cash_account_id')->label('Akun kas / sumber dana')->options(fn (): array => CashAccount::query()->where('is_active', true)->orderBy('name')->pluck('name', 'id')->all())
                 ->searchable()->required(),
             TextInput::make('amount_minor')->label('Nominal (Rp)')->numeric()->rule('integer')->minValue(1)->required(),
             Textarea::make('description')->label('Keterangan')->required()->maxLength(255),
+            Select::make('cart_id')->label('Beban langsung Coffee Bike (opsional)')
+                ->options(fn (): array => Cart::query()->orderBy('code')->pluck('code', 'id')->all())
+                ->searchable()->visible(fn (Get $get): bool => CashCategory::query()
+                ->join('accounts', 'accounts.id', '=', 'cash_categories.account_id')
+                ->where('cash_categories.id', $get('cash_category_id'))
+                ->where('cash_categories.direction', 'OUT')->where('accounts.type', 'EXPENSE')->exists()),
             Select::make('office_item_id')->label('Barang kantor (opsional)')
                 ->options(fn (): array => OfficeItem::query()->where('is_active', true)->orderBy('name')->pluck('name', 'id')->all())
                 ->searchable()->live()->visible(fn (Get $get): bool => CashCategory::query()->whereKey($get('cash_category_id'))->value('direction') === 'OUT')
@@ -110,6 +122,7 @@ class CashTransactionResource extends Resource
                 ->formatStateUsing(fn (string $state): string => $state === 'IN' ? 'Masuk' : 'Keluar'),
             TextColumn::make('category.name')->label('Kategori'),
             TextColumn::make('cashAccount.name')->label('Akun kas'),
+            TextColumn::make('cart.code')->label('Coffee Bike'),
             TextColumn::make('amount_minor')->label('Nominal')
                 ->formatStateUsing(fn (int $state): string => 'Rp '.number_format($state, 0, ',', '.')),
             TextColumn::make('description')->label('Keterangan')->limit(50),

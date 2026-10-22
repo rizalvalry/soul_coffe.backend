@@ -285,6 +285,7 @@ class ManagementReportService
                 'neraca_saldo' => $this->section('Neraca saldo dari jurnal sampai '.$toDate,
                     ['Kode', 'Akun', 'Debit', 'Kredit'], $trialRows, [2, 3]),
                 'refill_waste' => $this->section('Refill expired dan waste', ['Coffee Bike', 'Refill expired', 'Cup waste'], $operationalRows),
+                ...app(AdvancedFinancialReportService::class)->sections($from, $to, $closing, $summary),
             ],
         ];
     }
