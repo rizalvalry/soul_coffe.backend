@@ -30,6 +30,7 @@ enum PanelModule: string
     case DELIVERY_INCIDENT_DECISIONS = 'delivery_incident_decisions';
     case SALE_CORRECTIONS = 'sale_corrections';
     case ALLOCATIONS = 'allocations';
+    case KITCHEN_OPERATIONS = 'kitchen_operations';
     case CLOSING_LOCATION_EVIDENCE = 'closing_location_evidence';
     case DIRECT_SALE_ACTIONS = 'direct_sale_actions';
     case PURCHASE_ORDER_ACTIONS = 'purchase_order_actions';
@@ -98,6 +99,7 @@ enum PanelModule: string
             self::DELIVERY_INCIDENT_DECISIONS => 'Keputusan Insiden',
             self::SALE_CORRECTIONS => 'Pembatalan Penjualan',
             self::ALLOCATIONS => 'Alokasi Harian',
+            self::KITCHEN_OPERATIONS => 'Operasional Dapur di HP',
             self::CLOSING_LOCATION_EVIDENCE => 'Bukti Lokasi Closing',
             self::DIRECT_SALE_ACTIONS => 'Aksi Penjualan Langsung',
             self::PURCHASE_ORDER_ACTIONS => 'Aksi Pembelian',

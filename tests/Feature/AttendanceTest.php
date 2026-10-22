@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\AttendanceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
 /**
@@ -120,10 +121,10 @@ class AttendanceTest extends TestCase
         $this->assertSame((int) $this->barista->id, (int) $second->opened_by);
     }
 
-    public function test_only_a_barista_may_open_the_gate(): void
+    public function test_an_account_without_kitchen_operations_may_not_open_the_gate(): void
     {
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Absen Rider cuma bisa dibuka oleh Produksi ya.');
+        $this->expectException(HttpException::class);
+        $this->expectExceptionCode(0);
 
         $this->service->openStaffWindow($this->staff);
     }

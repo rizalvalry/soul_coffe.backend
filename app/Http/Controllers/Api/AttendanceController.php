@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\AttendanceResource;
 use App\Models\Attendance;
 use App\Services\AbsenGeofence;
+use App\Services\Access\PermissionMatrix;
 use App\Services\AttendanceService;
+use App\Services\KitchenContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
@@ -31,8 +34,7 @@ class AttendanceController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            // Only a barista can open the day for everyone else.
-            new Middleware('role:BARISTA', only: ['open']),
+            new Middleware('permission:kitchen_operations,edit', only: ['open']),
         ];
     }
 
@@ -69,8 +71,9 @@ class AttendanceController extends Controller implements HasMiddleware
     /** Barista opens absen for every rider today. */
     public function open(Request $request): JsonResponse
     {
+        $kitchenId = KitchenContext::resolve($request, 'edit');
         try {
-            $window = $this->service->openStaffWindow($request->user());
+            $window = $this->service->openStaffWindow($request->user(), kitchenId: $kitchenId);
         } catch (RuntimeException $e) {
             abort(422, $e->getMessage());
         }
@@ -98,6 +101,7 @@ class AttendanceController extends Controller implements HasMiddleware
         $rule = app(AbsenGeofence::class)->rule($user);
 
         $isBarista = $user->role === Role::BARISTA;
+        $canOpenKitchen = PermissionMatrix::can($user, PanelModule::KITCHEN_OPERATIONS, 'edit');
         $isStaff = $user->role === Role::STAFF;
 
         return response()->json([
@@ -122,7 +126,7 @@ class AttendanceController extends Controller implements HasMiddleware
 
                 // The "Open Absen" button: barista only, after their own absen, and hidden once
                 // the gate is already open.
-                'can_open_staff_window' => $isBarista && $hasClockedIn && ! $windowOpen,
+                'can_open_staff_window' => $canOpenKitchen && ($isBarista ? $hasClockedIn : true) && ! $windowOpen,
 
                 // So the client can render the right copy for a disabled button instead of
                 // hard-coding the reason.

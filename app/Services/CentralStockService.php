@@ -113,6 +113,7 @@ class CentralStockService
         ?int $allowanceAmount = null,
         ?Carbon $operatingDate = null,
         ?int $locationId = null,
+        ?int $selectedKitchenId = null,
     ): StaffAssignment {
         $this->assertBarista($barista);
 
@@ -123,7 +124,7 @@ class CentralStockService
         $rows = $this->normalizeQuantities($qtyByProductId);
         $date = ($operatingDate ?? Carbon::today());
         $this->dayGate->assertReady($staff, $date, 'Rider belum absen hari ini. Minta Rider absen dulu ya.');
-        $kitchenId = $cart->kitchen_id ?? $barista->kitchen_id;
+        $kitchenId = $cart->kitchen_id ?? $selectedKitchenId ?? $barista->kitchen_id;
 
         if (! $kitchenId) {
             throw new RuntimeException('Coffee Bike ini belum terhubung ke dapur pusat.');
@@ -135,6 +136,7 @@ class CentralStockService
             // Cart sales and refill submissions lock this row before checking the
             // active assignment. Whichever operation gets it first completes first.
             Cart::query()->whereKey($cart->id)->lockForUpdate()->firstOrFail();
+            $this->assertCartAssignmentKitchen($cart, $date, $kitchenId);
             if (RiderClosing::query()->where('cart_id', $cart->id)
                 ->whereDate('operating_date', $date->toDateString())->exists()) {
                 throw new RuntimeException('Coffee Bike sudah Closing. Add Stock untuk hari ini tidak bisa ditambah lagi ya.');
@@ -211,6 +213,7 @@ class CentralStockService
             $givenMinor = $this->allowances->recordGiven($allowance, $staff, $barista);
 
             $this->audit($barista, 'central_stock.hand_to_cart', $assignment->id, [
+                'kitchen_id' => $kitchenId,
                 'cart_id' => $cart->id,
                 'staff_id' => $staff->id,
                 'operating_date' => $date->toDateString(),
@@ -255,13 +258,14 @@ class CentralStockService
         Cart $cart,
         array $returnedByProductId = [],
         array $rejectedByProductId = [],
+        ?int $selectedKitchenId = null,
     ): void {
         $this->assertBarista($barista);
 
         $returned = $this->normalizeQuantities($returnedByProductId, allowEmpty: true);
         $rejected = $this->normalizeQuantities($rejectedByProductId, allowEmpty: true);
 
-        $kitchenId = $cart->kitchen_id ?? $barista->kitchen_id;
+        $kitchenId = $cart->kitchen_id ?? $selectedKitchenId ?? $barista->kitchen_id;
 
         if (! $kitchenId) {
             throw new RuntimeException('Coffee Bike ini belum terhubung ke dapur pusat.');
@@ -269,6 +273,7 @@ class CentralStockService
 
         DB::transaction(function () use ($barista, $cart, $returned, $rejected, $kitchenId): void {
             Cart::query()->whereKey($cart->id)->lockForUpdate()->firstOrFail();
+            $this->assertCartAssignmentKitchen($cart, today(), $kitchenId);
             $closing = RiderClosing::query()->with('lines')->where('cart_id', $cart->id)
                 ->whereDate('operating_date', today()->toDateString())->first();
             if ($returned === [] && $rejected === [] && ! $closing) {
@@ -375,6 +380,7 @@ class CentralStockService
             }
 
             $this->audit($barista, 'central_stock.close_out', $cart->id, [
+                'kitchen_id' => $kitchenId,
                 'cart_id' => $cart->id,
                 'returned' => $returned,
                 'rejected' => $rejected,
@@ -401,6 +407,20 @@ class CentralStockService
     public function showcaseStock(CentralKitchen $kitchen): array
     {
         return $this->ledger->stockMap(StockLedgerService::KITCHEN, $kitchen->id);
+    }
+
+    private function assertCartAssignmentKitchen(Cart $cart, Carbon $date, int $kitchenId): void
+    {
+        $assignedKitchenId = StaffAssignment::query()
+            ->where('cart_id', $cart->id)
+            ->whereDate('operating_date', $date->toDateString())
+            ->where('source', 'hand_to_cart')
+            ->whereNull('superseded_at')
+            ->lockForUpdate()
+            ->value('kitchen_id');
+
+        KitchenContext::assertMatches($kitchenId, $assignedKitchenId === null ? null : (int) $assignedKitchenId);
+        KitchenContext::assertCartStockProvenance($kitchenId, $cart);
     }
 
     /**
@@ -445,6 +465,7 @@ class CentralStockService
             $old->update(['superseded_at' => now()]);
             $displacedStaffIds[] = (int) $old->user_id;
             $this->audit($barista, 'central_stock.assignment_superseded', $old->id, [
+                'kitchen_id' => $kitchenId,
                 'old_user_id' => $old->user_id,
                 'old_cart_id' => $old->cart_id,
                 'new_user_id' => $staff->id,
@@ -561,9 +582,7 @@ class CentralStockService
 
     private function assertBarista(User $user): void
     {
-        if ($user->role !== Role::BARISTA) {
-            throw new RuntimeException('Hanya Produksi yang dapat mengelola stok showcase.');
-        }
+        KitchenContext::authorize($user, 'edit');
     }
 
     /** @param array<string,mixed> $after */

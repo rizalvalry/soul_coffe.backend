@@ -36,8 +36,14 @@ class RefillRequestPolicy
             return true;
         }
 
+        if (PermissionMatrix::can($user, PanelModule::KITCHEN_OPERATIONS, 'view')
+            && (int) request()->input('kitchen_id') === $refill->kitchen_id) {
+            return true;
+        }
+
         return match ($user->role) {
-            Role::BARISTA => $user->kitchen_id === $refill->kitchen_id,
+            Role::BARISTA => PermissionMatrix::can($user, PanelModule::KITCHEN_OPERATIONS, 'view')
+                && $user->kitchen_id === $refill->kitchen_id,
             Role::STAFF => $user->id === $refill->staff_id,
             Role::RIDER => $refill->rider_id === $user->id
                 || ($refill->rider_id === null && $refill->status === RefillStatus::READY_TO_PICK),
@@ -68,12 +74,14 @@ class RefillRequestPolicy
 
     public function startPreparing(User $user, RefillRequest $refill): bool
     {
-        return $user->role === Role::BARISTA && $user->kitchen_id === $refill->kitchen_id;
+        return PermissionMatrix::can($user, PanelModule::KITCHEN_OPERATIONS, 'edit')
+            && ($user->role === Role::BARISTA ? $user->kitchen_id === $refill->kitchen_id
+                : (int) request()->input('kitchen_id') === $refill->kitchen_id);
     }
 
     public function markReady(User $user, RefillRequest $refill): bool
     {
-        return $user->role === Role::BARISTA && $user->kitchen_id === $refill->kitchen_id;
+        return $this->startPreparing($user, $refill);
     }
 
     public function claim(User $user, RefillRequest $refill): bool

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\Role;
 use App\Models\Attendance;
+use App\Models\AuditLog;
 use App\Models\StaffAttendanceWindow;
 use App\Models\User;
 use Illuminate\Support\Carbon;
@@ -112,12 +113,16 @@ class AttendanceService
      * that the coffee is ready, which is only meaningful coming from someone who has actually
      * started their own shift.
      */
-    public function openStaffWindow(User $barista, ?Carbon $operatingDate = null): StaffAttendanceWindow
+    public function openStaffWindow(User $barista, ?Carbon $operatingDate = null, ?int $kitchenId = null): StaffAttendanceWindow
     {
         $date = ($operatingDate ?? Carbon::today())->toDateString();
 
-        if ($barista->role !== Role::BARISTA) {
-            throw new RuntimeException('Absen Rider cuma bisa dibuka oleh Produksi ya.');
+        KitchenContext::authorize($barista, 'edit');
+        $kitchenId ??= $barista->kitchen_id;
+        // The HTTP endpoint already requires a bound kitchen for Produksi. Keep direct
+        // service callers with legacy unbound Produksi accounts compatible.
+        if (! $kitchenId && $barista->role !== Role::BARISTA) {
+            throw new RuntimeException('Pilih Dapur Pusat dulu ya.');
         }
 
         $hasClockedIn = Attendance::query()
@@ -125,11 +130,11 @@ class AttendanceService
             ->whereDate('operating_date', $date)
             ->exists();
 
-        if (! $hasClockedIn) {
+        if ($barista->role === Role::BARISTA && ! $hasClockedIn) {
             throw new RuntimeException('Absen dulu sebelum membuka absen rider.');
         }
 
-        $window = DB::transaction(function () use ($barista, $date): StaffAttendanceWindow {
+        $window = DB::transaction(function () use ($barista, $date, $kitchenId): StaffAttendanceWindow {
             // firstOrCreate, not create: two baristas at the same kitchen both pressing this is a
             // race with an obvious right answer — the gate is open either way, and whoever got
             // there first stays recorded as the one who opened it.
@@ -141,6 +146,11 @@ class AttendanceService
             // Published only by the barista who actually opened the gate. The loser of the race
             // gets the same window back and must not send a second round of notifications.
             if ($window->wasRecentlyCreated) {
+                AuditLog::recordAction($barista, 'staff_attendance_window.opened', $window, null, [
+                    'operating_date' => $date,
+                    'kitchen_id' => $kitchenId,
+                    'opened_by' => $barista->id,
+                ]);
                 $this->events->publish(
                     'StaffAttendanceWindowOpened',
                     'Absen rider dibuka',

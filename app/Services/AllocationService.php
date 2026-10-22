@@ -43,13 +43,14 @@ class AllocationService
      *
      * @return array<int, array<string, mixed>>
      */
-    public function staffOnShift(string $date): array
+    public function staffOnShift(string $date, ?int $kitchenId = null): array
     {
         $assignments = StaffAssignment::query()
             ->with(['user', 'cart', 'location'])
             ->whereDate('operating_date', $date)
             ->where('source', 'hand_to_cart')
             ->whereNull('superseded_at')
+            ->when($kitchenId, fn ($query) => $query->where('kitchen_id', $kitchenId))
             ->get();
 
         if ($assignments->isEmpty()) {
@@ -101,11 +102,11 @@ class AllocationService
      *
      * @param  array{operating_date:string, cart_id:int, staff_id:int, location_id:int, lines:array<int,array{product_id:int,qty_issued:int}>, correction_reason?:?string}  $input
      */
-    public function create(array $input, User $actor): DailyAllocation
+    public function create(array $input, User $actor, ?int $selectedKitchenId = null): DailyAllocation
     {
         $cart = Cart::query()->findOrFail($input['cart_id']);
         $location = Location::query()->findOrFail($input['location_id']);
-        $kitchenId = $cart->kitchen_id;
+        $kitchenId = $cart->kitchen_id ?? $selectedKitchenId;
         $operatingDate = $input['operating_date'];
         $staff = User::query()->findOrFail($input['staff_id']);
         if ($staff->role !== Role::STAFF) {
@@ -116,17 +117,6 @@ class AllocationService
 
         // E20: one allocation per cart per operating day. A second requires a correction
         // reason and is recorded — never silently overwritten or blocked outright.
-        $alreadyAllocatedToday = DailyAllocation::query()
-            ->where('cart_id', $cart->id)
-            ->whereDate('operating_date', $operatingDate)
-            ->exists();
-
-        if ($alreadyAllocatedToday && blank($correctionReason)) {
-            abort(409, 'Sudah ada alokasi untuk Coffee Bike ini hari ini. Isi alasan koreksi untuk mencatat alokasi baru.');
-        }
-
-        $isCorrection = $alreadyAllocatedToday;
-
         $weekday = Carbon::parse($operatingDate)->dayOfWeek;
         $targets = DailyTarget::query()
             ->where('cart_id', $cart->id)
@@ -169,22 +159,31 @@ class AllocationService
         $status = $overTargetPct > $tolerance ? AllocationStatus::PENDING_FINANCE : AllocationStatus::ISSUED;
 
         return DB::transaction(function () use (
-            $cart, $location, $kitchenId, $operatingDate, $input, $actor, $isCorrection,
+            $cart, $location, $kitchenId, $operatingDate, $input, $actor,
             $correctionReason, $lineRows, $overTargetPct, $status, $products,
         ): DailyAllocation {
             // Hand-to-cart takes the same cart row lock before changing assignments.
             // Recheck here because validation ran before this transaction began.
             Cart::query()->whereKey($cart->id)->lockForUpdate()->firstOrFail();
-            $stillAssigned = StaffAssignment::query()
+            $isCorrection = DailyAllocation::query()
+                ->where('cart_id', $cart->id)
+                ->whereDate('operating_date', $operatingDate)
+                ->exists();
+            if ($isCorrection && blank($correctionReason)) {
+                abort(409, 'Sudah ada alokasi untuk Coffee Bike ini hari ini. Isi alasan koreksi untuk mencatat alokasi baru.');
+            }
+            $assignment = StaffAssignment::query()
                 ->where('cart_id', $cart->id)
                 ->where('user_id', $input['staff_id'])
                 ->whereDate('operating_date', $operatingDate)
                 ->where('source', 'hand_to_cart')
                 ->whereNull('superseded_at')
-                ->exists();
-            if (! $stillAssigned) {
+                ->lockForUpdate()
+                ->first();
+            if (! $assignment) {
                 abort(409, 'Rider untuk Coffee Bike ini sudah berubah. Coba cek lagi ya.');
             }
+            KitchenContext::assertMatches($kitchenId, $assignment->kitchen_id);
 
             $allocation = DailyAllocation::query()->create([
                 'operating_date' => $operatingDate,
