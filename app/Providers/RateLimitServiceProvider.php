@@ -37,6 +37,21 @@ class RateLimitServiceProvider extends ServiceProvider
 {
     public function boot(): void
     {
+        // A Cloudflare edge IP can represent many phones. Keep a generous IP ceiling and
+        // enforce the tighter limit per verified Google identity plus that source.
+        RateLimiter::for('customer-google-ip', fn (Request $request) => [
+            Limit::perMinute(120)->by('customer-google-ip:'.$request->ip()),
+        ]);
+        RateLimiter::for('customer-google', fn (Request $request) => [
+            Limit::perMinute(10)->by('customer-google:'.$request->ip().':'
+                .hash('sha256', (string) ($request->attributes->get('customer_google_identity')['sub']
+                    ?? $request->input('id_token', '')))),
+        ]);
+        RateLimiter::for('customer-nearby', fn (Request $request) => [
+            Limit::perMinute(600)->by('customer-nearby-ip:'.$request->ip()),
+            Limit::perMinute(30)->by('customer-nearby-account:'.$request->ip().':'.$request->user()?->id),
+        ]);
+
         RateLimiter::for('auth-login', fn (Request $request) => [
             Limit::perMinute(10)->by('auth-login:'.$this->accountKey($request)),
         ]);
