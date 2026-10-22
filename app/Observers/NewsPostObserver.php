@@ -67,11 +67,15 @@ class NewsPostObserver
     {
         $audience = $this->audienceRoles($post);
 
+        $roleAudience = array_values(array_filter($audience,
+            fn (Role $role): bool => $role !== Role::MANAGEMENT));
+        $managementIds = in_array(Role::MANAGEMENT, $audience, true) ? User::managementIds() : [];
         $recipients = User::query()
             ->where('is_active', true)
-            ->whereIn('role', array_map(fn (Role $role) => $role->value, $audience))
+            ->whereIn('role', array_map(fn (Role $role) => $role->value, $roleAudience))
             ->pluck('id')
             ->all();
+        $recipients = array_values(array_unique(array_merge($recipients, $managementIds)));
 
         if ($recipients === []) {
             return;
@@ -81,7 +85,10 @@ class NewsPostObserver
             'NewsPostPublished',
             $post->kicker ? sprintf('%s · %s', $post->kicker, 'Kabar baru') : 'Kabar baru',
             $post->title,
-            array_map(fn (Role $role) => 'role.'.$role->value, $audience),
+            array_merge(
+                array_map(fn (Role $role) => 'role.'.$role->value, $roleAudience),
+                array_map(fn (int $id): string => 'user.'.$id, $managementIds),
+            ),
             $recipients,
         );
     }

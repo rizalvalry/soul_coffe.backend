@@ -29,7 +29,7 @@ class NewsController extends Controller
         $user = $request->user();
 
         $posts = NewsPost::query()
-            ->visibleTo($user->role)
+            ->visibleTo($user)
             ->when(
                 $request->boolean('highlighted'),
                 fn ($q) => $q->where('is_highlighted', true),
@@ -56,7 +56,7 @@ class NewsController extends Controller
 
         // Re-checked rather than trusted: a direct id must obey exactly the same visibility rule
         // the list does, or the audience targeting is decoration.
-        $visible = NewsPost::query()->visibleTo($user->role)->whereKey($news->id)->exists();
+        $visible = NewsPost::query()->visibleTo($user)->whereKey($news->id)->exists();
         abort_unless($visible, 404);
 
         $news->load([
@@ -75,7 +75,7 @@ class NewsController extends Controller
     {
         $user = $request->user();
 
-        $visible = NewsPost::query()->visibleTo($user->role)->whereKey($news->id)->exists();
+        $visible = NewsPost::query()->visibleTo($user)->whereKey($news->id)->exists();
         abort_unless($visible, 404);
 
         $engagement = NewsPostEngagement::query()->firstOrNew([
@@ -103,7 +103,7 @@ class NewsController extends Controller
             'reaction' => ['required', 'string', 'in:'.implode(',', NewsPost::REACTIONS)],
         ]);
 
-        $visible = NewsPost::query()->visibleTo($user->role)->whereKey($news->id)->exists();
+        $visible = NewsPost::query()->visibleTo($user)->whereKey($news->id)->exists();
         abort_unless($visible, 404);
 
         $engagement = NewsPostEngagement::query()->firstOrNew([

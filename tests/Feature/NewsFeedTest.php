@@ -3,8 +3,10 @@
 namespace Tests\Feature;
 
 use App\Enums\Role;
+use App\Models\AppNotification;
 use App\Models\NewsPost;
 use App\Models\NewsPostEngagement;
+use App\Models\OutboxEvent;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -111,6 +113,40 @@ class NewsFeedTest extends TestCase
 
         $this->actingAs($this->staff)->getJson('/api/v1/news')->assertJsonCount(1, 'data');
         $this->actingAs($this->barista)->getJson('/api/v1/news')->assertJsonCount(1, 'data');
+    }
+
+    public function test_management_audience_follows_status_for_notifications_and_every_news_read_path(): void
+    {
+        $manager = User::factory()->role(Role::FINANCE)->create(['is_management' => true]);
+        $plain = User::factory()->role(Role::FINANCE)->create();
+        $super = User::factory()->role(Role::ADMINISTRATOR)->create(['is_super_admin' => true]);
+        $legacy = User::factory()->role(Role::MANAGEMENT)->create();
+        $post = $this->makePost(['audience_roles' => [Role::MANAGEMENT->value]]);
+        $event = OutboxEvent::query()->where('name', 'NewsPostPublished')->sole();
+
+        $this->assertEqualsCanonicalizing([$manager->id, $super->id],
+            AppNotification::query()->where('event_id', $event->event_id)->pluck('user_id')->all());
+        $this->assertContains('user.'.$manager->id, $event->payload_json['channels']);
+        $this->assertNotContains('role.MANAGEMENT', $event->payload_json['channels']);
+        $this->assertNotContains('role.ADMINISTRATOR', $event->payload_json['channels']);
+
+        $this->actingAs($manager)->getJson('/api/v1/news')->assertJsonPath('data.0.id', $post->id);
+        $this->actingAs($manager)->getJson("/api/v1/news/{$post->id}")->assertOk();
+        $this->actingAs($manager)->postJson("/api/v1/news/{$post->id}/read")->assertOk();
+        $this->actingAs($manager)->postJson("/api/v1/news/{$post->id}/react", ['reaction' => 'api'])->assertOk();
+        $this->actingAs($plain)->getJson('/api/v1/news')->assertJsonCount(0, 'data');
+        $this->actingAs($plain)->getJson("/api/v1/news/{$post->id}")->assertNotFound();
+        $this->actingAs($legacy)->getJson('/api/v1/news')->assertJsonCount(0, 'data');
+        $this->actingAs($super)->getJson('/api/v1/news')->assertJsonPath('data.0.id', $post->id);
+    }
+
+    public function test_finance_and_management_news_audiences_create_one_notification_for_a_dual_member(): void
+    {
+        $dual = User::factory()->role(Role::FINANCE)->create(['is_management' => true]);
+        $this->makePost(['audience_roles' => [Role::FINANCE->value, Role::MANAGEMENT->value]]);
+
+        $this->assertSame(1, AppNotification::query()->where('user_id', $dual->id)
+            ->where('type', 'NewsPostPublished')->count());
     }
 
     public function test_highlighted_posts_come_first_then_sort_order(): void

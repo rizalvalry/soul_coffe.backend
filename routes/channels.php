@@ -36,6 +36,10 @@ Broadcast::channel('user.{userId}', function ($user, string $userId): bool {
 });
 
 Broadcast::channel('role.{role}', function ($user, string $role) use ($roleOf): bool {
+    if (strtoupper($role) === 'MANAGEMENT') {
+        return $user->isManagement();
+    }
+
     return (bool) $user->is_active && $roleOf($user) === strtoupper($role);
 });
 

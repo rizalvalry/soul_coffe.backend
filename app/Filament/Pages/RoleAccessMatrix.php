@@ -89,7 +89,7 @@ class RoleAccessMatrix extends Page
     /** @return array<int, Role> every role the matrix can actually govern. */
     public function editableRoles(): array
     {
-        return Role::cases();
+        return array_values(array_filter(Role::cases(), fn (Role $role): bool => $role !== Role::MANAGEMENT));
     }
 
     /** @return array<int, PanelModule> */
@@ -129,6 +129,7 @@ class RoleAccessMatrix extends Page
     {
         abort_unless($this->canSave(), 403);
         $role = Role::from($this->role);
+        abort_if($role === Role::MANAGEMENT, 422);
 
         DB::transaction(function () use ($role): void {
             User::query()->where('role', Role::ADMINISTRATOR->value)
@@ -171,6 +172,7 @@ class RoleAccessMatrix extends Page
         PermissionMatrix::forget();
 
         $role = Role::from($this->role);
+        abort_if($role === Role::MANAGEMENT, 422);
         $grants = [];
 
         foreach ($this->modules() as $module) {

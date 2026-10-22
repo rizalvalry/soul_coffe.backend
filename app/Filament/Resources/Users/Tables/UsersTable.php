@@ -42,7 +42,8 @@ class UsersTable
                 TextColumn::make('role')
                     ->label('Role')
                     ->badge()
-                    ->formatStateUsing(fn (Role $state, User $record): string => $record->is_super_admin ? 'Super Administrator' : $state->label())
+                    ->formatStateUsing(fn (Role $state, User $record): string => ($record->is_super_admin ? 'Super Administrator' : $state->label())
+                        .($record->isManagement() ? ' · Management' : ''))
                     ->sortable(),
                 TextColumn::make('kitchen.name')
                     ->label('Dapur')
@@ -70,9 +71,20 @@ class UsersTable
             ->filters([
                 SelectFilter::make('role')
                     ->label('Role')
-                    ->options(collect(Role::cases())->mapWithKeys(
+                    ->options(collect(Role::cases())->reject(fn (Role $role): bool => $role === Role::MANAGEMENT)->mapWithKeys(
                         fn (Role $role) => [$role->value => $role->label()]
                     )),
+                TernaryFilter::make('is_management')
+                    ->label('Status Management')
+                    ->placeholder('Semua')
+                    ->trueLabel('Management saja')
+                    ->falseLabel('Bukan Management')
+                    ->queries(
+                        true: fn ($query) => $query->where('is_active', true)
+                            ->where(fn ($q) => $q->where('is_management', true)->orWhere('is_super_admin', true)),
+                        false: fn ($query) => $query->where(fn ($q) => $q->where('is_active', false)
+                            ->orWhere(fn ($inner) => $inner->where('is_management', false)->where('is_super_admin', false))),
+                    ),
                 TernaryFilter::make('is_active')
                     ->label('Status akun')
                     ->placeholder('Semua')

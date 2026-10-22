@@ -186,11 +186,11 @@ class AttendanceService
     /** Who is told that somebody clocked in: the roles that supervise the day. @return array<int,int> */
     private function supervisorIds(): array
     {
-        return User::query()
-            ->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT])
+        return array_values(array_unique(array_merge(User::query()
+            ->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE])
             ->where('is_active', true)
             ->pluck('id')
-            ->all();
+            ->all(), User::managementIds())));
     }
 
     /** Every active staff member waiting on the gate. @return array<int,int> */

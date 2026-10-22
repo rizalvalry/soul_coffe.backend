@@ -90,6 +90,8 @@ class RosterImportService
                 $reason = 'kolom wajib kosong atau role tidak dikenal';
             } elseif ($role === Role::ADMINISTRATOR) {
                 $reason = 'role Administrator tidak dapat dibuat dari CSV';
+            } elseif ($role === Role::MANAGEMENT) {
+                $reason = 'Management adalah status akun, bukan role CSV';
             } elseif (mb_strlen($name) > 255 || mb_strlen($division) > 255 || mb_strlen($position) > 255) {
                 $reason = 'nilai melebihi batas kolom';
             } elseif ($cartCode !== '' && $role !== Role::STAFF) {

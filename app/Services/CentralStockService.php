@@ -485,7 +485,9 @@ class CentralStockService
         ]);
 
         if ($setupMissing) {
-            $recipientIds = PermissionMatrix::usersWith(PanelModule::RIDER_LOCATION_SETUP, 'edit');
+            $recipientIds = array_values(array_unique(array_merge(
+                PermissionMatrix::usersWith(PanelModule::RIDER_LOCATION_SETUP, 'edit'), User::managementIds(),
+            )));
             $this->events->publish(
                 'RiderLocationSetupMissing',
                 'Rider belum punya setup',
@@ -557,14 +559,14 @@ class CentralStockService
      */
     private function kitchenWatcherIds(int $kitchenId): array
     {
-        return User::query()
+        return array_values(array_unique(array_merge(User::query()
             ->where('is_active', true)
             ->where(function ($query) use ($kitchenId): void {
-                $query->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE, Role::MANAGEMENT])
+                $query->whereIn('role', [Role::ADMINISTRATOR, Role::FINANCE])
                     ->orWhere(fn ($q) => $q->where('role', Role::BARISTA)->where('kitchen_id', $kitchenId));
             })
             ->pluck('id')
-            ->all();
+            ->all(), User::managementIds())));
     }
 
     /** Today's staff on this cart, if any. @return array<int,int> */

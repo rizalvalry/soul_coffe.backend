@@ -54,7 +54,7 @@ class UserForm
 
                 Select::make('role')
                     ->label('Role')
-                    ->options(collect(Role::cases())->mapWithKeys(
+                    ->options(collect(Role::cases())->reject(fn (Role $role): bool => $role === Role::MANAGEMENT)->mapWithKeys(
                         fn (Role $role) => [$role->value => $role->label()]
                     ))
                     ->required()
@@ -141,6 +141,15 @@ class UserForm
                     ->visible(fn (Get $get): bool => Auth::user()?->is_super_admin
                         && $get('role') === Role::ADMINISTRATOR->value)
                     ->dehydrated(fn (): bool => Auth::user()?->is_super_admin === true),
+
+                Toggle::make('is_management')
+                    ->label('Status Management')
+                    ->default(false)
+                    ->helperText('Label pimpinan dan penerima notifikasi. Hak akses diatur terpisah ya.')
+                    ->visible(fn (Get $get, ?User $record): bool => Auth::user()?->is_super_admin === true
+                        && ! ($record?->is_super_admin ?? false) && ! (bool) $get('is_super_admin'))
+                    ->dehydrated(fn (Get $get, ?User $record): bool => Auth::user()?->is_super_admin === true
+                        && ! ($record?->is_super_admin ?? false) && ! (bool) $get('is_super_admin')),
 
                 self::accessSection(),
 
@@ -255,7 +264,7 @@ class UserForm
             ->groupBy(fn (PanelModule $module): string => $module->group());
 
         return Section::make('Hak akses akun ini')
-            ->description('Pilih hak khusus akun ini. Templat role tetap jadi nilai awal.')
+            ->description('Pilih hak khusus akun ini. Templat role tetap jadi nilai awal. Rujuk keputusan Management saat mengisi alasan.')
             ->collapsed()
             ->columnSpanFull()
             ->visible(fn (?User $record): bool => PermissionMatrix::canManagePermissions(Auth::user())
@@ -294,6 +303,7 @@ class UserForm
                         });
                     $fields[] = TextInput::make('access_reasons.'.$module->value)
                         ->label('Alasan '.$module->label())
+                        ->helperText('Rujuk keputusan Management, mis. keputusan rapat dan tanggalnya.')
                         ->maxLength(255)
                         ->visible(fn (Get $get): bool => $get('access_grants.'.$module->value) !== 'template');
                 }

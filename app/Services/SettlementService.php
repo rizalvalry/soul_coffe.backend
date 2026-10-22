@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Enums\MovementType;
 use App\Enums\PanelModule;
-use App\Enums\Role;
 use App\Models\Account;
 use App\Models\AccountingPeriod;
 use App\Models\AuditLog;
@@ -688,8 +687,7 @@ class SettlementService
                 ['status' => 'RECONCILED', 'reconciled_by' => $finance->id,
                     'self_approved' => $locked->self_approved]);
             if ($locked->self_approved) {
-                $recipientIds = User::query()->where('role', Role::MANAGEMENT)->where('is_active', true)
-                    ->orderBy('id')->pluck('id')->all();
+                $recipientIds = User::managementIds();
                 $this->events->publish(
                     type: 'SettlementSelfApproved', title: 'Setoran disetujui pencatatnya',
                     body: sprintf('Setoran Coffee Bike %s disetujui oleh pencatatnya sendiri. Cek auditnya ya.', $cart->code),

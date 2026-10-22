@@ -62,6 +62,7 @@ class UserResource extends JsonResource
             'role' => $user->role->value,
             'role_label' => $user->is_super_admin ? 'Super Administrator' : $user->role->label(),
             'is_super_admin' => (bool) $user->is_super_admin,
+            'is_management' => $user->isManagement(),
             'abilities' => PermissionMatrix::allFor($user),
             'cart_code' => $cartCode,
             'cart_id' => $cartId,

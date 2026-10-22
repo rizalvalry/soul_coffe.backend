@@ -74,29 +74,32 @@ class EmployeePrivacyTest extends TestCase
         $this->assertArrayNotHasKey('bank_account_number', $user->fresh()->toArray());
     }
 
-    public function test_administrator_can_provision_and_modify_management_users(): void
+    public function test_super_administrator_can_provision_and_modify_management_status(): void
     {
-        $admin = User::factory()->role(Role::ADMINISTRATOR)->create();
+        $admin = User::factory()->role(Role::ADMINISTRATOR)->create(['is_super_admin' => true]);
         $ordinary = User::factory()->role(Role::STAFF)->create();
-        $management = User::factory()->role(Role::MANAGEMENT)->create();
+        $management = User::factory()->role(Role::FINANCE)->create(['is_management' => true]);
         $this->actingAs($admin);
 
         Livewire::test(CreateUser::class)
             ->fillForm([
                 'name' => 'Management Uji Baru',
                 'phone_e164' => '081298760099',
-                'role' => Role::MANAGEMENT->value,
+                'role' => Role::FINANCE->value,
+                'is_management' => true,
                 'password' => 'rahasia123',
             ])
             ->call('create')
             ->assertHasNoFormErrors();
-        $this->assertDatabaseHas('users', ['phone_e164' => '081298760099', 'role' => Role::MANAGEMENT->value]);
+        $this->assertDatabaseHas('users', ['phone_e164' => '081298760099',
+            'role' => Role::FINANCE->value, 'is_management' => true]);
 
         Livewire::test(EditUser::class, ['record' => $ordinary->id])
-            ->fillForm(['role' => Role::MANAGEMENT->value])
+            ->fillForm(['is_management' => true])
             ->call('save')
             ->assertHasNoFormErrors();
-        $this->assertSame(Role::MANAGEMENT, $ordinary->fresh()->role);
+        $this->assertSame(Role::STAFF, $ordinary->fresh()->role);
+        $this->assertTrue($ordinary->fresh()->isManagement());
 
         $this->get(EditUser::getUrl(['record' => $management]))->assertSuccessful();
         Livewire::test(EditUser::class, ['record' => $management->id])->assertSuccessful();
@@ -105,11 +108,13 @@ class EmployeePrivacyTest extends TestCase
         $this->assertFalse(UserResource::canDeleteAny());
     }
 
-    public function test_management_can_create_and_edit_users_with_its_users_grant(): void
+    public function test_management_status_with_a_users_grant_can_create_and_edit_users(): void
     {
-        PermissionMatrix::set(Role::MANAGEMENT, PanelModule::USERS, ['view', 'create', 'edit']);
-        $actor = User::factory()->role(Role::MANAGEMENT)->create();
-        $created = User::factory()->role(Role::MANAGEMENT)->create();
+        $super = User::factory()->role(Role::ADMINISTRATOR)->create(['is_super_admin' => true]);
+        $actor = User::factory()->role(Role::BARISTA)->create(['is_management' => true]);
+        PermissionMatrix::setForUser($super, $actor, PanelModule::USERS, ['view', 'create', 'edit'],
+            'Keputusan rapat Management 22 Okt');
+        $created = User::factory()->role(Role::STAFF)->create();
         $this->actingAs($actor);
 
         $this->assertTrue(UserResource::canCreate());

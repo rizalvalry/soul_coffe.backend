@@ -1003,8 +1003,9 @@ class SettlementTest extends TestCase
     {
         $this->issue(10);
         $this->sell(1);
-        $management = User::factory()->role(Role::MANAGEMENT)->create();
+        $management = User::factory()->role(Role::FINANCE)->create(['is_management' => true]);
         $administrator = User::factory()->role(Role::ADMINISTRATOR)->create();
+        $super = User::factory()->role(Role::ADMINISTRATOR)->create(['is_super_admin' => true]);
         $id = $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson('/api/v1/settlements', [
                 'cart_id' => $this->cart->id, 'cash' => 20000, 'qris' => 0, 'transfer' => 0,
@@ -1017,6 +1018,10 @@ class SettlementTest extends TestCase
         $this->assertContains("user.{$management->id}", $event->payload_json['channels']);
         $this->assertSame(1, AppNotification::query()->where('event_id', $event->event_id)
             ->where('user_id', $management->id)->count());
+        $this->assertSame(1, AppNotification::query()->where('event_id', $event->event_id)
+            ->where('user_id', $super->id)->count());
+        $this->assertSame(0, AppNotification::query()->where('event_id', $event->event_id)
+            ->where('user_id', $this->finance->id)->count());
         $this->assertSame(0, AppNotification::query()->where('event_id', $event->event_id)
             ->where('user_id', $administrator->id)->count());
     }
