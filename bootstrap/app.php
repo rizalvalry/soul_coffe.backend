@@ -1,10 +1,12 @@
 <?php
 
+use App\Http\Middleware\CustomerRevocationReplay;
 use App\Http\Middleware\EnsureActiveUser;
 use App\Http\Middleware\EnsurePermission;
 use App\Http\Middleware\EnsureRole;
 use App\Http\Middleware\Idempotency;
 use App\Http\Middleware\RecoverOutboxAfterResponse;
+use App\Http\Middleware\RejectCustomerFromStaffApi;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -25,6 +27,8 @@ return Application::configure(basePath: dirname(__DIR__))
         ['prefix' => 'api/v1', 'middleware' => ['auth:sanctum', EnsureActiveUser::class, RecoverOutboxAfterResponse::class]],
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->prependToGroup('api', CustomerRevocationReplay::class);
+        $middleware->prependToGroup('api', RejectCustomerFromStaffApi::class);
         // This app has no web login route. Authenticate::unauthenticated() calls redirectTo()
         // to build the guest-redirect target whenever the request does not itself look like it
         // expects JSON (i.e. no Accept: application/json) - before the exception handler's

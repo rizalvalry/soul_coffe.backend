@@ -15,6 +15,7 @@ enum PanelModule: string
 {
     case DASHBOARD = 'dashboard';
     case USERS = 'users';
+    case CUSTOMERS = 'customers';
     case PRODUCTS = 'products';
     case CARTS = 'carts';
     case LOCATIONS = 'locations';
@@ -82,6 +83,7 @@ enum PanelModule: string
         return match ($this) {
             self::DASHBOARD => 'Dashboard',
             self::USERS => 'Pengguna & Role',
+            self::CUSTOMERS => 'Pelanggan',
             self::PRODUCTS => 'Produk',
             self::CARTS => 'Coffee Bike',
             self::LOCATIONS => 'Lokasi',
@@ -172,7 +174,7 @@ enum PanelModule: string
     public function group(): string
     {
         return match ($this) {
-            self::USERS, self::EMPLOYEES, self::ROLE_MATRIX, self::AUDIT_LOGS,
+            self::USERS, self::CUSTOMERS, self::EMPLOYEES, self::ROLE_MATRIX, self::AUDIT_LOGS,
             self::PIN_RESET_REQUESTS, self::AI_SETTINGS, self::MENU_NAMING,
             self::NEWS_FEED => 'Pengguna & Pengaturan',
             self::REPORTS, self::MANAGEMENT_REPORTS, self::PAYROLL,

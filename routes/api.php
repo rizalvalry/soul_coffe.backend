@@ -6,6 +6,8 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BadgeController;
 use App\Http\Controllers\Api\CartController;
 use App\Http\Controllers\Api\ClearingReceiptController;
+use App\Http\Controllers\Api\CustomerAuthController;
+use App\Http\Controllers\Api\CustomerNearbyController;
 use App\Http\Controllers\Api\DeliveryIncidentController;
 use App\Http\Controllers\Api\DeviceController;
 use App\Http\Controllers\Api\LocationController;
@@ -26,9 +28,26 @@ use App\Http\Controllers\Api\RiderLocationSetupController;
 use App\Http\Controllers\Api\SaleController;
 use App\Http\Controllers\Api\SettlementController;
 use App\Http\Controllers\Api\ShowcaseStockController;
+use App\Http\Middleware\CustomerGoogleIdempotency;
 use App\Http\Middleware\EnsureActiveUser;
+use App\Http\Middleware\EnsureCustomer;
 use App\Http\Middleware\RecoverOutboxAfterResponse;
+use App\Http\Middleware\VerifyCustomerGoogleBeforeReplay;
 use Illuminate\Support\Facades\Route;
+
+Route::post('customer/auth/google', [CustomerAuthController::class, 'google'])
+    ->middleware(['throttle:customer-google-ip', VerifyCustomerGoogleBeforeReplay::class,
+        'throttle:customer-google', CustomerGoogleIdempotency::class]);
+
+Route::middleware(['auth:sanctum', EnsureCustomer::class])->prefix('customer')->group(function (): void {
+    Route::get('me', [CustomerAuthController::class, 'me']);
+    Route::post('auth/logout', [CustomerAuthController::class, 'logout']);
+    Route::post('privacy/accept', [CustomerAuthController::class, 'acceptPrivacy'])
+        ->middleware('idempotent:require');
+    Route::delete('me', [CustomerAuthController::class, 'delete']);
+    Route::post('nearby-carts', [CustomerNearbyController::class, 'index'])
+        ->middleware('throttle:customer-nearby');
+});
 
 /*
  * Soul Coffeemate API v1 — see docs/04-api-contract.md.
