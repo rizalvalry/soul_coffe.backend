@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\MovementType;
+use App\Models\AuditLog;
 use App\Models\Product;
 use App\Models\StockLedger;
 use Illuminate\Support\Carbon;
@@ -162,6 +163,22 @@ class StockLedgerService
                 'initialized' => true,
             ]);
             app(InventoryJournalService::class)->postMovement($movement);
+            if ($onHand + $delta < 0) {
+                // Keep the physical event even when earlier stock was not recorded. Finance
+                // can investigate the audit row; the daily reconciliation reports I-3.
+                AuditLog::recordAction($movement->actor, 'stock_ledger.negative_balance', $movement,
+                    ['balance_qty' => $onHand], [
+                        'balance_qty' => $onHand + $delta,
+                        'location_type' => $locationType,
+                        'location_id' => $locationId,
+                        'product_id' => $productId,
+                        'raw_material_id' => $rawMaterialId,
+                        'movement_type' => $movementType->value,
+                        'qty_delta' => $delta,
+                        'ref_type' => $refType,
+                        'ref_id' => $refId,
+                    ]);
+            }
 
             return $movement;
         });
@@ -200,14 +217,17 @@ class StockLedgerService
         ?int $refId = null,
         ?string $note = null,
     ): void {
+        // Both legs represent one event, including a transfer posted across midnight.
+        $occurredAt = now();
         DB::transaction(function () use (
             $fromType, $fromId, $toType, $toId, $productId,
-            $outType, $inType, $qty, $actorId, $kitchenId, $refType, $refId, $note
+            $outType, $inType, $qty, $actorId, $kitchenId, $refType, $refId, $note, $occurredAt
         ): void {
-            $out = $this->post($fromType, $fromId, $productId, $outType, $qty, $actorId, $kitchenId, $refType, $refId, note: $note);
+            $out = $this->post($fromType, $fromId, $productId, $outType, $qty, $actorId, $kitchenId, $refType, $refId,
+                note: $note, occurredAt: $occurredAt);
             $this->post($toType, $toId, $productId, $inType, $qty, $actorId, $kitchenId,
                 $refType, $refId, costMinor: $out->cost_minor, costPending: $out->cost_pending,
-                costPendingQty: $out->cost_pending_qty, note: $note);
+                costPendingQty: $out->cost_pending_qty, note: $note, occurredAt: $occurredAt);
         });
     }
 

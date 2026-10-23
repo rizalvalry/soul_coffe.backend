@@ -13,6 +13,7 @@ use App\Services\CentralStockService;
 use App\Services\Reporting\StockOverviewService;
 use App\Services\StockAdjustmentService;
 use App\Services\StockLedgerService;
+use App\Services\StockReconciliationService;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
@@ -22,6 +23,7 @@ use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Support\Icons\Heroicon;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
 use RuntimeException;
 use UnitEnum;
@@ -80,10 +82,29 @@ class CentralStock extends Page
         return app(CentralStockService::class)->handoverHistory();
     }
 
+    /** @return array<string, mixed>|null */
+    public function reconciliation(): ?array
+    {
+        return app(StockReconciliationService::class)->latestResult();
+    }
+
     /** @return array<int, Action> */
     protected function getHeaderActions(): array
     {
         return [
+            Action::make('reconcileStock')
+                ->label('Cek sekarang')
+                ->icon('heroicon-o-shield-check')
+                ->visible(fn (): bool => PermissionMatrix::can(Auth::user(), PanelModule::CENTRAL_STOCK, 'edit'))
+                ->authorize(fn (): bool => PermissionMatrix::can(Auth::user(), PanelModule::CENTRAL_STOCK, 'edit'))
+                ->action(function (): void {
+                    Artisan::call('soul:stock-reconcile');
+                    $latest = $this->reconciliation();
+                    Notification::make()
+                        ->title(($latest['status'] ?? null) === 'BALANCED' ? 'Stok seimbang ya.' : 'Ada selisih stok yang perlu dicek.')
+                        ->color(($latest['status'] ?? null) === 'BALANCED' ? 'success' : 'danger')
+                        ->send();
+                }),
             Action::make('stockAdjustment')
                 ->label('Penyesuaian Stok')
                 ->icon('heroicon-o-pencil-square')

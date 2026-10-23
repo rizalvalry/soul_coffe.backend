@@ -62,6 +62,11 @@ class AuditLog extends Model
         ]);
     }
 
+    public static function labelForAction(string $action): string
+    {
+        return $action === 'stock_ledger.negative_balance' ? 'Stok minus tercatat' : $action;
+    }
+
     public function actor(): BelongsTo
     {
         return $this->belongsTo(User::class, 'actor_id');

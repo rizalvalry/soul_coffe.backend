@@ -7,9 +7,12 @@ use App\Enums\Role;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\Product;
+use App\Models\RawMaterial;
+use App\Models\StockLedger;
 use App\Models\User;
 use App\Services\Reporting\StockOverviewService;
 use App\Services\StockLedgerService;
+use App\Services\StockReconciliationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -25,10 +28,15 @@ class StockOverviewServiceTest extends TestCase
     use RefreshDatabase;
 
     private StockOverviewService $service;
+
     private StockLedgerService $ledger;
+
     private CentralKitchen $kitchen;
+
     private Product $coffee;
+
     private Product $tea;
+
     private User $actor;
 
     protected function setUp(): void
@@ -181,6 +189,24 @@ class StockOverviewServiceTest extends TestCase
         $this->assertSame(['0001'], $codes);
     }
 
+    public function test_inactive_product_is_hidden_but_retired_cart_and_ledger_history_remain(): void
+    {
+        $cart = $this->cart('0099');
+        $this->brew($this->coffee->id, 10);
+        $this->toCart($cart, $this->coffee->id, 3);
+        $cart->update(['status' => 'retired']);
+        $this->coffee->update(['is_active' => false]);
+
+        $snapshot = $this->service->snapshot();
+        $this->assertArrayNotHasKey($this->coffee->id, $snapshot['grand_totals']);
+        $this->assertNotNull($snapshot['carts']->firstWhere('cart.id', $cart->id));
+        $this->assertNotContains($this->coffee->id, $snapshot['products']->pluck('id')->all());
+        $this->assertSame(10, (int) StockLedger::query()->where('product_id', $this->coffee->id)->sum('qty_delta'));
+        $displayFindings = collect(app(StockReconciliationService::class)->findings())
+            ->where('code', 'DISPLAY_MISMATCH')->where('itemId', $this->coffee->id);
+        $this->assertCount(0, $displayFindings);
+    }
+
     public function test_inactive_products_are_not_columns(): void
     {
         Product::create([
@@ -208,9 +234,9 @@ class StockOverviewServiceTest extends TestCase
 
     // ── Bahan baku ───────────────────────────────────────────────────────
 
-    private function rawMaterial(string $code, string $name, string $unit = 'g', ?int $reorderPoint = null): \App\Models\RawMaterial
+    private function rawMaterial(string $code, string $name, string $unit = 'g', ?int $reorderPoint = null): RawMaterial
     {
-        return \App\Models\RawMaterial::create([
+        return RawMaterial::create([
             'code' => $code, 'name' => $name, 'unit' => $unit,
             'reorder_point' => $reorderPoint, 'is_active' => true, 'sort_order' => 1,
         ]);
@@ -295,7 +321,7 @@ class StockOverviewServiceTest extends TestCase
     public function test_inactive_raw_materials_are_not_columns(): void
     {
         $this->rawMaterial('SUSU', 'Susu', 'ml');
-        \App\Models\RawMaterial::create([
+        RawMaterial::create([
             'code' => 'LAMA', 'name' => 'Bahan Lama', 'unit' => 'g',
             'is_active' => false, 'sort_order' => 9,
         ]);
