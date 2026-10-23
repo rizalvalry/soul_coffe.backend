@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 /**
  * `POST /showcase/brew` — a barista recording cups they have just brewed into the showcase.
@@ -29,9 +30,8 @@ class StoreShowcaseBrewRequest extends FormRequest
         return [
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.product_id' => ['required', 'integer', Rule::exists('products', 'id')],
-            // R7: cups are not divisible, and the per-line ceiling is the same one Flow B uses
-            // so a barista cannot route around it by brewing instead of requesting.
-            'lines.*.qty' => ['required', 'integer', 'min:1', 'max:'.config('soul.max_qty_per_line', 100)],
+            // Brew adds kitchen stock; the 100-cup Rider refill-request limit does not apply.
+            'lines.*.qty' => ['required', 'integer', 'min:1', 'max:9999'],
         ];
     }
 
@@ -44,8 +44,26 @@ class StoreShowcaseBrewRequest extends FormRequest
             'lines.required' => 'Pilih minimal satu produk',
             'lines.min' => 'Pilih minimal satu produk',
             'lines.*.qty.min' => 'Jumlah cups harus lebih dari 0',
-            'lines.*.qty.max' => 'Jumlah cups per produk melebihi batas',
+            'lines.*.qty.max' => 'Jumlah cups per produk maksimal 9.999',
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            if ($validator->errors()->isNotEmpty()) {
+                return;
+            }
+
+            $totals = [];
+            foreach ($this->input('lines', []) as $index => $line) {
+                $productId = (int) $line['product_id'];
+                $totals[$productId] = ($totals[$productId] ?? 0) + (int) $line['qty'];
+                if ($totals[$productId] > 9999) {
+                    $validator->errors()->add("lines.{$index}.qty", 'Jumlah cups per produk maksimal 9.999');
+                }
+            }
+        });
     }
 
     /**
