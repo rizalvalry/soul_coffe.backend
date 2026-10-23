@@ -966,12 +966,26 @@ class IntegratedStockBalanceTest extends TestCase
         $this->assertTrue($schedule->onOneServer);
     }
 
-    public function test_reject_dapur_is_added_when_t074_reaches_main(): void
+    public function test_reject_dapur_preserves_every_stock_and_book_invariant(): void
     {
-        if (! DB::getSchemaBuilder()->hasTable('kitchen_rejects')) {
-            $this->markTestIncomplete('T-074 belum ada di main; jalur Reject Dapur perlu ditambahkan ke tes ini.');
-        }
-
-        $this->markTestIncomplete('T-074 sudah ada; jalur Reject Dapur perlu ditambahkan sebelum tes ini dianggap lengkap.');
+        $this->actingAs($this->production, 'sanctum')->withHeader('Idempotency-Key', $this->key())
+            ->postJson('/api/v1/showcase/brew', ['lines' => [['product_id' => $this->product->id,
+                'qty' => 10]]])->assertOk();
+        $this->assertIntegrated('Brew sebelum Reject Dapur');
+        $id = $this->actingAs($this->production, 'sanctum')->withHeader('Idempotency-Key', $this->key())
+            ->withHeader('Accept', 'application/json')->post('/api/v1/kitchen-rejects', [
+                'lines' => json_encode([['product_id' => $this->product->id, 'qty' => 2]]),
+                'reason_code' => 'DROPPED', 'photo' => UploadedFile::fake()->image('reject.jpg', 640, 480),
+                'photo_taken_at' => now()->toIso8601String(),
+            ])->assertCreated()->json('data.id');
+        $waste = StockLedger::query()->where('ref_type', 'kitchen_reject')->where('ref_id', $id)->sole();
+        $this->assertSame(MovementType::WASTE_OUT, $waste->movement_type);
+        $this->assertSame('kitchen', $waste->location_type);
+        $this->assertSame(-2, $waste->qty_delta);
+        $this->assertIntegrated('Reject Dapur WASTE_OUT');
+        $this->actingAs($this->finance, 'sanctum')->withHeader('Idempotency-Key', $this->key())
+            ->postJson('/api/v1/kitchen-rejects/'.$id.'/correct', ['reason' => 'Salah input'])
+            ->assertOk();
+        $this->assertIntegrated('Koreksi Reject Dapur');
     }
 }

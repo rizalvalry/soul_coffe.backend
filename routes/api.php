@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\CustomerAuthController;
 use App\Http\Controllers\Api\CustomerNearbyController;
 use App\Http\Controllers\Api\DeliveryIncidentController;
 use App\Http\Controllers\Api\DeviceController;
+use App\Http\Controllers\Api\KitchenRejectController;
 use App\Http\Controllers\Api\LocationController;
 use App\Http\Controllers\Api\LocationPingController;
 use App\Http\Controllers\Api\LoginPinController;
@@ -197,6 +198,16 @@ Route::middleware(['auth:sanctum', EnsureActiveUser::class, EnsureBoundDevice::c
     // for the case where nobody has been assigned yet.
     Route::get('showcase/staff', [ShowcaseStockController::class, 'staff']);
     Route::get('showcase/close-out/draft/{cart}', [ShowcaseStockController::class, 'closeOutDraft']);
+
+    Route::get('kitchen-rejects', [KitchenRejectController::class, 'index']);
+    Route::get('kitchen-rejects/kitchens', [KitchenRejectController::class, 'kitchens']);
+    Route::get('kitchen-rejects/stock', [KitchenRejectController::class, 'stock']);
+    Route::post('kitchen-rejects', [KitchenRejectController::class, 'store'])
+        ->middleware('idempotent:require');
+    Route::post('kitchen-rejects/{reject}/review', [KitchenRejectController::class, 'review'])
+        ->middleware('idempotent:require');
+    Route::post('kitchen-rejects/{reject}/correct', [KitchenRejectController::class, 'correct'])
+        ->middleware('idempotent:require');
 
     Route::middleware('idempotent:require')->group(function (): void {
         Route::post('showcase/brew', [ShowcaseStockController::class, 'brew']);

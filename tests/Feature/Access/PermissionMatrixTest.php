@@ -30,16 +30,17 @@ class PermissionMatrixTest extends TestCase
     public function test_seeded_templates_cover_every_module_without_role_inheritance(): void
     {
         foreach (PanelModule::cases() as $module) {
-            $this->assertSame($module === PanelModule::EMPLOYEE_ADVANCES ? ['view']
+            $this->assertSame($module === PanelModule::KITCHEN_REJECT ? ['view']
+                : ($module === PanelModule::EMPLOYEE_ADVANCES ? ['view']
                 : ($module === PanelModule::LOCATION_SETTINGS
-                    ? ['view', 'edit'] : ['view', 'create', 'edit', 'delete']),
+                    ? ['view', 'edit'] : ['view', 'create', 'edit', 'delete'])),
                 PermissionMatrix::abilitiesFor(Role::ADMINISTRATOR, $module), $module->value);
 
             foreach ([Role::FINANCE, Role::MANAGEMENT] as $role) {
                 $user = User::factory()->role($role)->create();
                 $this->assertSame($module !== PanelModule::ROLE_MATRIX,
                     PermissionMatrix::can($user, $module, 'view'), "{$role->value}:{$module->value}");
-                if ($module !== PanelModule::ROLE_MATRIX && ! $module->isReadOnly()) {
+                if ($module !== PanelModule::ROLE_MATRIX && $module !== PanelModule::KITCHEN_REJECT && ! $module->isReadOnly()) {
                     $this->assertTrue(PermissionMatrix::can($user, $module, 'edit'), "{$role->value}:{$module->value}");
                 }
             }
@@ -57,10 +58,13 @@ class PermissionMatrixTest extends TestCase
             foreach (PanelModule::cases() as $module) {
                 foreach (['view', 'create', 'edit', 'delete'] as $ability) {
                     $expected = match ($role) {
-                        Role::ADMINISTRATOR => $module === PanelModule::EMPLOYEE_ADVANCES
+                        Role::ADMINISTRATOR => $module === PanelModule::KITCHEN_REJECT
+                            ? $ability === 'view' : ($module === PanelModule::EMPLOYEE_ADVANCES
                             ? $ability === 'view' : ($module !== PanelModule::LOCATION_SETTINGS
-                                || in_array($ability, ['view', 'edit'], true)),
+                                || in_array($ability, ['view', 'edit'], true))),
                         Role::FINANCE, Role::MANAGEMENT => $module !== PanelModule::ROLE_MATRIX
+                            && ($module !== PanelModule::KITCHEN_REJECT || ($role === Role::FINANCE
+                                ? in_array($ability, ['view', 'create', 'edit'], true) : $ability === 'view'))
                             && ($module !== PanelModule::CART_CLOSE_OUT || in_array($ability, ['view', 'edit'], true))
                             && ($module !== PanelModule::EMPLOYEE_ADVANCES || $ability !== 'delete')
                             && ($module !== PanelModule::LOCATION_SETTINGS
@@ -68,6 +72,7 @@ class PermissionMatrixTest extends TestCase
                         Role::CONTENT_CREATOR => $module === PanelModule::NEWS_FEED
                             || ($module === PanelModule::PAYROLL && $ability === 'view'),
                         Role::BARISTA => $module === PanelModule::KITCHEN_OPERATIONS
+                            || ($module === PanelModule::KITCHEN_REJECT && in_array($ability, ['view', 'create'], true))
                             || (($module === PanelModule::RIDER_LOCATION_SETUP || $module === PanelModule::PAYROLL)
                                 && $ability === 'view'),
                         Role::STAFF => $module === PanelModule::PAYROLL && $ability === 'view',

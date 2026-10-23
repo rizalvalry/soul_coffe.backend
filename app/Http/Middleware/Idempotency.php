@@ -45,7 +45,7 @@ class Idempotency
 
         $userId = $request->user()?->id ?? 'guest';
         $cacheKey = sprintf('idem:%s:%s', $userId, hash('sha256', (string) $key));
-        $fingerprint = hash('sha256', $request->fullUrl().'|'.$request->getContent());
+        $fingerprint = $this->fingerprint($request);
 
         $stored = Cache::get($cacheKey);
 
@@ -105,5 +105,44 @@ class Idempotency
             $stored['status'],
             ['Content-Type' => 'application/json', 'Idempotency-Replayed' => 'true'],
         );
+    }
+
+    private function fingerprint(Request $request): string
+    {
+        if ($request->allFiles() === []
+            && ! str_starts_with((string) $request->header('Content-Type'), 'multipart/form-data')) {
+            return hash('sha256', $request->fullUrl().'|'.$request->getContent());
+        }
+
+        // Multipart boundaries change on every upload attempt. Hash parsed fields and file
+        // bytes so a retry replays while a changed photo or quantity gets a 422.
+        $fields = $request->request->all();
+        $files = $this->fileHashes($request->allFiles());
+        $this->sortRecursively($fields);
+        $this->sortRecursively($files);
+
+        return hash('sha256', $request->fullUrl().'|'.json_encode([$fields, $files], JSON_THROW_ON_ERROR));
+    }
+
+    private function fileHashes(array $files): array
+    {
+        foreach ($files as $name => $file) {
+            $files[$name] = is_array($file) ? $this->fileHashes($file) : [
+                'sha256' => hash_file('sha256', $file->getRealPath()),
+                'mime' => $file->getMimeType(),
+            ];
+        }
+
+        return $files;
+    }
+
+    private function sortRecursively(array &$items): void
+    {
+        ksort($items);
+        foreach ($items as &$item) {
+            if (is_array($item)) {
+                $this->sortRecursively($item);
+            }
+        }
     }
 }

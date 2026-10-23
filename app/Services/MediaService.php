@@ -140,6 +140,17 @@ class MediaService
         );
     }
 
+    public function storeKitchenRejectPhoto(UploadedFile $file, Carbon $takenAt, User $uploader): Media
+    {
+        return $this->storeCameraCapture(
+            file: $file, takenAt: $takenAt, uploader: $uploader,
+            kind: 'kitchen_reject', directory: 'kitchen-rejects',
+            staleField: 'photo_taken_at', reuseField: 'photo',
+            message: 'Foto reject wajib diambil langsung dari kamera',
+            isAlreadySpent: fn (Media $media): bool => $media->kitchenRejects()->exists(),
+        );
+    }
+
     /**
      * The rule shared by every "taken right now, on the spot" photo: fresh, and not a picture
      * that has already been used for something else.

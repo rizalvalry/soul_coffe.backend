@@ -262,6 +262,37 @@ class ManagementReportService
             $operational[$key]['waste'] = (int) $row->qty;
         }
         $operationalRows = array_values(array_map(fn ($row): array => array_values($row), $operational));
+        // Keep original losses, corrections, and later HPP resolutions in their
+        // respective journal periods. Resolution deltas carry no cup movement.
+        $rejectMovements = DB::table('stock_ledger as s')
+            ->join('kitchen_rejects as r', 'r.id', '=', 's.ref_id')
+            ->join('central_kitchens as k', 'k.id', '=', 'r.kitchen_id')
+            ->join('products as p', 'p.id', '=', 's.product_id')
+            ->whereIn('s.ref_type', ['kitchen_reject', 'kitchen_reject_correction'])
+            ->whereBetween('s.created_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
+            ->select('k.name as kitchen_name', 'p.name as product_name', 'r.reason_code', 'r.status')
+            ->selectRaw('DATE(s.created_at) as movement_date')
+            ->selectRaw('-s.qty_delta AS qty')
+            ->selectRaw('CASE WHEN s.qty_delta < 0 THEN s.cost_minor ELSE -s.cost_minor END AS cost_minor');
+        $rejectRevaluations = DB::table('stock_cost_resolutions as cr')
+            ->join('stock_ledger as s', 's.id', '=', 'cr.stock_ledger_id')
+            ->join('kitchen_rejects as r', 'r.id', '=', 's.ref_id')
+            ->join('central_kitchens as k', 'k.id', '=', 'r.kitchen_id')
+            ->join('products as p', 'p.id', '=', 's.product_id')
+            ->whereIn('s.ref_type', ['kitchen_reject', 'kitchen_reject_correction'])
+            ->whereBetween('cr.resolved_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
+            ->select('k.name as kitchen_name', 'p.name as product_name', 'r.reason_code', 'r.status')
+            ->selectRaw('DATE(cr.resolved_at) as movement_date, 0 AS qty')
+            ->selectRaw('CASE WHEN s.qty_delta < 0 THEN cr.resolved_cost_minor ELSE -cr.resolved_cost_minor END AS cost_minor');
+        $kitchenRejectRows = DB::query()->fromSub($rejectMovements->unionAll($rejectRevaluations), 'movement')
+            ->groupBy('movement_date', 'kitchen_name', 'product_name', 'reason_code', 'status')
+            ->orderBy('movement_date')
+            ->select('movement_date', 'kitchen_name', 'product_name', 'reason_code', 'status')
+            ->selectRaw('SUM(qty) AS qty, SUM(cost_minor) AS cost_minor')
+            ->get()->map(fn ($row): array => [
+                $row->movement_date, $row->kitchen_name, $row->product_name,
+                (int) $row->qty, (int) $row->cost_minor, $row->reason_code, $row->status,
+            ])->all();
 
         return [
             'from' => $fromDate,
@@ -288,6 +319,7 @@ class ManagementReportService
                 'neraca_saldo' => $this->section('Neraca saldo dari jurnal sampai '.$toDate,
                     ['Kode', 'Akun', 'Debit', 'Kredit'], $trialRows, [2, 3]),
                 'refill_waste' => $this->section('Refill expired dan waste', ['Coffee Bike', 'Refill expired', 'Cup waste'], $operationalRows),
+                'reject_dapur' => $this->section('Reject Dapur', ['Tanggal', 'Dapur', 'Produk', 'Cups neto', 'HPP neto', 'Alasan', 'Status'], $kitchenRejectRows, [3, 4]),
                 ...app(AdvancedFinancialReportService::class)->sections($from, $to, $closing, $summary),
             ],
         ];

@@ -31,7 +31,7 @@ final class DefaultPermissions
     public static function seed(): void
     {
         foreach (PanelModule::cases() as $module) {
-            if (in_array($module, [PanelModule::CART_CLOSE_OUT, PanelModule::EMPLOYEE_ADVANCES], true)) {
+            if (in_array($module, [PanelModule::CART_CLOSE_OUT, PanelModule::EMPLOYEE_ADVANCES, PanelModule::KITCHEN_REJECT], true)) {
                 continue; // Their feature migrations own these grants and their rollback.
             }
             self::insert(Role::ADMINISTRATOR, $module,
@@ -43,7 +43,7 @@ final class DefaultPermissions
         // Existing rows are kept, including deliberate grants already edited in production.
         foreach ([Role::FINANCE, Role::MANAGEMENT] as $role) {
             foreach (PanelModule::cases() as $module) {
-                if (! in_array($module, [PanelModule::ROLE_MATRIX, PanelModule::CART_CLOSE_OUT,
+                if (! in_array($module, [PanelModule::ROLE_MATRIX, PanelModule::CART_CLOSE_OUT, PanelModule::KITCHEN_REJECT,
                     PanelModule::EMPLOYEE_ADVANCES], true)) {
                     self::insert($role, $module,
                         $module === PanelModule::LOCATION_SETTINGS ? ['view', 'edit'] : self::FULL);
@@ -69,7 +69,7 @@ final class DefaultPermissions
         User::query()->where('role', Role::ADMINISTRATOR->value)
             ->orderBy('id')->lockForUpdate()->get(['id']);
         foreach (PanelModule::cases() as $module) {
-            if ($module === PanelModule::ROLE_MATRIX) {
+            if (in_array($module, [PanelModule::ROLE_MATRIX, PanelModule::KITCHEN_REJECT], true)) {
                 continue;
             }
             if (DB::table('management_permission_merge_snapshots')->where('module', $module->value)->exists()) {

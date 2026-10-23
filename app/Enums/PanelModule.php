@@ -33,6 +33,7 @@ enum PanelModule: string
     case ALLOCATIONS = 'allocations';
     case KITCHEN_OPERATIONS = 'kitchen_operations';
     case CART_CLOSE_OUT = 'cart_close_out';
+    case KITCHEN_REJECT = 'kitchen_reject';
     case CLOSING_LOCATION_EVIDENCE = 'closing_location_evidence';
     case DIRECT_SALE_ACTIONS = 'direct_sale_actions';
     case PURCHASE_ORDER_ACTIONS = 'purchase_order_actions';
@@ -106,6 +107,7 @@ enum PanelModule: string
             self::ALLOCATIONS => 'Alokasi Harian',
             self::KITCHEN_OPERATIONS => 'Operasional Dapur di HP',
             self::CART_CLOSE_OUT => 'Tutup Coffee Bike',
+            self::KITCHEN_REJECT => 'Reject Dapur',
             self::CLOSING_LOCATION_EVIDENCE => 'Bukti Lokasi Closing',
             self::DIRECT_SALE_ACTIONS => 'Aksi Penjualan Langsung',
             self::PURCHASE_ORDER_ACTIONS => 'Aksi Pembelian',

@@ -58,4 +58,9 @@ class Media extends Model
     {
         return $this->hasMany(DeliveryIncident::class, 'photo_media_id');
     }
+
+    public function kitchenRejects(): HasMany
+    {
+        return $this->hasMany(KitchenReject::class, 'photo_media_id');
+    }
 }
