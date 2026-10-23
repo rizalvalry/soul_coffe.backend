@@ -33,6 +33,7 @@ class AuditLogsTable
                 TextColumn::make('action')
                     ->label('Aksi')
                     ->badge()
+                    ->formatStateUsing(fn (string $state): string => AuditLog::labelForAction($state))
                     ->searchable(),
                 TextColumn::make('subject_type')
                     ->label('Objek')
@@ -59,6 +60,7 @@ class AuditLogsTable
                         ->distinct()
                         ->orderBy('action')
                         ->pluck('action', 'action')
+                        ->map(fn (string $action): string => AuditLog::labelForAction($action))
                         ->all()),
                 SelectFilter::make('actor_role')
                     ->label('Role pelaku')

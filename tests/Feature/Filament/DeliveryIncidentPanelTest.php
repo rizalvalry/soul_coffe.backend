@@ -3,10 +3,12 @@
 namespace Tests\Feature\Filament;
 
 use App\Enums\IncidentStatus;
+use App\Enums\MovementType;
 use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Filament\Resources\DeliveryIncidents\DeliveryIncidentResource;
 use App\Filament\Resources\DeliveryIncidents\Pages\ListDeliveryIncidents;
+use App\Models\AuditLog;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\DeliveryIncident;
@@ -15,8 +17,11 @@ use App\Models\Media;
 use App\Models\Product;
 use App\Models\RefillRequest;
 use App\Models\RefillRequestLine;
+use App\Models\StockLedger;
 use App\Models\User;
 use App\Services\Access\PermissionMatrix;
+use App\Services\StockLedgerService;
+use App\Services\StockReconciliationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
@@ -60,6 +65,9 @@ class DeliveryIncidentPanelTest extends TestCase
             'code' => 'KOPI', 'name' => 'Kopi Susu', 'unit' => 'cup',
             'is_sellable' => true, 'sort_order' => 1, 'is_active' => true,
         ]);
+        // Prepared refill cups already exist in the kitchen before an incident can write them off.
+        app(StockLedgerService::class)->post(StockLedgerService::KITCHEN, $kitchen->id,
+            $product->id, MovementType::PRODUCTION_IN, 10, $this->admin->id, $kitchen->id);
 
         $evidence = Media::create([
             'kind' => 'evidence',
@@ -157,6 +165,31 @@ class DeliveryIncidentPanelTest extends TestCase
         $this->assertSame(IncidentStatus::RESOLVED_PARTIAL, $this->incident->status);
         $this->assertSame(4, $this->incident->written_off_qty);
         $this->assertSame($this->admin->id, $this->incident->decided_by);
+    }
+
+    public function test_incident_write_off_still_posts_when_kitchen_stock_is_short(): void
+    {
+        $refill = $this->incident->refillRequest;
+        $productId = $this->incident->lines()->firstOrFail()->product_id;
+        app(StockLedgerService::class)->post(StockLedgerService::KITCHEN, $refill->kitchen_id,
+            $productId, MovementType::WASTE_OUT, 8, $this->admin->id, $refill->kitchen_id);
+
+        Livewire::actingAs($this->admin)
+            ->test(ListDeliveryIncidents::class)
+            ->callTableAction('partial', $this->incident, ['note' => 'Empat cup rusak.'])
+            ->assertHasNoTableActionErrors();
+
+        $this->assertSame(IncidentStatus::RESOLVED_PARTIAL, $this->incident->fresh()->status);
+        $writeOff = StockLedger::query()->where('ref_type', 'delivery_incident')->sole();
+        $this->assertSame(-4, $writeOff->qty_delta);
+        $this->assertSame(-2, app(StockLedgerService::class)->stockFor(
+            StockLedgerService::KITCHEN, $refill->kitchen_id, $productId));
+        $marker = AuditLog::query()->where('action', 'stock_ledger.negative_balance')->sole();
+        $this->assertSame($writeOff->id, $marker->subject_id);
+        $this->assertSame($this->admin->id, $marker->actor_id);
+        $this->assertSame(-2, $marker->after_json['balance_qty']);
+        $this->assertContains('NEGATIVE_BALANCE',
+            array_column(app(StockReconciliationService::class)->findings(), 'code'));
     }
 
     public function test_cancelling_from_the_panel_requires_a_reason(): void

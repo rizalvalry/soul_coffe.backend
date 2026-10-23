@@ -10,6 +10,7 @@ use App\Filament\Widgets\OfficeDirectSalesWidget;
 use App\Filament\Widgets\OperationsOverviewWidget;
 use App\Filament\Widgets\RefillStatusDistributionWidget;
 use App\Filament\Widgets\RevenueTrendWidget;
+use App\Filament\Widgets\StockIntegrityWidget;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\DirectSale;
@@ -101,6 +102,17 @@ class AdminDashboardTest extends TestCase
         }
 
         PermissionMatrix::forget();
+    }
+
+    public function test_finance_dashboard_shows_the_latest_stock_integrity_result(): void
+    {
+        $finance = User::factory()->role(Role::FINANCE)->create();
+        PermissionMatrix::set(Role::FINANCE, PanelModule::DASHBOARD, ['view']);
+        $this->actingAs($finance);
+
+        Livewire::test(StockIntegrityWidget::class)->assertSee('Integritas Stok')->assertSee('Belum dicek');
+        $this->artisan('soul:stock-reconcile');
+        Livewire::test(StockIntegrityWidget::class)->assertSee('Seimbang');
     }
 
     public function test_office_sales_card_shows_integer_average_for_real_sales(): void

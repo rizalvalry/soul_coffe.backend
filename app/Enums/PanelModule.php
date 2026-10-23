@@ -168,7 +168,6 @@ enum PanelModule: string
             self::GENERAL_LEDGER,
             self::AUDIT_LOGS,
             self::STAFF_ACTIVITY,
-            self::CENTRAL_STOCK,
             self::STOCK_OPNAME,
             self::SALES,
             self::DELIVERY_INCIDENTS,

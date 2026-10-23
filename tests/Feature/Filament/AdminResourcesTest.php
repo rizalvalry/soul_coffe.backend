@@ -98,6 +98,23 @@ class AdminResourcesTest extends TestCase
         $this->get(AuditLogResource::getUrl('view', ['record' => $log]))->assertSuccessful();
     }
 
+    public function test_finance_sees_a_readable_negative_stock_marker(): void
+    {
+        $log = AuditLog::create([
+            'actor_id' => $this->admin->id,
+            'actor_role' => Role::ADMINISTRATOR->value,
+            'action' => 'stock_ledger.negative_balance',
+            'subject_type' => User::class,
+            'subject_id' => $this->admin->id,
+            'after_json' => ['balance_qty' => -2],
+        ]);
+        $this->actingAs(User::factory()->role(Role::FINANCE)->create());
+
+        $this->get(AuditLogResource::getUrl('index'))->assertSuccessful()->assertSee('Stok minus tercatat');
+        $this->get(AuditLogResource::getUrl('view', ['record' => $log]))
+            ->assertSuccessful()->assertSee('Stok minus tercatat');
+    }
+
     public function test_old_assignment_resource_url_is_gone_for_every_role(): void
     {
         $this->assertDatabaseCount('staff_assignments', 0);

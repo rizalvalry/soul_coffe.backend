@@ -6,6 +6,7 @@ use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\Product;
 use App\Models\RawMaterial;
+use App\Models\StockLedger;
 use App\Services\StockLedgerService;
 use Illuminate\Support\Collection;
 
@@ -47,14 +48,17 @@ class StockOverviewService
         // Sellable products only, in the paper form's order — the same list the barista's Add
         // Stock form shows, so the two screens can be read side by side.
         $products = Product::query()
-            ->where('is_active', true)
+            ->where(fn ($query) => $query->where('is_active', true)
+                ->orWhereIn('id', StockLedger::query()->whereNotNull('product_id')->select('product_id')))
             ->orderBy('sort_order')
             ->get(['id', 'code', 'name', 'unit']);
 
         $productIds = $products->pluck('id')->all();
 
         $kitchens = CentralKitchen::query()
-            ->where('is_active', true)
+            ->where(fn ($query) => $query->where('is_active', true)
+                ->orWhereIn('id', StockLedger::query()->where('location_type', StockLedgerService::KITCHEN)
+                    ->select('location_id')))
             ->orderBy('name')
             ->get()
             ->map(fn (CentralKitchen $kitchen): array => $this->row(
@@ -64,10 +68,12 @@ class StockOverviewService
                 $productIds,
             ));
 
-        // Retired carts are excluded but carts under maintenance are NOT: cups can be sitting on
-        // a cart that is out of service, and a total that quietly omitted them would be wrong.
+        // Keep carts with ledger history visible even after retirement; hiding them would
+        // make a nonzero balance disappear from the overview and reconciliation.
         $carts = Cart::query()
-            ->where('status', '!=', 'retired')
+            ->where(fn ($query) => $query->where('status', '!=', 'retired')
+                ->orWhereIn('id', StockLedger::query()->where('location_type', StockLedgerService::CART)
+                    ->select('location_id')))
             ->orderBy('code')
             ->get()
             ->map(fn (Cart $cart): array => $this->row(
@@ -86,7 +92,8 @@ class StockOverviewService
         }
 
         $rawMaterials = RawMaterial::query()
-            ->where('is_active', true)
+            ->where(fn ($query) => $query->where('is_active', true)
+                ->orWhereIn('id', StockLedger::query()->whereNotNull('raw_material_id')->select('raw_material_id')))
             ->orderBy('sort_order')
             ->get(['id', 'code', 'name', 'unit', 'reorder_point']);
 
@@ -125,7 +132,9 @@ class StockOverviewService
         $ids = $rawMaterials->pluck('id')->all();
 
         return CentralKitchen::query()
-            ->where('is_active', true)
+            ->where(fn ($query) => $query->where('is_active', true)
+                ->orWhereIn('id', StockLedger::query()->where('location_type', StockLedgerService::RAW_MATERIAL_STORE)
+                    ->select('location_id')))
             ->orderBy('name')
             ->get()
             ->map(function (CentralKitchen $kitchen) use ($rawMaterials, $ids): array {

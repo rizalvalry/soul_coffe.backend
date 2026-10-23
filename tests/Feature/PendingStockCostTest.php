@@ -230,6 +230,8 @@ class PendingStockCostTest extends TestCase
             'open_at' => '05:00', 'close_at' => '20:00', 'is_active' => true]);
         $product = Product::create(['code' => 'VERS052', 'name' => 'Kopi Versi', 'unit' => 'cup',
             'is_sellable' => true, 'sort_order' => 1, 'is_active' => true]);
+        app(StockLedgerService::class)->post(StockLedgerService::KITCHEN, $kitchen->id,
+            $product->id, MovementType::PRODUCTION_IN, 1, $finance->id, $kitchen->id, 'brew_version', 1);
         $waste = app(StockLedgerService::class)->post(StockLedgerService::KITCHEN, $kitchen->id,
             $product->id, MovementType::WASTE_OUT, 1, $finance->id, $kitchen->id, 'waste_version', 1);
         $first = ProductPriceVersion::create(['product_id' => $product->id, 'cost_price_minor' => 1000,
