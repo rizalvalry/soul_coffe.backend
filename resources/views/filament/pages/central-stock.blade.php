@@ -33,8 +33,8 @@
                     @if ($integrity['pending_cost_rows'] > 0)
                         <p>{{ $integrity['pending_cost_rows'] }} baris biaya stok masih tertunda. Cek menu Biaya Stok Tertunda ya.</p>
                     @endif
-                    @foreach ($integrity['findings'] as $finding)
-                        <p>{{ $finding['locationLabel'] }} · {{ $finding['itemLabel'] }} · ledger {{ number_format($finding['ledger'], 0, ',', '.') }} vs tampilan/buku besar {{ $finding['compared'] === null ? 'belum ada' : number_format($finding['compared'], 0, ',', '.') }} ({{ $finding['code'] }}).</p>
+                    @foreach (array_merge($integrity['findings'], $integrity['history']) as $finding)
+                        <p>{{ !empty($finding['isHistory']) ? 'Riwayat · ' : '' }}{{ $finding['locationLabel'] }} · {{ $finding['itemLabel'] }} · ledger {{ number_format($finding['ledger'], 0, ',', '.') }} vs tampilan/buku besar {{ $finding['compared'] === null ? 'belum ada' : number_format($finding['compared'], 0, ',', '.') }} ({{ $finding['code'] }}). {{ !empty($finding['reportedAt']) ? 'Sudah dilaporkan '.\Illuminate\Support\Carbon::parse($finding['reportedAt'])->locale('id')->translatedFormat('d M Y H:i') : 'Belum dinotifikasi' }}.</p>
                         @if ($finding['code'] === 'BOOK_MISMATCH')
                             <p>Riwayat lokasi/produk untuk ditelusuri: {{ $finding['stockCandidates'] ?: 'belum ada riwayat ledger' }}. Sumber selisih belum pasti.</p>
                         @endif

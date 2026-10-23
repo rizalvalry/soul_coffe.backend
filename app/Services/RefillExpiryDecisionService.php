@@ -10,6 +10,7 @@ use App\Models\RefillRequest;
 use App\Models\User;
 use App\Services\Access\PermissionMatrix;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class RefillExpiryDecisionService
@@ -97,17 +98,18 @@ class RefillExpiryDecisionService
                     continue;
                 }
                 $line = $recorded->get($id);
+                $transferPairId = (string) Str::uuid();
                 $out = $this->ledger->post(StockLedgerService::KITCHEN, $locked->kitchen_id,
                     $line->product_id, MovementType::REFILL_OUT, $qty, $actor->id,
                     $locked->kitchen_id, 'refill_request', $locked->id,
                     note: 'Keputusan Finance kedaluwarsa #'.$decision->id,
-                    occurredAt: $occurredAt);
+                    occurredAt: $occurredAt, transferPairId: $transferPairId);
                 $this->ledger->post(StockLedgerService::CART, $locked->cart_id,
                     $line->product_id, MovementType::REFILL_IN, $qty, $actor->id,
                     $locked->kitchen_id, 'refill_request', $locked->id,
                     costMinor: $out->cost_minor,
                     note: 'Keputusan Finance kedaluwarsa #'.$decision->id,
-                    occurredAt: $occurredAt);
+                    occurredAt: $occurredAt, transferPairId: $transferPairId);
             }
 
             if (array_sum($quantities) > 0) {

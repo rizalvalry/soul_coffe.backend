@@ -27,10 +27,72 @@ class StockReconciliationService
             return null;
         }
 
+        $history = $this->savedFindings();
+        $findings = json_decode($row->findings, true, 512, JSON_THROW_ON_ERROR);
+        foreach ($findings as $finding) {
+            unset($history[$finding['key'] ?? $this->legacyFindingKey($finding)]);
+            if (($finding['key'] ?? null) === ($finding['baseKey'] ?? $finding['key'] ?? null)) {
+                $legacyKey = $this->legacyFindingKey($finding);
+                if ($finding['code'] !== 'UNPAIRED_TRANSFER'
+                    || (isset($history[$legacyKey]['legacyObservedAt'])
+                        && ($finding['eventAt'] ?? '') <= $history[$legacyKey]['legacyObservedAt'])) {
+                    unset($history[$legacyKey]);
+                }
+            }
+        }
+
+        $history = array_map(function (array $finding): array {
+            $finding['isHistory'] = true;
+
+            return $finding;
+        }, array_values($history));
+
         return ['checked_on' => $row->checked_on, 'checked_at' => $row->checked_at,
-            'status' => $row->status, 'findings' => json_decode($row->findings, true, 512, JSON_THROW_ON_ERROR),
+            'status' => $row->status, 'findings' => $findings, 'history' => $history,
             'pending_cost_rows' => (int) $row->pending_cost_rows,
             'pending_cost_estimated_minor' => (int) $row->pending_cost_estimated_minor];
+    }
+
+    /** @return array<string, array<string, mixed>> Latest saved copy of each finding, with its first report date. */
+    public function savedFindings(): array
+    {
+        $saved = [];
+        foreach (DB::table('stock_reconciliation_results')->orderBy('checked_at')->orderBy('id')
+            ->get(['findings', 'history', 'checked_at', 'checked_on']) as $result) {
+            $entries = array_merge(
+                json_decode($result->history ?? '[]', true, 512, JSON_THROW_ON_ERROR),
+                json_decode($result->findings, true, 512, JSON_THROW_ON_ERROR),
+            );
+            foreach ($entries as $finding) {
+                $wasLegacy = ! array_key_exists('key', $finding);
+                $key = $finding['key'] ?? $this->legacyFindingKey($finding);
+                // Rows written before this feature sent alerts but had no per-finding timestamp.
+                $reportedAt = array_key_exists('reportedAt', $finding)
+                    ? $finding['reportedAt'] : $result->checked_at;
+                $finding['key'] = $key;
+                $finding['reportedAt'] = $saved[$key]['reportedAt'] ?? $reportedAt;
+                if ($wasLegacy) {
+                    $finding['legacyObservedAt'] = max(
+                        $saved[$key]['legacyObservedAt'] ?? $result->checked_at,
+                        $result->checked_at,
+                    );
+                }
+                $saved[$key] = $finding;
+            }
+        }
+
+        return $saved;
+    }
+
+    public function legacyFindingKey(array $finding): string
+    {
+        $eventKey = $finding['code'] === 'NEGATIVE_HISTORY'
+            ? 'ledger:'.str_replace('ledger #', '', (string) $finding['reference'])
+            : ($finding['reference'] ?? null);
+
+        return hash('sha256', json_encode([$finding['code'], $finding['locationType'],
+            $finding['locationId'], $finding['itemType'], $finding['itemId'],
+            $eventKey], JSON_THROW_ON_ERROR));
     }
 
     /** @return array{rows: int, estimated_minor: int} */
@@ -110,14 +172,16 @@ class StockReconciliationService
                     $kind = $row->product_id === null ? 'raw' : 'product';
                     $itemId = (int) ($row->product_id ?? $row->raw_material_id);
                     $key = $this->key($row->location_type, (int) $row->location_id, $kind, $itemId);
-                    $running[$key] = ($running[$key] ?? 0) + (int) $row->qty_delta;
-                    if ($running[$key] < 0 && ! isset($negativeHistory[$key])) {
-                        $negativeHistory[$key] = $this->finding('NEGATIVE_HISTORY', $row->location_type,
-                            (int) $row->location_id, $kind, $itemId, $running[$key], 0, 'ledger #'.$row->id);
+                    $before = $running[$key] ?? 0;
+                    $running[$key] = $before + (int) $row->qty_delta;
+                    if ($before >= 0 && $running[$key] < 0) {
+                        $negativeHistory[] = $this->finding('NEGATIVE_HISTORY', $row->location_type,
+                            (int) $row->location_id, $kind, $itemId, $running[$key], 0,
+                            'ledger #'.$row->id, 'ledger:'.$row->id);
                     }
                 }
             }, 'id');
-        array_push($findings, ...array_values($negativeHistory));
+        array_push($findings, ...$negativeHistory);
 
         // A transfer has one source and one destination per reference/product, not just net zero.
         foreach ([
@@ -126,15 +190,18 @@ class StockReconciliationService
             [MovementType::RETURN_OUT, MovementType::RETURN_IN],
         ] as [$out, $in]) {
             $legs = DB::table('stock_ledger')->whereIn('movement_type', [$out->value, $in->value])
-                ->select('ref_type', 'ref_id', 'product_id', 'movement_type', 'location_type', 'location_id', 'kitchen_id')
-                ->selectRaw('DATE(created_at) AS movement_date, SUM(qty_delta) AS qty')
-                ->groupBy('ref_type', 'ref_id', 'product_id', 'movement_type', 'location_type', 'location_id', 'kitchen_id')
+                ->select('ref_type', 'ref_id', 'product_id', 'movement_type', 'location_type', 'location_id', 'kitchen_id', 'transfer_pair_id')
+                ->selectRaw('DATE(created_at) AS movement_date, MIN(created_at) AS movement_at, SUM(qty_delta) AS qty')
+                ->groupBy('ref_type', 'ref_id', 'product_id', 'movement_type', 'location_type', 'location_id', 'kitchen_id', 'transfer_pair_id')
                 // Legacy carts use their cart ID as the close-out reference across days.
                 // Split batches by day and selected kitchen recorded on both transfer legs.
                 ->groupByRaw('DATE(created_at)')
-                ->get()->groupBy(fn ($leg): string => ($leg->ref_type ?? '').':'.($leg->ref_id ?? 0)
-                    .':'.$leg->product_id.':'.($leg->kitchen_id ?? 0).':'.$leg->movement_date);
-            foreach ($legs as $group) {
+                ->get()->groupBy(fn ($leg): string => $leg->transfer_pair_id !== null
+                    ? 'pair:'.$leg->transfer_pair_id.':'.($leg->ref_type ?? '').':'.($leg->ref_id ?? 0)
+                        .':'.$leg->product_id.':'.($leg->kitchen_id ?? 0)
+                    : 'legacy:'.($leg->ref_type ?? '').':'.($leg->ref_id ?? 0)
+                        .':'.$leg->product_id.':'.($leg->kitchen_id ?? 0).':'.$leg->movement_date);
+            foreach ($legs as $groupKey => $group) {
                 $source = $group->where('movement_type', $out->value)->values();
                 $destination = $group->where('movement_type', $in->value)->values();
                 $first = $group->first();
@@ -151,9 +218,14 @@ class StockReconciliationService
                 if (! $valid) {
                     $actual = $group->map(fn ($leg): string => $leg->movement_type.'@'.$leg->location_type
                         .'#'.$leg->location_id.'='.$leg->qty)->implode(', ');
-                    $findings[] = $this->finding('UNPAIRED_TRANSFER', 'transfer',
+                    $finding = $this->finding('UNPAIRED_TRANSFER', 'transfer',
                         (int) ($first->ref_id ?? 0), 'product', (int) $first->product_id,
-                        $net, 0, ($first->ref_type ?? 'tanpa referensi').' '.$actual);
+                        $net, 0, ($first->ref_type ?? 'tanpa referensi').' '
+                            .($first->transfer_pair_id === null ? '' : 'pasangan '.$first->transfer_pair_id.' ')
+                            .$actual, $out->value.':'.$groupKey);
+                    $finding['eventDate'] = $first->movement_date;
+                    $finding['eventAt'] = $first->movement_at;
+                    $findings[] = $finding;
                 }
             }
         }
@@ -244,7 +316,8 @@ class StockReconciliationService
 
     /** @return array<string, int|string|null> */
     private function finding(string $code, string $locationType, int $locationId, string $itemType,
-        int|string $itemId, int $ledger, ?int $compared, ?string $reference = null): array
+        int|string $itemId, int $ledger, ?int $compared, ?string $reference = null,
+        ?string $eventKey = null): array
     {
         $locationLabel = match ($locationType) {
             StockLedgerService::KITCHEN, StockLedgerService::RAW_MATERIAL_STORE => CentralKitchen::query()->find($locationId)?->name ?? 'Dapur #'.$locationId,
@@ -258,7 +331,10 @@ class StockReconciliationService
             default => 'Persediaan '.$itemId,
         };
 
+        $key = hash('sha256', json_encode([$code, $locationType, $locationId, $itemType,
+            $itemId, $eventKey], JSON_THROW_ON_ERROR));
+
         return compact('code', 'locationType', 'locationId', 'locationLabel', 'itemType', 'itemId',
-            'itemLabel', 'ledger', 'compared', 'reference');
+            'itemLabel', 'ledger', 'compared', 'reference', 'key');
     }
 }

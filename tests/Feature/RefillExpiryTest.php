@@ -248,6 +248,9 @@ class RefillExpiryTest extends TestCase
         $this->assertSame(5, (int) StockLedger::sum('qty_delta'));
         $this->assertSame(3, StockLedger::count());
         $this->assertSame('2026-10-17', StockLedger::where('movement_type', MovementType::REFILL_OUT)->firstOrFail()->created_at->toDateString());
+        $outPairId = StockLedger::where('movement_type', MovementType::REFILL_OUT)->value('transfer_pair_id');
+        $this->assertNotNull($outPairId);
+        $this->assertSame($outPairId, StockLedger::where('movement_type', MovementType::REFILL_IN)->value('transfer_pair_id'));
         $todayDraft = app(SettlementService::class)->draft($refill->cart, Carbon::today());
         $priorDraft = app(SettlementService::class)->draft($refill->cart, Carbon::parse('2026-10-17'));
         $this->assertSame(0, $todayDraft['lines'][0]['qty_issued']);

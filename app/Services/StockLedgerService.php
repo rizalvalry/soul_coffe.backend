@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\StockLedger;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
@@ -69,6 +70,7 @@ class StockLedgerService
         ?Carbon $occurredAt = null,
         bool $costPending = false,
         int $costPendingQty = 0,
+        ?string $transferPairId = null,
     ): StockLedger {
         $this->assertLocationType($locationType);
         $this->assertExactlyOneCatalogue($productId, $rawMaterialId);
@@ -86,7 +88,7 @@ class StockLedgerService
         }
 
         return DB::transaction(function () use ($locationType, $locationId, $productId, $movementType, $delta, $costMinor,
-            $refType, $refId, $note, $occurredAt, $actorId, $kitchenId, $rawMaterialId, $costPending, $costPendingQty): StockLedger {
+            $refType, $refId, $note, $occurredAt, $actorId, $kitchenId, $rawMaterialId, $costPending, $costPendingQty, $transferPairId): StockLedger {
             if ($productId !== null) {
                 // Both movement posting and revaluation take this product lock before any
                 // valuation/accounting lock, without touching the Product or ledger row locks.
@@ -150,6 +152,7 @@ class StockLedgerService
                 'cost_pending_qty' => $costPendingQty,
                 'ref_type' => $refType,
                 'ref_id' => $refId,
+                'transfer_pair_id' => $transferPairId,
                 'note' => $note,
                 // A late Finance recognition belongs to the original operating day for settlement.
                 // The decision table retains the actual posting time and decision maker.
@@ -219,15 +222,17 @@ class StockLedgerService
     ): void {
         // Both legs represent one event, including a transfer posted across midnight.
         $occurredAt = now();
+        $transferPairId = (string) Str::uuid();
         DB::transaction(function () use (
             $fromType, $fromId, $toType, $toId, $productId,
-            $outType, $inType, $qty, $actorId, $kitchenId, $refType, $refId, $note, $occurredAt
+            $outType, $inType, $qty, $actorId, $kitchenId, $refType, $refId, $note, $occurredAt, $transferPairId
         ): void {
             $out = $this->post($fromType, $fromId, $productId, $outType, $qty, $actorId, $kitchenId, $refType, $refId,
-                note: $note, occurredAt: $occurredAt);
+                note: $note, occurredAt: $occurredAt, transferPairId: $transferPairId);
             $this->post($toType, $toId, $productId, $inType, $qty, $actorId, $kitchenId,
                 $refType, $refId, costMinor: $out->cost_minor, costPending: $out->cost_pending,
-                costPendingQty: $out->cost_pending_qty, note: $note, occurredAt: $occurredAt);
+                costPendingQty: $out->cost_pending_qty, note: $note, occurredAt: $occurredAt,
+                transferPairId: $transferPairId);
         });
     }
 

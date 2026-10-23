@@ -441,6 +441,7 @@ class IntegratedStockBalanceTest extends TestCase
 
     public function test_unpaired_transfer_and_missing_journal_are_reported_once_without_changing_stock(): void
     {
+        config(['soul.stock_reconcile_alerts' => true]);
         $manager = User::factory()->role(Role::ADMINISTRATOR)->create(['is_management' => true]);
         $row = ['location_type' => 'cart', 'location_id' => $this->cart->id,
             'product_id' => $this->product->id, 'movement_type' => MovementType::ALLOCATION_IN,
@@ -465,6 +466,7 @@ class IntegratedStockBalanceTest extends TestCase
 
     public function test_missing_inventory_journal_is_reported_without_transfer_false_positive(): void
     {
+        config(['soul.stock_reconcile_alerts' => true]);
         $other = Product::create(['code' => 'T075-CANDIDATE', 'name' => 'Kopi Pembanding',
             'unit' => 'cup', 'is_sellable' => true, 'sort_order' => 2, 'is_active' => true]);
         StockLedger::create(['location_type' => 'kitchen', 'location_id' => $this->kitchen->id,
@@ -495,6 +497,7 @@ class IntegratedStockBalanceTest extends TestCase
 
     public function test_book_gap_with_zero_current_stock_still_names_ledger_location_and_product(): void
     {
+        config(['soul.stock_reconcile_alerts' => true]);
         $ledger = app(StockLedgerService::class);
         $ledger->post('kitchen', $this->kitchen->id, $this->product->id,
             MovementType::PRODUCTION_IN, 1, $this->production->id, $this->kitchen->id);
@@ -565,6 +568,353 @@ class IntegratedStockBalanceTest extends TestCase
         $history = collect($findings)->firstWhere('code', 'NEGATIVE_HISTORY');
         $this->assertSame(-1, $history['ledger']);
         $this->assertNotContains('NEGATIVE_BALANCE', array_column($findings, 'code'));
+    }
+
+    public function test_reconcile_alerts_only_new_findings_across_days(): void
+    {
+        config(['soul.stock_reconcile_alerts' => true]);
+        StockLedger::create(['location_type' => 'kitchen', 'location_id' => $this->kitchen->id,
+            'product_id' => $this->product->id, 'movement_type' => MovementType::PRODUCTION_IN,
+            'qty_delta' => 1, 'cost_minor' => 1000, 'actor_id' => $this->production->id,
+            'kitchen_id' => $this->kitchen->id]);
+
+        Artisan::call('soul:stock-reconcile');
+        $this->assertSame(['BOOK_MISMATCH'], array_column(
+            json_decode(DB::table('stock_reconciliation_results')->value('findings'), true), 'code'));
+        $this->assertSame(2, AppNotification::query()->where('type', 'StockReconciliationMismatch')->count());
+        $this->actingAs($this->finance, 'web')->get(CentralStock::getUrl())->assertOk()
+            ->assertSee('Sudah dilaporkan 23 Okt 2026 10:00');
+
+        Carbon::setTestNow('2026-10-24 10:00:00');
+        Artisan::call('soul:stock-reconcile');
+        $this->assertDatabaseCount('stock_reconciliation_results', 2);
+        $this->assertSame(2, AppNotification::query()->where('type', 'StockReconciliationMismatch')->count());
+        $this->actingAs($this->finance, 'web')->get(CentralStock::getUrl())->assertOk()
+            ->assertSee('Sudah dilaporkan 23 Okt 2026 10:00');
+
+        Carbon::setTestNow('2026-10-25 10:00:00');
+        foreach ([MovementType::ALLOCATION_OUT, MovementType::ALLOCATION_IN] as $type) {
+            StockLedger::create(['location_type' => 'kitchen', 'location_id' => $this->kitchen->id,
+                'product_id' => $this->product->id, 'movement_type' => $type,
+                'qty_delta' => $type === MovementType::ALLOCATION_OUT ? -1 : 1,
+                'cost_minor' => 0, 'actor_id' => $this->production->id,
+                'kitchen_id' => $this->kitchen->id, 'ref_type' => 'injected', 'ref_id' => 83]);
+        }
+        Artisan::call('soul:stock-reconcile');
+        $this->assertDatabaseCount('stock_reconciliation_results', 3);
+        $this->assertSame(4, AppNotification::query()->where('type', 'StockReconciliationMismatch')->count());
+        $body = AppNotification::query()->where('type', 'StockReconciliationMismatch')
+            ->latest('id')->firstOrFail()->payload_json['body'];
+        $this->assertStringContainsString('Transfer #83', $body);
+        $this->assertStringNotContainsString('sumber selisih belum pasti', $body);
+    }
+
+    public function test_reconcile_switch_keeps_findings_until_alerts_are_enabled(): void
+    {
+        StockLedger::create(['location_type' => 'kitchen', 'location_id' => $this->kitchen->id,
+            'product_id' => $this->product->id, 'movement_type' => MovementType::PRODUCTION_IN,
+            'qty_delta' => 1, 'cost_minor' => 1000, 'actor_id' => $this->production->id,
+            'kitchen_id' => $this->kitchen->id]);
+        $this->assertFalse(config('soul.stock_reconcile_alerts'));
+        Artisan::call('soul:stock-reconcile');
+        $this->assertStringContainsString('notifikasi mati', Artisan::output());
+        $this->assertDatabaseHas('stock_reconciliation_results', ['status' => 'MISMATCH']);
+        $this->assertDatabaseCount('notifications', 0);
+
+        config(['soul.stock_reconcile_alerts' => true]);
+        Artisan::call('soul:stock-reconcile');
+        $this->assertDatabaseCount('stock_reconciliation_results', 1);
+        $this->assertSame(2, AppNotification::query()->where('type', 'StockReconciliationMismatch')->count());
+        Artisan::call('soul:stock-reconcile');
+        $this->assertSame(2, AppNotification::query()->where('type', 'StockReconciliationMismatch')->count());
+    }
+
+    public function test_recovered_negative_episodes_keep_their_history_and_alert_once_each(): void
+    {
+        config(['soul.stock_reconcile_alerts' => true]);
+        foreach ([[-1, MovementType::SALE_OUT], [1, MovementType::PRODUCTION_IN]] as [$qty, $type]) {
+            StockLedger::create(['location_type' => 'kitchen', 'location_id' => $this->kitchen->id,
+                'product_id' => $this->product->id, 'movement_type' => $type,
+                'qty_delta' => $qty, 'cost_minor' => 0, 'actor_id' => $this->production->id,
+                'kitchen_id' => $this->kitchen->id]);
+        }
+        Artisan::call('soul:stock-reconcile');
+        $this->assertSame(2, AppNotification::query()->where('type', 'StockReconciliationMismatch')->count());
+        Carbon::setTestNow('2026-10-24 10:00:00');
+        Artisan::call('soul:stock-reconcile');
+        $this->assertDatabaseCount('stock_reconciliation_results', 2);
+        $this->assertSame(2, AppNotification::query()->where('type', 'StockReconciliationMismatch')->count());
+        $this->assertSame(['NEGATIVE_HISTORY'], array_column(
+            app(StockReconciliationService::class)->latestResult()['findings'], 'code'));
+        $this->actingAs($this->finance, 'web')->get(CentralStock::getUrl())->assertOk()
+            ->assertSee('NEGATIVE_HISTORY')->assertSee('Sudah dilaporkan');
+
+        foreach ([[-1, MovementType::SALE_OUT], [1, MovementType::PRODUCTION_IN]] as [$qty, $type]) {
+            StockLedger::create(['location_type' => 'kitchen', 'location_id' => $this->kitchen->id,
+                'product_id' => $this->product->id, 'movement_type' => $type,
+                'qty_delta' => $qty, 'cost_minor' => 0, 'actor_id' => $this->production->id,
+                'kitchen_id' => $this->kitchen->id]);
+        }
+        Artisan::call('soul:stock-reconcile');
+        $this->assertCount(2, collect(app(StockReconciliationService::class)->findings())
+            ->where('code', 'NEGATIVE_HISTORY'));
+        $this->assertSame(4, AppNotification::query()->where('type', 'StockReconciliationMismatch')->count());
+    }
+
+    public function test_reconcile_preserves_resolved_findings_on_cms(): void
+    {
+        config(['soul.stock_reconcile_alerts' => true]);
+        StockLedger::create(['location_type' => 'kitchen', 'location_id' => $this->kitchen->id,
+            'product_id' => $this->product->id, 'movement_type' => MovementType::PRODUCTION_IN,
+            'qty_delta' => 1, 'cost_minor' => 0, 'actor_id' => $this->production->id,
+            'kitchen_id' => $this->kitchen->id]);
+        StockLedger::create(['location_type' => 'kitchen', 'location_id' => $this->kitchen->id,
+            'product_id' => $this->product->id, 'movement_type' => MovementType::ALLOCATION_OUT,
+            'qty_delta' => -1, 'cost_minor' => 0, 'actor_id' => $this->production->id,
+            'kitchen_id' => $this->kitchen->id, 'ref_type' => 'injected', 'ref_id' => 83]);
+        Artisan::call('soul:stock-reconcile');
+        Carbon::setTestNow('2026-10-24 10:00:00');
+        StockLedger::create(['location_type' => 'cart', 'location_id' => $this->cart->id,
+            'product_id' => $this->product->id, 'movement_type' => MovementType::ALLOCATION_IN,
+            'qty_delta' => 1, 'cost_minor' => 0, 'actor_id' => $this->production->id,
+            'kitchen_id' => $this->kitchen->id, 'ref_type' => 'injected', 'ref_id' => 83,
+            'created_at' => '2026-10-23 10:00:00']);
+        Artisan::call('soul:stock-reconcile');
+        $latest = app(StockReconciliationService::class)->latestResult();
+        $this->assertSame('BALANCED', $latest['status']);
+        $this->assertContains('UNPAIRED_TRANSFER', array_column($latest['history'], 'code'));
+        $this->actingAs($this->finance, 'web')->get(CentralStock::getUrl())->assertOk()
+            ->assertSee('Riwayat')->assertSee('Sudah dilaporkan');
+    }
+
+    public function test_reconcile_keeps_same_day_history_and_reports_a_new_book_gap_episode(): void
+    {
+        config(['soul.stock_reconcile_alerts' => true]);
+        $entry = ['location_type' => 'kitchen', 'location_id' => $this->kitchen->id,
+            'product_id' => $this->product->id, 'cost_minor' => 1000,
+            'actor_id' => $this->production->id, 'kitchen_id' => $this->kitchen->id];
+        StockLedger::create($entry + ['movement_type' => MovementType::PRODUCTION_IN, 'qty_delta' => 1]);
+        Artisan::call('soul:stock-reconcile');
+        $this->assertSame(2, AppNotification::query()->where('type', 'StockReconciliationMismatch')->count());
+
+        StockLedger::create($entry + ['movement_type' => MovementType::SALE_OUT, 'qty_delta' => -1]);
+        Artisan::call('soul:stock-reconcile');
+        $balanced = app(StockReconciliationService::class)->latestResult();
+        $this->assertSame('BALANCED', $balanced['status']);
+        $this->assertContains('BOOK_MISMATCH', array_column($balanced['history'], 'code'));
+        $this->actingAs($this->finance, 'web')->get(CentralStock::getUrl())->assertOk()
+            ->assertSee('Riwayat')->assertSee('Sudah dilaporkan');
+
+        StockLedger::create($entry + ['movement_type' => MovementType::PRODUCTION_IN, 'qty_delta' => 1]);
+        Artisan::call('soul:stock-reconcile');
+        $this->assertSame(4, AppNotification::query()->where('type', 'StockReconciliationMismatch')->count());
+        $latest = app(StockReconciliationService::class)->latestResult();
+        $this->assertSame('MISMATCH', $latest['status']);
+        $this->assertContains('BOOK_MISMATCH', array_column($latest['history'], 'code'));
+    }
+
+    public function test_reconcile_alerts_when_an_existing_book_gap_grows(): void
+    {
+        config(['soul.stock_reconcile_alerts' => true]);
+        $entry = ['location_type' => 'kitchen', 'location_id' => $this->kitchen->id,
+            'product_id' => $this->product->id, 'movement_type' => MovementType::PRODUCTION_IN,
+            'qty_delta' => 1, 'cost_minor' => 1000, 'actor_id' => $this->production->id,
+            'kitchen_id' => $this->kitchen->id];
+        StockLedger::create($entry);
+        Artisan::call('soul:stock-reconcile');
+        StockLedger::create($entry);
+        Artisan::call('soul:stock-reconcile');
+        $this->assertSame(4, AppNotification::query()->where('type', 'StockReconciliationMismatch')->count());
+        Artisan::call('soul:stock-reconcile');
+        $this->assertSame(4, AppNotification::query()->where('type', 'StockReconciliationMismatch')->count());
+    }
+
+    public function test_reconcile_recognizes_a_preexisting_legacy_transfer_alert(): void
+    {
+        config(['soul.stock_reconcile_alerts' => true]);
+        StockLedger::create(['location_type' => 'kitchen', 'location_id' => $this->kitchen->id,
+            'product_id' => $this->product->id, 'movement_type' => MovementType::PRODUCTION_IN,
+            'qty_delta' => 1, 'cost_minor' => 0, 'actor_id' => $this->production->id,
+            'kitchen_id' => $this->kitchen->id, 'created_at' => '2026-10-22 09:00:00']);
+        StockLedger::create(['location_type' => 'kitchen', 'location_id' => $this->kitchen->id,
+            'product_id' => $this->product->id, 'movement_type' => MovementType::ALLOCATION_OUT,
+            'qty_delta' => -1, 'cost_minor' => 0, 'actor_id' => $this->production->id,
+            'kitchen_id' => $this->kitchen->id, 'ref_type' => 'injected', 'ref_id' => 83,
+            'created_at' => '2026-10-22 09:00:00']);
+        $oldFindings = array_map(function (array $finding): array {
+            unset($finding['key']);
+
+            return $finding;
+        }, app(StockReconciliationService::class)->findings());
+        DB::table('stock_reconciliation_results')->insert([
+            'checked_on' => '2026-10-22', 'checked_at' => '2026-10-22 10:00:00',
+            'status' => 'MISMATCH', 'finding_count' => count($oldFindings),
+            'findings' => json_encode($oldFindings, JSON_THROW_ON_ERROR),
+            'findings_hash' => hash('sha256', json_encode($oldFindings, JSON_THROW_ON_ERROR)),
+            'pending_cost_rows' => 0, 'pending_cost_estimated_minor' => 0,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        Artisan::call('soul:stock-reconcile');
+        $this->assertSame(0, AppNotification::query()->where('type', 'StockReconciliationMismatch')->count());
+        $latest = app(StockReconciliationService::class)->latestResult();
+        $this->assertNotNull(collect($latest['findings'])->firstWhere('code', 'UNPAIRED_TRANSFER')['reportedAt']);
+    }
+
+    public function test_reconcile_notifies_a_new_identical_legacy_transfer_on_a_later_day(): void
+    {
+        config(['soul.stock_reconcile_alerts' => true]);
+        StockLedger::create(['location_type' => 'kitchen', 'location_id' => $this->kitchen->id,
+            'product_id' => $this->product->id, 'movement_type' => MovementType::PRODUCTION_IN,
+            'qty_delta' => 2, 'cost_minor' => 0, 'actor_id' => $this->production->id,
+            'kitchen_id' => $this->kitchen->id]);
+        $postBadPair = function (): void {
+            foreach ([MovementType::ALLOCATION_OUT, MovementType::ALLOCATION_IN] as $type) {
+                StockLedger::create(['location_type' => 'kitchen', 'location_id' => $this->kitchen->id,
+                    'product_id' => $this->product->id, 'movement_type' => $type,
+                    'qty_delta' => $type === MovementType::ALLOCATION_OUT ? -1 : 1,
+                    'cost_minor' => 0, 'actor_id' => $this->production->id,
+                    'kitchen_id' => $this->kitchen->id, 'ref_type' => 'injected', 'ref_id' => 83]);
+            }
+        };
+        $postBadPair();
+        Artisan::call('soul:stock-reconcile');
+        $this->assertSame(2, AppNotification::query()->where('type', 'StockReconciliationMismatch')->count());
+
+        Carbon::setTestNow('2026-10-24 10:00:00');
+        $postBadPair();
+        Artisan::call('soul:stock-reconcile');
+        $this->assertSame(4, AppNotification::query()->where('type', 'StockReconciliationMismatch')->count());
+        $unpaired = collect(app(StockReconciliationService::class)->latestResult()['findings'])
+            ->where('code', 'UNPAIRED_TRANSFER')->values();
+        $this->assertCount(2, $unpaired);
+        $this->assertCount(2, $unpaired->pluck('key')->unique());
+        $this->assertEqualsCanonicalizing(['2026-10-23 10:00:00', '2026-10-24 10:00:00'],
+            $unpaired->pluck('reportedAt')->all());
+    }
+
+    public function test_reconcile_preserves_two_preexisting_daily_legacy_transfer_alerts(): void
+    {
+        config(['soul.stock_reconcile_alerts' => true]);
+        $postBadPair = function (): void {
+            foreach ([MovementType::ALLOCATION_OUT, MovementType::ALLOCATION_IN] as $type) {
+                StockLedger::create(['location_type' => 'kitchen', 'location_id' => $this->kitchen->id,
+                    'product_id' => $this->product->id, 'movement_type' => $type,
+                    'qty_delta' => $type === MovementType::ALLOCATION_OUT ? -1 : 1,
+                    'cost_minor' => 0, 'actor_id' => $this->production->id,
+                    'kitchen_id' => $this->kitchen->id, 'ref_type' => 'injected', 'ref_id' => 83]);
+            }
+        };
+        $saveOldResult = function (string $date): void {
+            $oldFindings = array_map(function (array $finding): array {
+                unset($finding['key'], $finding['eventDate'], $finding['eventAt']);
+
+                return $finding;
+            }, app(StockReconciliationService::class)->findings());
+            DB::table('stock_reconciliation_results')->insert([
+                'checked_on' => $date, 'checked_at' => $date.' 10:00:00',
+                'status' => 'MISMATCH', 'finding_count' => count($oldFindings),
+                'findings' => json_encode($oldFindings, JSON_THROW_ON_ERROR),
+                'findings_hash' => hash('sha256', json_encode($oldFindings, JSON_THROW_ON_ERROR)),
+                'pending_cost_rows' => 0, 'pending_cost_estimated_minor' => 0,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        };
+
+        Carbon::setTestNow('2026-10-22 09:00:00');
+        StockLedger::create(['location_type' => 'kitchen', 'location_id' => $this->kitchen->id,
+            'product_id' => $this->product->id, 'movement_type' => MovementType::PRODUCTION_IN,
+            'qty_delta' => 2, 'cost_minor' => 0, 'actor_id' => $this->production->id,
+            'kitchen_id' => $this->kitchen->id]);
+        $postBadPair();
+        $saveOldResult('2026-10-22');
+
+        Carbon::setTestNow('2026-10-23 09:00:00');
+        $postBadPair();
+        $saveOldResult('2026-10-23');
+        Carbon::setTestNow('2026-10-24 10:00:00');
+        Artisan::call('soul:stock-reconcile');
+        $this->assertSame(0, AppNotification::query()->where('type', 'StockReconciliationMismatch')->count());
+        $this->assertCount(2, collect(app(StockReconciliationService::class)->latestResult()['findings'])
+            ->where('code', 'UNPAIRED_TRANSFER')->whereNotNull('reportedAt'));
+    }
+
+    public function test_transfer_pair_id_keeps_missing_legs_from_different_operations_apart(): void
+    {
+        $pairs = [(string) Str::uuid(), (string) Str::uuid()];
+        foreach ([
+            [MovementType::RETURN_OUT, 'cart', $this->cart->id, -1, $pairs[0]],
+            [MovementType::RETURN_IN, 'kitchen', $this->kitchen->id, 1, $pairs[1]],
+        ] as [$type, $locationType, $locationId, $qty, $pairId]) {
+            StockLedger::create(['location_type' => $locationType, 'location_id' => $locationId,
+                'product_id' => $this->product->id, 'movement_type' => $type,
+                'qty_delta' => $qty, 'cost_minor' => 0, 'actor_id' => $this->runner->id,
+                'kitchen_id' => $this->kitchen->id, 'ref_type' => 'cart_closeout_return',
+                'ref_id' => $this->cart->id, 'transfer_pair_id' => $pairId]);
+        }
+        $unpaired = collect(app(StockReconciliationService::class)->findings())
+            ->where('code', 'UNPAIRED_TRANSFER');
+        $this->assertCount(2, $unpaired);
+        $this->assertCount(2, $unpaired->pluck('key')->unique());
+        foreach ($pairs as $pairId) {
+            $this->assertTrue($unpaired->contains(fn (array $finding): bool => str_contains($finding['reference'], $pairId)));
+        }
+    }
+
+    public function test_transfer_pair_id_cannot_hide_different_products_or_references(): void
+    {
+        $other = Product::create(['code' => 'T083-OTHER', 'name' => 'Kopi Lain',
+            'unit' => 'cup', 'is_sellable' => true, 'sort_order' => 2, 'is_active' => true]);
+        $pairId = (string) Str::uuid();
+        foreach ([
+            [MovementType::RETURN_OUT, 'cart', $this->cart->id, $this->product->id, 83],
+            [MovementType::RETURN_IN, 'kitchen', $this->kitchen->id, $other->id, 84],
+        ] as [$type, $locationType, $locationId, $productId, $referenceId]) {
+            StockLedger::create(['location_type' => $locationType, 'location_id' => $locationId,
+                'product_id' => $productId, 'movement_type' => $type,
+                'qty_delta' => $type === MovementType::RETURN_OUT ? -1 : 1,
+                'cost_minor' => 0, 'actor_id' => $this->runner->id,
+                'kitchen_id' => $this->kitchen->id, 'ref_type' => 'injected',
+                'ref_id' => $referenceId, 'transfer_pair_id' => $pairId]);
+        }
+        $this->assertCount(2, collect(app(StockReconciliationService::class)->findings())
+            ->where('code', 'UNPAIRED_TRANSFER'));
+    }
+
+    public function test_stock_ledger_transfer_writes_one_pair_id_per_operation_and_legacy_rows_still_reconcile(): void
+    {
+        $ledger = app(StockLedgerService::class);
+        $ledger->post('kitchen', $this->kitchen->id, $this->product->id,
+            MovementType::PRODUCTION_IN, 2, $this->production->id, $this->kitchen->id);
+        foreach ([1, 1] as $qty) {
+            $ledger->transfer('kitchen', $this->kitchen->id, 'cart', $this->cart->id,
+                $this->product->id, MovementType::ALLOCATION_OUT, MovementType::ALLOCATION_IN,
+                $qty, $this->production->id, $this->kitchen->id, 'injected', 83);
+        }
+        $groups = DB::table('stock_ledger')->whereNotNull('transfer_pair_id')
+            ->get()->groupBy('transfer_pair_id');
+        $this->assertCount(2, $groups);
+        foreach ($groups as $legs) {
+            $this->assertCount(2, $legs);
+            $this->assertSame(0, $legs->sum('qty_delta'));
+        }
+        $this->assertNotContains('UNPAIRED_TRANSFER',
+            array_column(app(StockReconciliationService::class)->findings(), 'code'));
+
+        StockLedger::create(['location_type' => 'cart', 'location_id' => $this->cart->id,
+            'product_id' => $this->product->id, 'movement_type' => MovementType::RETURN_OUT,
+            'qty_delta' => -1, 'cost_minor' => 0, 'actor_id' => $this->runner->id,
+            'kitchen_id' => $this->kitchen->id, 'ref_type' => 'cart_closeout_return', 'ref_id' => $this->cart->id]);
+        StockLedger::create(['location_type' => 'kitchen', 'location_id' => $this->kitchen->id,
+            'product_id' => $this->product->id, 'movement_type' => MovementType::RETURN_IN,
+            'qty_delta' => 1, 'cost_minor' => 0, 'actor_id' => $this->runner->id,
+            'kitchen_id' => $this->kitchen->id, 'ref_type' => 'cart_closeout_return', 'ref_id' => $this->cart->id]);
+        $this->assertNotContains('UNPAIRED_TRANSFER',
+            array_column(app(StockReconciliationService::class)->findings(), 'code'));
+    }
+
+    public function test_rider_cannot_open_stock_integrity_page(): void
+    {
+        $this->actingAs($this->rider, 'web')->get(CentralStock::getUrl())->assertForbidden();
     }
 
     public function test_pending_cost_is_reported_separately_without_hiding_a_real_book_gap(): void
