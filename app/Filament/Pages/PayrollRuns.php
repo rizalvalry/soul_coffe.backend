@@ -2,9 +2,13 @@
 
 namespace App\Filament\Pages;
 
+use App\Enums\PanelModule;
 use App\Exports\PayrollRunExport;
+use App\Models\EmployeeAdvance;
 use App\Models\PayrollItem;
 use App\Models\PayrollRun;
+use App\Services\Access\PermissionMatrix;
+use App\Services\EmployeeAdvanceService;
 use App\Services\JournalService;
 use App\Services\Menu\MenuLabels;
 use App\Services\PayrollRunService;
@@ -51,6 +55,8 @@ class PayrollRuns extends Page implements HasTable
     public string $paymentAccountId = '';
 
     public string $cancellationReason = '';
+
+    public array $advanceOverride = ['advance_id' => '', 'amount_minor' => 0];
 
     public int $paymentGenerationId = 0;
 
@@ -100,6 +106,35 @@ class PayrollRuns extends Page implements HasTable
         return $schema->components([
             TextInput::make('cancellationReason')->label('Alasan pembatalan')->maxLength(225)->required(),
         ]);
+    }
+
+    public function advanceOverrideForm(Schema $schema): Schema
+    {
+        return $schema->components([
+            Select::make('advance_id')->label('Kasbon karyawan')
+                ->options(fn (): array => EmployeeAdvance::query()->with('user')
+                    ->withSum('movements as balance_minor', 'amount_minor')->where('status', 'ACTIVE')
+                    ->orderBy('user_id')->get()->mapWithKeys(fn (EmployeeAdvance $advance): array => [
+                        $advance->id => $advance->user->name.' · #'.$advance->id.' · sisa Rp '.number_format($advance->balance_minor ?? 0, 0, ',', '.'),
+                    ])->all())->searchable()->required(),
+            TextInput::make('amount_minor')->label('Potongan payroll (Rp)')->numeric()->rule('integer')->minValue(0)->required(),
+        ])->statePath('advanceOverride');
+    }
+
+    public function saveAdvanceOverride(): void
+    {
+        abort_unless(PermissionMatrix::can(Auth::user(), PanelModule::EMPLOYEE_ADVANCES, 'edit'), 403);
+        $data = $this->validate([
+            'advanceOverride.advance_id' => ['required', 'integer', 'exists:employee_advances,id'],
+            'advanceOverride.amount_minor' => ['required', 'integer', 'min:0'],
+        ])['advanceOverride'];
+        $run = $this->selected();
+        DB::transaction(function () use ($run, $data): void {
+            app(EmployeeAdvanceService::class)->setPayrollOverride($run,
+                EmployeeAdvance::query()->findOrFail($data['advance_id']), (int) $data['amount_minor'], Auth::user());
+            app(PayrollRunService::class)->recalculate($run, Auth::user());
+        }, 3);
+        $this->notify('Potongan kasbon diperbarui dan payroll dihitung ulang');
     }
 
     public function createRun(): void

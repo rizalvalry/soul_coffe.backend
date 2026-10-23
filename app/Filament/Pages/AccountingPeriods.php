@@ -95,6 +95,7 @@ class AccountingPeriods extends Page implements HasTable
             'stock_cost_pending' => PendingInventoryCosts::getUrl(),
             'depreciation_unposted' => FixedAssetResource::getUrl(),
             'cash_settlement_balance' => GeneralLedger::getUrl(),
+            'employee_advances_reconciliation' => EmployeeAdvances::getUrl(),
         };
     }
 

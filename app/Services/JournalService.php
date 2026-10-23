@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\Account;
 use App\Models\AccountingPeriod;
 use App\Models\AuditLog;
+use App\Models\EmployeeAdvance;
+use App\Models\EmployeeAdvanceMovement;
 use App\Models\FixedAsset;
 use App\Models\JournalEntry;
 use App\Models\PayrollRemittance;
@@ -264,18 +266,28 @@ class JournalService
     }
 
     public function reverse(JournalEntry $entry, string $reason, ?PayrollRun $payrollRun = null, ?User $payrollActor = null,
-        ?PayrollRemittance $remittance = null, ?User $remittanceActor = null): JournalEntry
+        ?PayrollRemittance $remittance = null, ?User $remittanceActor = null, ?EmployeeAdvance $advance = null,
+        ?EmployeeAdvanceMovement $advanceMovement = null): JournalEntry
     {
         if (trim($reason) === '' || mb_strlen($reason) > 225) {
             throw ValidationException::withMessages(['reason' => 'Alasan pembalik wajib diisi, maksimal 225 karakter.']);
         }
 
-        return DB::transaction(function () use ($entry, $reason, $payrollRun, $payrollActor, $remittance, $remittanceActor): JournalEntry {
+        return DB::transaction(function () use ($entry, $reason, $payrollRun, $payrollActor, $remittance, $remittanceActor, $advance, $advanceMovement): JournalEntry {
             if ($payrollRun || $remittance) {
                 Account::query()->orderBy('id')->lockForUpdate()->firstOrFail();
             }
             $run = $payrollRun ? PayrollRun::query()->whereKey($payrollRun->id)->lockForUpdate()->firstOrFail() : null;
             $original = JournalEntry::query()->lockForUpdate()->findOrFail($entry->id);
+            $isAdvance = $original->source_type === 'employee_advance' && $advance
+                && $original->source_id === $advance->id;
+            $isAdvanceRepayment = $original->source_type === 'employee_advance_repayment'
+                && $advanceMovement && $advanceMovement->kind === 'CASH_REPAYMENT'
+                && $advanceMovement->journal_entry_id === $original->id;
+            if (str_starts_with($original->source_type, 'employee_advance')
+                && ! $isAdvance && ! $isAdvanceRepayment) {
+                throw ValidationException::withMessages(['journal' => 'Balik jurnal kasbon lewat halaman Kasbon Karyawan ya.']);
+            }
             if (in_array($original->source_type, ['thr_run', 'thr_provision'], true)) {
                 throw ValidationException::withMessages(['journal' => 'Jurnal THR ini dikelola dari halaman THR ya.']);
             }
@@ -311,14 +323,15 @@ class JournalService
                 'debit_minor' => $line->credit_minor,
                 'credit_minor' => $line->debit_minor,
                 'cart_id' => $line->cart_id,
-                'memo' => $isPayroll ? 'Pembatalan payroll' : $reason,
+                'memo' => $isPayroll ? 'Pembatalan payroll' : ($isAdvance || $isAdvanceRepayment ? 'Pembatalan kasbon' : $reason),
             ])->all();
 
             // A reversal is a new posting in the current open period, never an edit of history.
             $reversal = $this->postInternal([
                 'entry_date' => $original->purpose === 'OPENING'
                     ? $original->entry_date->toDateString() : today()->toDateString(),
-                'description' => $isPayroll ? 'Pembalik jurnal payroll '.$original->number : 'Pembalik '.$original->number.': '.$reason,
+                'description' => $isPayroll ? 'Pembalik jurnal payroll '.$original->number
+                    : 'Pembalik '.$original->number.($isAdvance || $isAdvanceRepayment ? '' : ': '.$reason),
                 'source_type' => 'journal_reversal',
                 'source_id' => $original->id,
                 'purpose' => 'REVERSAL',
@@ -357,7 +370,7 @@ class JournalService
                 'subject_type' => JournalEntry::class,
                 'subject_id' => $original->id,
                 'before_json' => ['status' => 'POSTED'],
-                'after_json' => $isPayroll
+                'after_json' => $isPayroll || $isAdvance || $isAdvanceRepayment
                     ? ['reversal_entry_id' => $reversal->id]
                     : ['reversal_entry_id' => $reversal->id, 'reason' => $reason],
                 'ip' => request()->ip(),

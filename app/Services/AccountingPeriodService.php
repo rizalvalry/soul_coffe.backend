@@ -51,6 +51,7 @@ class AccountingPeriodService
             ->where('account.code', '1-1200')->where('entry.entry_date', '<=', $end)
             ->selectRaw('COALESCE(SUM(CAST(line.debit_minor AS SIGNED) - CAST(line.credit_minor AS SIGNED)), 0) AS balance')
             ->value('balance');
+        $advanceDifference = app(EmployeeAdvanceService::class)->reconciliation($end)['difference_minor'];
 
         return [
             ['code' => 'settlements_pending', 'status' => $pendingSettlements ? 'blocking' : 'ok',
@@ -65,6 +66,8 @@ class AccountingPeriodService
                 'count' => $unpostedDepreciation, 'description' => "$unpostedDepreciation aset belum diposting penyusutannya."],
             ['code' => 'cash_settlement_balance', 'status' => $cashBalance > 0 ? 'warning' : 'ok',
                 'count' => max(0, $cashBalance), 'description' => 'Saldo Kas Setoran per akhir bulan Rp '.number_format(max(0, $cashBalance), 0, ',', '.').'.'],
+            ['code' => 'employee_advances_reconciliation', 'status' => $advanceDifference !== 0 ? 'warning' : 'ok',
+                'count' => abs($advanceDifference), 'description' => 'Selisih kasbon dan buku besar 1-1500 Rp '.number_format(abs($advanceDifference), 0, ',', '.').'.'],
         ];
     }
 

@@ -88,8 +88,13 @@ class AuditLog extends Model
                 $values['closing_basis'], $values['closing_distance_m'], $values['outside_closing_point']);
         }
 
-        if (! in_array($this->subject_type, [EmployeeProfile::class, PayrollComponentEntry::class, PayrollRun::class], true)
-            || ! Gate::allows('manage-payroll')) {
+        $canReadAdvance = $this->subject_type === EmployeeAdvance::class
+            && PermissionMatrix::can(Auth::user(), PanelModule::EMPLOYEE_ADVANCES, 'view');
+        $canReadDetails = $this->subject_type === EmployeeAdvance::class
+            ? $canReadAdvance : Gate::allows('manage-payroll');
+        if (! in_array($this->subject_type, [EmployeeProfile::class, PayrollComponentEntry::class,
+            PayrollRun::class, EmployeeAdvance::class], true)
+            || ! $canReadDetails) {
             return $values;
         }
 
