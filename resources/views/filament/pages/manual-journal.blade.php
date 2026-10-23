@@ -10,8 +10,8 @@
         @endforeach
         <div class="bsi-sheet">
             <div class="bsi-toolbar bsi-toolbar--end">
-                <div>Debit: <strong>Rp {{ number_format($this->total('debit_minor'), 0, ',', '.') }}</strong></div>
-                <div>Kredit: <strong>Rp {{ number_format($this->total('credit_minor'), 0, ',', '.') }}</strong></div>
+                <div class="bsi-cms-stat bsi-cms-stat--compact"><span>Debit:</span><strong>Rp {{ number_format($this->total('debit_minor'), 0, ',', '.') }}</strong></div>
+                <div class="bsi-cms-stat bsi-cms-stat--compact"><span>Kredit:</span><strong>Rp {{ number_format($this->total('credit_minor'), 0, ',', '.') }}</strong></div>
                 <div role="status">{{ $this->total('debit_minor') === 0 ? 'Isi nominal dulu' : ($this->total('debit_minor') === $this->total('credit_minor') ? 'Seimbang' : 'Belum seimbang') }}</div>
                 <x-filament::button type="button" wire:click="submit" wire:loading.attr="disabled">Posting Jurnal</x-filament::button>
             </div>

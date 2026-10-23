@@ -1,4 +1,5 @@
 <x-filament-panels::page>
+    <div class="bsi-cms-page">
     <x-filament::section heading="Nilai ulang persediaan tertunda">
         <p class="mb-3">Isi HPP baru di Produk &amp; Harga dulu ya. Nilai stok yang tertunda akan dibukukan hari ini.</p>
         <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Produk</th><th>Gerak tertunda</th><th>Perkiraan nilai gerak</th><th>Dampak saldo stok</th><th>Belum ada HPP baru</th><th>Aksi</th></tr></thead><tbody>
@@ -11,4 +12,5 @@
         @endforelse
         </tbody></table></div>
     </x-filament::section>
+    </div>
 </x-filament-panels::page>

@@ -25,7 +25,7 @@ use Illuminate\View\Middleware\ShareErrorsFromSession;
 class AdminPanelProvider extends PanelProvider
 {
     /** Cache-buster for the public theme files. */
-    private const THEME_VERSION = '2026-10-19-erp';
+    private const THEME_VERSION = '2026-10-22-cms-style';
 
     public function panel(Panel $panel): Panel
     {
@@ -38,6 +38,7 @@ class AdminPanelProvider extends PanelProvider
             ->brandLogoHeight('2.5rem')
             ->sidebarWidth('16.5rem')
             ->darkMode()
+            ->viteTheme('resources/css/filament/admin/theme.css')
             // Phone, not email — see App\Filament\Auth\Login.
             ->login(Login::class)
             ->colors([
@@ -49,7 +50,7 @@ class AdminPanelProvider extends PanelProvider
                 'info' => Color::hex('#007277'),
             ])
             ->font('Poppins', provider: LocalFontProvider::class)
-            // Plain CSS needs no panel build step.
+            // The compiled theme and these plain CSS files ship with the repository.
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
                 fn (): string => '<link rel="stylesheet" href="'.asset('css/soul-teal-signature.css').'?v='.static::THEME_VERSION.'">'

@@ -6,7 +6,7 @@
                 <div class="bsi-toolbar bsi-toolbar--end"><x-filament::button type="submit">Tampilkan</x-filament::button></div>
             </form>
             @foreach (['period', 'anchorDate', 'fromDate', 'toDate', 'range'] as $field)
-                @error($field)<p class="text-red-600">{{ $message }}</p>@enderror
+                @error($field)<p class="bsi-cms-danger">{{ $message }}</p>@enderror
             @endforeach
             <p class="mt-2 text-sm">Rentang maksimal 366 hari. Angka keuangan mengikuti jurnal; rincian produk, setoran, dan waste mengikuti data operasional.</p>
         </div>

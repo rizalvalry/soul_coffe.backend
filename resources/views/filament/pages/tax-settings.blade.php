@@ -19,9 +19,9 @@
                         @if ($showPphForm)<form wire:submit="savePph" class="mt-4">{{ $this->pphForm }}<x-filament::button type="submit" class="mt-3">Simpan versi baru</x-filament::button></form>@endif
                     @endif
                     <h3 class="mt-5 font-semibold">Riwayat tarif</h3>
-                    <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Mulai</th><th>Sampai</th><th>Status</th><th>Tarif</th><th>Oleh / alasan</th></tr></thead><tbody>
+                    <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Mulai</th><th>Sampai</th><th>Status</th><th class="bsi-num">Tarif</th><th>Oleh / alasan</th></tr></thead><tbody>
                         @forelse ($this->versions($type) as $version)
-                            <tr><td>{{ $version->effective_from->format('d M Y') }}</td><td>{{ $version->effective_until?->format('d M Y') ?? '—' }}</td><td>{{ $version->is_active ? 'Aktif' : 'Nonaktif' }}</td><td>{{ rtrim(rtrim(sprintf('%d.%02d', intdiv($version->rate_bps, 100), $version->rate_bps % 100), '0'), '.') }}%</td><td>{{ $version->creator?->name }} · {{ $version->reason }}</td></tr>
+                            <tr><td>{{ $version->effective_from->format('d M Y') }}</td><td>{{ $version->effective_until?->format('d M Y') ?? '—' }}</td><td>{{ $version->is_active ? 'Aktif' : 'Nonaktif' }}</td><td class="bsi-num">{{ rtrim(rtrim(sprintf('%d.%02d', intdiv($version->rate_bps, 100), $version->rate_bps % 100), '0'), '.') }}%</td><td>{{ $version->creator?->name }} · {{ $version->reason }}</td></tr>
                         @empty <tr><td colspan="5">Belum ada versi tarif.</td></tr> @endforelse
                     </tbody></table></div>
                 </section>
@@ -35,16 +35,17 @@
                 @foreach (['PBJT' => 'PBJT', 'PPH' => 'PPh Badan'] as $type => $title)
                     @php $report = $this->report($type); @endphp
                     <div class="rounded border p-3"><h3 class="font-semibold">{{ $title }}</h3>
-                        <p>Omzet bruto: Rp {{ number_format($report['gross_minor'], 0, ',', '.') }}</p>
-                        <p>Dasar pengenaan: Rp {{ number_format($report['base_minor'], 0, ',', '.') }}</p>
-                        <p>Utang dari jurnal: Rp {{ number_format($report['due_minor'], 0, ',', '.') }}</p>
-                        <p>Setoran bulan ini: Rp {{ number_format($report['paid_minor'], 0, ',', '.') }}</p>
+                        <p class="bsi-cms-stat"><span>Omzet bruto:</span><strong>Rp {{ number_format($report['gross_minor'], 0, ',', '.') }}</strong></p>
+                        <p class="bsi-cms-stat"><span>Dasar pengenaan:</span><strong>Rp {{ number_format($report['base_minor'], 0, ',', '.') }}</strong></p>
+                        <p class="bsi-cms-stat"><span>Utang dari jurnal:</span><strong>Rp {{ number_format($report['due_minor'], 0, ',', '.') }}</strong></p>
+                        <p class="bsi-cms-stat"><span>Setoran bulan ini:</span><strong>Rp {{ number_format($report['paid_minor'], 0, ',', '.') }}</strong></p>
                         @if ($type === 'PBJT' && $report['threshold_minor'] !== null)
-                            <p>Ambang omzet: Rp {{ number_format($report['threshold_minor'], 0, ',', '.') }} · {{ $report['gross_minor'] > $report['threshold_minor'] ? 'Di atas ambang' : 'Belum lewat ambang' }} (informasi saja)</p>
+                            <p class="bsi-cms-stat"><span>Ambang omzet:</span><strong>Rp {{ number_format($report['threshold_minor'], 0, ',', '.') }}</strong></p>
+                            <p>· {{ $report['gross_minor'] > $report['threshold_minor'] ? 'Di atas ambang' : 'Belum lewat ambang' }} (informasi saja)</p>
                         @endif
                         @if ($type === 'PPH')
-                            <p>Perkiraan PPh Final: Rp {{ number_format($report['final_estimate_minor'], 0, ',', '.') }}</p>
-                            <p>Perkiraan PPh tarif umum: Rp {{ number_format($report['general_estimate_minor'], 0, ',', '.') }}</p>
+                            <p class="bsi-cms-stat"><span>Perkiraan PPh Final:</span><strong>Rp {{ number_format($report['final_estimate_minor'], 0, ',', '.') }}</strong></p>
+                            <p class="bsi-cms-stat"><span>Perkiraan PPh tarif umum:</span><strong>Rp {{ number_format($report['general_estimate_minor'], 0, ',', '.') }}</strong></p>
                             @if ($report['general_estimate_minor'] > 0)<p>Tarif umum cuma perkiraan dari laba bersih. Koreksi fiskal dan jurnal akhir tahun lewat Jurnal Manual, ya.</p>@endif
                             @if ($report['final_estimate_minor'] !== $report['final_posted_minor'])
                                 <x-filament::button type="button" wire:click="recordFinalPph" class="mt-2">{{ $report['final_estimate_minor'] < 0 ? 'Catat koreksi PPh Final' : ($report['final_posted_minor'] === 0 ? 'Catat utang PPh final bulan ini' : 'Sesuaikan utang PPh final bulan ini') }}</x-filament::button>
@@ -59,9 +60,9 @@
         <section class="rounded-xl border p-4">
             <form wire:submit="saveRemittance">{{ $this->remittanceForm }}<x-filament::button type="submit" class="mt-3">Catat setoran pajak</x-filament::button></form>
             <h3 class="mt-5 font-semibold">Riwayat setor</h3>
-            <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Tanggal</th><th>Pajak</th><th>Nominal</th><th>Bukti</th><th>Akun</th><th>Status</th></tr></thead><tbody>
+            <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Tanggal</th><th>Pajak</th><th class="bsi-num">Nominal</th><th>Bukti</th><th>Akun</th><th>Status</th></tr></thead><tbody>
                 @forelse ($this->remittances() as $remittance)
-                    <tr><td>{{ $remittance->paid_on->format('d M Y') }}</td><td>{{ $remittance->tax_type }}</td><td>Rp {{ number_format($remittance->amount_minor, 0, ',', '.') }}</td><td>{{ $remittance->receipt_number }}</td><td>{{ $remittance->cashAccount?->name }}</td><td>{{ $remittance->status === 'VOID' ? 'Dibatalkan' : 'Tercatat' }}</td></tr>
+                    <tr><td>{{ $remittance->paid_on->format('d M Y') }}</td><td>{{ $remittance->tax_type }}</td><td class="bsi-num">Rp {{ number_format($remittance->amount_minor, 0, ',', '.') }}</td><td>{{ $remittance->receipt_number }}</td><td>{{ $remittance->cashAccount?->name }}</td><td>{{ $remittance->status === 'VOID' ? 'Dibatalkan' : 'Tercatat' }}</td></tr>
                 @empty <tr><td colspan="6">Belum ada setoran pajak.</td></tr> @endforelse
             </tbody></table></div>
             <div class="mt-4"><label for="void-remittance">Batalkan setoran</label>

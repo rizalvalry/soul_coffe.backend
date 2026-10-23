@@ -42,16 +42,16 @@
                 @if (in_array($run->status, ['APPROVED', 'PAID']))
                     <x-filament::button type="button" wire:click="retrySlips">Cek/ulang slip PDF</x-filament::button>
                 @endif
-                <div class="overflow-x-auto"><table class="bsi-grid"><thead><tr><th>Karyawan</th><th>Masa kerja</th><th>Dasar</th><th>THR</th><th>PPh 21</th><th>Dibayar</th><th>Slip</th></tr></thead><tbody>
+                <div class="overflow-x-auto"><table class="bsi-grid"><thead><tr><th>Karyawan</th><th>Masa kerja</th><th class="bsi-num">Dasar</th><th class="bsi-num">THR</th><th class="bsi-num">PPh 21</th><th class="bsi-num">Dibayar</th><th>Slip</th></tr></thead><tbody>
                     @foreach ($run->items as $item)
                         @php($s = $item->snapshot)
-                        <tr><td>{{ $item->user->name }}</td><td>{{ $s['months'] }} bulan</td><td>Rp {{ number_format($s['base_minor'], 0, ',', '.') }}</td><td>Rp {{ number_format($s['gross_minor'], 0, ',', '.') }}</td><td>Rp {{ number_format($s['pph21_minor'], 0, ',', '.') }}</td><td>Rp {{ number_format($s['net_minor'], 0, ',', '.') }}</td><td>@if ($item->slip_path)<a href="{{ route('admin.thr-slips.download', $item) }}" class="underline">Unduh PDF</a>@endif</td></tr>
+                        <tr><td>{{ $item->user->name }}</td><td>{{ $s['months'] }} bulan</td><td class="bsi-num">Rp {{ number_format($s['base_minor'], 0, ',', '.') }}</td><td class="bsi-num">Rp {{ number_format($s['gross_minor'], 0, ',', '.') }}</td><td class="bsi-num">Rp {{ number_format($s['pph21_minor'], 0, ',', '.') }}</td><td class="bsi-num">Rp {{ number_format($s['net_minor'], 0, ',', '.') }}</td><td>@if ($item->slip_path)<a href="{{ route('admin.thr-slips.download', $item) }}" class="underline">Unduh PDF</a>@endif</td></tr>
                     @endforeach
                 </tbody></table></div>
             </section>
         @endif
         @foreach (['effective_from', 'component_type_ids', 'minimum_months', 'full_months', 'prorata_denominator', 'reminder_days', 'reason', 'holiday_date', 'planned_payment_date', 'user_ids', 'month', 'run', 'date', 'account_id', 'entry_date', 'slip'] as $field)
-            @error($field)<p class="text-red-600">{{ $message }}</p>@enderror
+            @error($field)<p class="bsi-cms-danger">{{ $message }}</p>@enderror
         @endforeach
     </div>
 </x-filament-panels::page>
