@@ -54,7 +54,10 @@ class StockAdjustmentService
         $reason = $this->assertReason($reason);
         $this->assertCountedQty($countedQty);
 
-        $product = Product::query()->where('is_active', true)->find($productId);
+        // Finance may clear a retired support item's old ledger balance through an explicit,
+        // reasoned adjustment. It remains excluded from every operational product picker.
+        $product = Product::query()->where(fn ($query) => $query->where('is_active', true)
+            ->orWhere('is_sellable', false))->find($productId);
 
         if (! $product) {
             throw new RuntimeException('Produk tidak dikenal atau sudah tidak aktif.');

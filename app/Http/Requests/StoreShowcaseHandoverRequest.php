@@ -41,8 +41,9 @@ class StoreShowcaseHandoverRequest extends FormRequest
             ],
 
             'lines' => ['required', 'array', 'min:1'],
-            'lines.*.product_id' => ['required', 'integer', Rule::exists('products', 'id')],
+            'lines.*.product_id' => ['required', 'integer', Rule::exists('products', 'id')->where('is_active', true)->where('is_sellable', true)],
             'lines.*.qty' => ['required', 'integer', 'min:1', 'max:9999'],
+            'note' => ['nullable', 'string', 'max:500'],
 
             // Absent means "use the amount already written for today" — the normal path, since
             // the form arrives pre-filled and most days nobody touches it. Present means the
@@ -67,6 +68,7 @@ class StoreShowcaseHandoverRequest extends FormRequest
             'lines.min' => 'Pilih minimal satu produk dulu ya.',
             'lines.*.qty.min' => 'Jumlah cups harus lebih dari 0 ya.',
             'lines.*.qty.max' => 'Jumlah cups per produk maksimal 9.999',
+            'lines.*.product_id.exists' => 'Produk ini bukan produk utama',
             'allowance_amount.min' => 'Uang harian tidak boleh negatif ya.',
         ];
     }

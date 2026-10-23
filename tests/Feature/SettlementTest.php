@@ -162,6 +162,25 @@ class SettlementTest extends TestCase
             ->stockFor(StockLedgerService::KITCHEN, $this->kitchen->id, $this->coffee->id);
     }
 
+    public function test_legacy_ice_balance_does_not_block_current_settlement_approval(): void
+    {
+        $ice = Product::query()->create(['code' => 'T072-ICE', 'name' => 'Es Batu',
+            'unit' => 'pack', 'is_sellable' => false, 'is_active' => false, 'sort_order' => 90]);
+        $this->issue(2);
+        app(StockLedgerService::class)->post(StockLedgerService::CART, $this->cart->id, $ice->id,
+            MovementType::ALLOCATION_IN, 3, $this->barista->id, $this->kitchen->id);
+
+        $draft = $this->asFinance()->getJson('/api/v1/settlements/draft/'.$this->cart->id)->assertOk();
+        $this->assertSame([$this->coffee->id], collect($draft->json('data.lines'))->pluck('product_id')->all());
+        $id = $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/settlements', ['cart_id' => $this->cart->id, 'cash' => 0, 'qris' => 0, 'transfer' => 0])
+            ->assertCreated()->json('data.id');
+        $this->asFinance()->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson("/api/v1/settlements/{$id}/approve", ['lines' => $this->returnAll()])->assertOk();
+        $this->assertSame(3, app(StockLedgerService::class)->stockFor(StockLedgerService::CART, $this->cart->id, $ice->id));
+        $this->assertSame('RECONCILED', Settlement::query()->findOrFail($id)->status);
+    }
+
     private function asFinance(): self
     {
         $this->actingAs($this->finance, 'sanctum');

@@ -12,6 +12,7 @@ use App\Http\Resources\DailyCartAllowanceResource;
 use App\Http\Resources\StockRowResource;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
+use App\Models\Product;
 use App\Models\RiderClosing;
 use App\Models\StaffAssignment;
 use App\Models\User;
@@ -54,7 +55,7 @@ class ShowcaseStockController extends Controller implements HasMiddleware
     {
         return [
             new Middleware('permission:kitchen_operations,view', only: [
-                'index', 'allowance', 'staff',
+                'index', 'allowance', 'staff', 'handoverHistory',
             ]),
             new Middleware('permission:kitchen_operations,edit', only: ['brew', 'handToCart']),
             new Middleware('permission:cart_close_out,view', only: ['closeOutDraft']),
@@ -82,6 +83,13 @@ class ShowcaseStockController extends Controller implements HasMiddleware
         return StockRowResource::collection(
             $this->allocations->stockRows(StockLedgerService::KITCHEN, $kitchenId)
         );
+    }
+
+    public function handoverHistory(Request $request): JsonResponse
+    {
+        $kitchenId = KitchenContext::resolve($request);
+
+        return response()->json(['data' => $this->showcase->handoverHistory($kitchenId)]);
     }
 
     /**
@@ -129,6 +137,7 @@ class ShowcaseStockController extends Controller implements HasMiddleware
                 $request->filled('operating_date') ? $request->date('operating_date') : null,
                 $request->filled('location_id') ? $request->integer('location_id') : null,
                 $kitchenId,
+                $request->validated('note'),
             );
         } catch (HttpResponseException $e) {
             throw $e;
@@ -146,6 +155,7 @@ class ShowcaseStockController extends Controller implements HasMiddleware
                 'staff_id' => $staff->id,
                 'staff_name' => $staff->name,
                 'operating_date' => $assignment->operating_date?->toDateString(),
+                'note' => $assignment->note,
                 'allowance' => new DailyCartAllowanceResource($allowance),
                 'cart_stock' => StockRowResource::collection(
                     $this->allocations->stockRows(StockLedgerService::CART, $cart->id)
@@ -200,11 +210,12 @@ class ShowcaseStockController extends Controller implements HasMiddleware
             ->whereDate('operating_date', today()->toDateString())->first();
         $liveStock = $this->allocations->stockRows(StockLedgerService::CART, $cart->id);
         $liveByProduct = collect($liveStock)->keyBy('product_id');
+        $operationalIds = Product::query()->operational()->pluck('id')->all();
 
         return response()->json(['data' => [
             'cart_id' => $cart->id,
             'closing_id' => $closing?->id,
-            'lines' => $closing?->lines->map(fn ($line): array => [
+            'lines' => $closing?->lines->whereIn('product_id', $operationalIds)->map(fn ($line): array => [
                 'product_id' => $line->product_id,
                 'qty_remaining' => $line->qty_remaining,
                 'qty_wasted' => $line->qty_wasted,

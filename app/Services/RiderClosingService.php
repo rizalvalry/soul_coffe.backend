@@ -117,7 +117,7 @@ class RiderClosingService
         $existing = RiderClosing::query()->with('lines')
             ->where('cart_id', $cart->id)->whereDate('operating_date', $date->toDateString())->first();
         $ids = array_unique([...array_keys($incoming), ...array_keys($carry)]);
-        $products = Product::query()->whereIn('id', $ids)->orderBy('sort_order')->get();
+        $products = Product::query()->operational()->whereIn('id', $ids)->orderBy('sort_order')->get();
         $lines = $products->map(function (Product $product) use ($incoming, $carry, $officeSold, $existing): array {
             $prior = $existing?->lines->firstWhere('product_id', $product->id);
             $price = $product->priceVersionAt(now());
@@ -143,6 +143,7 @@ class RiderClosingService
             'cart_code' => $cart->code,
             'operating_date' => $date->toDateString(),
             'closing_id' => $existing?->id,
+            'note' => $existing?->note,
             'can_correct' => ! $settlement?->reconciled_at,
             'carry_warning' => collect($carry)->contains(fn (int $qty): bool => $qty > 0),
             'total_minor' => $existing?->total_minor ?? 0,
@@ -163,14 +164,21 @@ class RiderClosingService
      *
      * @param  array<int,array{product_id:int,qty_remaining:int,qty_wasted:int}>  $input
      */
-    public function record(User $actor, Cart $cart, User $rider, Carbon $date, array $input, int $qris, int $transfer, array $gps, ?string $reason = null, ?string $idempotencyKey = null): RiderClosing
+    public function record(User $actor, Cart $cart, User $rider, Carbon $date, array $input, int $qris, int $transfer, array $gps, ?string $reason = null, ?string $idempotencyKey = null, ?string $note = null, bool $noteProvided = false): RiderClosing
     {
-        return DB::transaction(function () use ($actor, $cart, $rider, $date, $input, $qris, $transfer, $gps, $reason, $idempotencyKey): RiderClosing {
+        $note = blank($note) ? null : trim($note);
+
+        return DB::transaction(function () use ($actor, $cart, $rider, $date, $input, $qris, $transfer, $gps, $reason, $idempotencyKey, $note, $noteProvided): RiderClosing {
             Cart::query()->whereKey($cart->id)->lockForUpdate()->firstOrFail();
-            $requestHash = hash('sha256', json_encode([
+            $hashInput = [
                 $actor->id, $cart->id, $rider->id, $date->toDateString(),
                 $input, $qris, $transfer, $gps, $reason,
-            ], JSON_THROW_ON_ERROR));
+            ];
+            if ($noteProvided) {
+                $hashInput[] = $note;
+            }
+            // Requests from older APKs omitted note; keep their original hash for safe retries.
+            $requestHash = hash('sha256', json_encode($hashInput, JSON_THROW_ON_ERROR));
             $keyHash = $idempotencyKey === null ? null : hash('sha256', $actor->id.':'.$idempotencyKey);
             if ($idempotencyKey !== null) {
                 $priorRequest = DB::table('rider_closing_idempotency_keys')
@@ -202,6 +210,9 @@ class RiderClosingService
             }
             $closing = RiderClosing::query()->with('lines')->where('cart_id', $cart->id)
                 ->whereDate('operating_date', $date->toDateString())->lockForUpdate()->first();
+            if ($closing) {
+                Product::assertOperationalIds($closing->lines->pluck('product_id')->all());
+            }
             $settlement = Settlement::query()->where('cart_id', $cart->id)
                 ->whereDate('operating_date', $date->toDateString())->lockForUpdate()->first();
             if ($closing && $closing->rider_id !== $rider->id) {
@@ -220,7 +231,8 @@ class RiderClosingService
 
             [$incoming, $carry] = $this->quantities($cart, $date);
             $officeSold = $this->officeSold($cart, $date);
-            $ids = array_unique([...array_keys($incoming), ...array_keys($carry)]);
+            $ids = Product::query()->operational()->whereIn('id', array_unique([...array_keys($incoming), ...array_keys($carry)]))->pluck('id')->all();
+            Product::assertOperationalIds(collect($input)->pluck('product_id')->all());
             sort($ids);
             $submitted = [];
             foreach ($input as $line) {
@@ -319,6 +331,30 @@ class RiderClosingService
                     && ($oldLines->get($id)?->qty_carry ?? -1) === $row['qty_carry']
                     && ($oldLines->get($id)?->qty_remaining ?? -1) === $row['qty_remaining']
                     && ($oldLines->get($id)?->qty_wasted ?? -1) === $row['qty_wasted'])) {
+                if ($noteProvided && $closing->note !== $note) {
+                    $beforeNote = $closing->note;
+                    $closing->update(['note' => $note]);
+                    DB::table('rider_closing_revisions')->insert([
+                        'rider_closing_id' => $closing->id,
+                        'actor_id' => $actor->id,
+                        'reason' => $reason,
+                        'snapshot_json' => json_encode($this->snapshot($closing), JSON_THROW_ON_ERROR),
+                        'created_at' => now(),
+                    ]);
+                    AuditLog::recordAction($actor, 'rider_closing.corrected', $closing,
+                        ['note' => $beforeNote], ['note' => $note]);
+                    $recipientIds = array_values(array_unique(array_merge(
+                        User::query()->whereIn('role', [Role::FINANCE, Role::ADMINISTRATOR])
+                            ->where('is_active', true)->pluck('id')->all(), User::managementIds(),
+                    )));
+                    $this->events->publish(
+                        'RiderClosingCorrected', 'Catatan Closing diperbarui',
+                        "Catatan Closing Coffee Bike {$cart->code} berubah. Cek setoran ya.",
+                        ['role.FINANCE', 'role.MANAGEMENT', 'role.ADMINISTRATOR', 'user.'.$rider->id],
+                        notifyUserIds: $recipientIds,
+                        context: ['cart_id' => $cart->id, 'operating_date' => $date->toDateString(), 'source_id' => $closing->id],
+                    );
+                }
                 $this->rememberKey($keyHash, $requestHash, $closing->id);
 
                 return $closing;
@@ -340,6 +376,7 @@ class RiderClosingService
                 'closing_distance_m' => $locationCheck['distance_m'],
                 'outside_closing_point' => $everOutside,
                 'closed_at' => now(),
+                'note' => $noteProvided ? $note : $closing?->note,
             ];
             if (! $closing) {
                 $closing = RiderClosing::query()->create($values);
@@ -540,6 +577,7 @@ class RiderClosingService
             'total_minor' => $closing->total_minor, 'cogs_minor' => $closing->cogs_minor,
             'qris_minor' => $closing->qris_minor, 'transfer_minor' => $closing->transfer_minor,
             'cash_minor' => $closing->cash_minor, 'gps_lat' => $closing->gps_lat,
+            'note' => $closing->note,
             'closing_basis' => $closing->closing_basis, 'closing_distance_m' => $closing->closing_distance_m,
             'outside_closing_point' => $closing->outside_closing_point,
             'gps_lng' => $closing->gps_lng, 'gps_unavailable' => $closing->gps_unavailable,

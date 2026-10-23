@@ -190,6 +190,7 @@ Route::middleware(['auth:sanctum', EnsureActiveUser::class, EnsureBoundDevice::c
     // are taps on a phone in a kitchen, and a retried tap must not brew, hand over, or write
     // off the same cups twice.
     Route::get('showcase/stock', [ShowcaseStockController::class, 'index']);
+    Route::get('showcase/handovers', [ShowcaseStockController::class, 'handoverHistory']);
     Route::get('showcase/kitchens', [ShowcaseStockController::class, 'kitchens']);
     Route::get('showcase/allowance/{cart}', [ShowcaseStockController::class, 'allowance']);
     // Every active staff member, not only those already rostered — the Add Stock form exists

@@ -24,7 +24,7 @@ class RefillRequestResource extends Resource
 
     protected static string|UnitEnum|null $navigationGroup = 'Operasional';
 
-    protected static ?string $navigationLabel = 'Refill Kedaluwarsa';
+    protected static ?string $navigationLabel = 'Request Refill';
 
     protected static ?string $modelLabel = 'Request Refill';
 

@@ -47,7 +47,7 @@ class StockOverviewService
         // Sellable products only, in the paper form's order — the same list the barista's Add
         // Stock form shows, so the two screens can be read side by side.
         $products = Product::query()
-            ->where('is_active', true)
+            ->operational()
             ->orderBy('sort_order')
             ->get(['id', 'code', 'name', 'unit']);
 

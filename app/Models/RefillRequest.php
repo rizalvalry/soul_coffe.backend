@@ -80,6 +80,7 @@ class RefillRequest extends Model
         'device_id',
         'idempotency_key',
         'active_cart_id',
+        'note',
     ];
 
     protected static function booted(): void

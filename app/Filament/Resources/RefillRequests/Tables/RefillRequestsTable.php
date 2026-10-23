@@ -33,6 +33,7 @@ class RefillRequestsTable
                 TextColumn::make('operating_date')->label('Tanggal operasional')->date('d M Y')->sortable(),
                 TextColumn::make('cart.code')->label('Coffee Bike'),
                 TextColumn::make('staff.name')->label('Rider'),
+                TextColumn::make('note')->label('Catatan lapangan')->placeholder('-')->wrap(),
                 TextColumn::make('status')->label('Status')
                     ->formatStateUsing(fn (RefillStatus $state): string => $state->label())->badge(),
                 TextColumn::make('lines')->label('Disiapkan')
@@ -50,11 +51,17 @@ class RefillRequestsTable
                     ->wrap(),
             ])
             ->filters([
-                Filter::make('pending_expiry')->label('Kedaluwarsa menunggu keputusan')->default()
+                Filter::make('pending_expiry')->label('Kedaluwarsa menunggu keputusan')
                     ->query(fn (Builder $query): Builder => $query->where('status', RefillStatus::EXPIRED)
                         ->whereDoesntHave('expiryDecision')),
             ])
             ->recordActions([
+                Action::make('detail')->label('Lihat detail')->icon('heroicon-o-eye')
+                    ->modalHeading('Detail Request Refill')
+                    ->modalSubmitAction(false)
+                    ->modalContent(fn (RefillRequest $record) => view('filament.refill-requests.detail', [
+                        'request' => $record,
+                    ])),
                 Action::make('failed')->label('Tutup sebagai gagal')->color('danger')
                     ->visible(fn (RefillRequest $record): bool => self::mayDecide($record))
                     ->requiresConfirmation()->schema([self::reasonField()])

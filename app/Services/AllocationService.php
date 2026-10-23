@@ -69,6 +69,7 @@ class AllocationService
 
         $targetsByCart = DailyTarget::query()
             ->whereIn('cart_id', $cartIds)
+            ->whereIn('product_id', Product::query()->operational()->select('id'))
             ->where(function ($query) use ($weekday): void {
                 $query->whereNull('weekday')->orWhere('weekday', $weekday);
             })
@@ -120,6 +121,7 @@ class AllocationService
         $weekday = Carbon::parse($operatingDate)->dayOfWeek;
         $targets = DailyTarget::query()
             ->where('cart_id', $cart->id)
+            ->whereIn('product_id', Product::query()->operational()->select('id'))
             ->where(function ($query) use ($weekday): void {
                 $query->whereNull('weekday')->orWhere('weekday', $weekday);
             })
@@ -127,6 +129,7 @@ class AllocationService
             ->keyBy('product_id');
 
         $productIds = collect($input['lines'])->pluck('product_id')->all();
+        Product::assertOperationalIds($productIds);
         $products = Product::query()->whereIn('id', $productIds)->get()->keyBy('id');
 
         $totalIssued = 0;
@@ -304,6 +307,7 @@ class AllocationService
 
         $products = Product::query()
             ->whereIn('id', array_keys($map))
+            ->operational()
             ->orderBy('sort_order')
             ->get(['id', 'name', 'image_path']);
 

@@ -21,7 +21,9 @@ class InventoryAccountingReportService
         $at = $month->copy()->endOfMonth();
         $threshold = (int) config('soul.recipe_cost_variance_threshold_percent', 10);
 
-        return Product::query()->where('is_active', true)->orderBy('name')->get()
+        // Historical monthly reports retain retired product rows from before the 22 Oct decision.
+        return Product::query()->when($at->toDateString() >= '2026-10-22',
+            fn ($query) => $query->operational())->orderBy('name')->get()
             ->map(function (Product $product) use ($at, $threshold): array {
                 $standard = $product->priceVersionAt($at)?->cost_price_minor;
                 $recipe = $this->recipes->currentFor($product->id)?->computed_cost_minor;

@@ -27,6 +27,7 @@ class RefillLineResource extends JsonResource
             'product_id' => $this->product_id,
             'product_name' => $this->whenLoaded('product', fn () => $this->product->name),
             'image_url' => $this->whenLoaded('product', fn () => $this->product?->imageUrl()),
+            'is_operational' => $this->whenLoaded('product', fn () => (bool) ($this->product?->is_active && $this->product?->is_sellable)),
             'qty_requested' => $this->qty_requested,
             'qty_approved' => $this->qty_approved,
             'qty_prepared' => $this->qty_prepared,

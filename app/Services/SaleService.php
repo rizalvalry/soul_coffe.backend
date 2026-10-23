@@ -194,8 +194,8 @@ class SaleService
             foreach ($merged as $productId => $qty) {
                 $product = $products[$productId] ?? null;
 
-                if (! $product || ! $product->is_active) {
-                    throw new RuntimeException('Produk tidak dikenal atau sudah tidak aktif.');
+                if (! $product || ! $product->is_active || ! $product->is_sellable) {
+                    throw new RuntimeException('Produk ini bukan produk utama');
                 }
 
                 $onHand = (int) ($available[$productId] ?? 0);

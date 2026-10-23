@@ -29,7 +29,7 @@ class StoreShowcaseBrewRequest extends FormRequest
     {
         return [
             'lines' => ['required', 'array', 'min:1'],
-            'lines.*.product_id' => ['required', 'integer', Rule::exists('products', 'id')],
+            'lines.*.product_id' => ['required', 'integer', Rule::exists('products', 'id')->where('is_active', true)->where('is_sellable', true)],
             // Brew adds kitchen stock; the 100-cup Rider refill-request limit does not apply.
             'lines.*.qty' => ['required', 'integer', 'min:1', 'max:9999'],
         ];
@@ -45,6 +45,7 @@ class StoreShowcaseBrewRequest extends FormRequest
             'lines.min' => 'Pilih minimal satu produk',
             'lines.*.qty.min' => 'Jumlah cups harus lebih dari 0',
             'lines.*.qty.max' => 'Jumlah cups per produk maksimal 9.999',
+            'lines.*.product_id.exists' => 'Produk ini bukan produk utama',
         ];
     }
 

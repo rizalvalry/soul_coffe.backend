@@ -15,6 +15,7 @@ class ProductController extends Controller
         // Eager-load only the current price version (effective_from <= now, newest first) so
         // ProductResource never issues a per-product query for FINANCE/ADMINISTRATOR viewers.
         $products = Product::query()
+            ->operational()
             ->orderBy('sort_order')
             ->with(['priceVersions' => function ($query): void {
                 $query->where('effective_from', '<=', now())

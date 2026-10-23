@@ -14,7 +14,7 @@ class DailyTargetForm
             ->components([
                 Select::make('product_id')
                     ->label('Produk')
-                    ->relationship('product', 'name')
+                    ->relationship('product', 'name', modifyQueryUsing: fn ($query) => $query->operational())
                     ->searchable()
                     ->preload()
                     ->required(),

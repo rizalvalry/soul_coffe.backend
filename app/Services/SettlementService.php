@@ -140,6 +140,7 @@ class SettlementService
         // would add a query per cart on each update.
         $remaining = StockLedger::query()
             ->where('location_type', StockLedgerService::CART)
+            ->whereIn('product_id', Product::query()->operational()->select('id'))
             ->whereIn('location_id', $assignments->pluck('cart_id')->filter()->unique()->all())
             ->groupBy('location_id')
             ->selectRaw('location_id, SUM(qty_delta) as qty')
@@ -147,11 +148,18 @@ class SettlementService
             ->map(fn ($qty): int => max(0, (int) $qty))
             ->all();
 
+        $operationalIds = $date->toDateString() >= '2026-10-22'
+            ? Product::query()->operational()->pluck('id')->all() : null;
+
         return $assignments
-            ->map(function (StaffAssignment $assignment) use ($date, $sales, $settlements, $closings, $closeoutVarianceCounts, $saleStaffIds, $saleStaffNames, $remaining, $lastPings, $showClosingLocation): array {
+            ->map(function (StaffAssignment $assignment) use ($date, $sales, $settlements, $closings, $closeoutVarianceCounts, $saleStaffIds, $saleStaffNames, $remaining, $lastPings, $showClosingLocation, $operationalIds): array {
                 $sale = $sales->get($assignment->cart_id);
                 $settlement = $settlements->get($assignment->cart_id);
                 $closing = $closings->get($assignment->cart_id);
+                $closingLines = $closing?->lines;
+                if ($closingLines && $operationalIds !== null) {
+                    $closingLines = $closingLines->whereIn('product_id', $operationalIds);
+                }
                 $ping = $lastPings->get($assignment->user_id);
                 $kitchen = $assignment->kitchen ?? $assignment->cart?->kitchen;
                 $arrivedAt = $this->isInsideKitchen($ping, $kitchen) ? $ping->recorded_at->toIso8601String() : null;
@@ -168,12 +176,13 @@ class SettlementService
                     'transactions' => (int) ($sale->trx ?? 0),
                     'closing_status' => $closing ? 'Sudah closing' : ($this->requiresClosing($date) ? 'Menunggu closing Rider' : 'Legacy'),
                     'closing_id' => $closing?->id,
+                    'closing_note' => $closing?->note,
                     'outside_closing_point' => $showClosingLocation && (bool) ($closing?->outside_closing_point ?? false),
                     'closing_distance_m' => $showClosingLocation ? $closing?->closing_distance_m : null,
                     'closing_required' => $this->requiresClosing($date),
-                    'carry_warning' => (bool) $closing?->lines->contains(fn ($line): bool => $line->qty_carry > 0),
+                    'carry_warning' => (bool) $closingLines?->contains(fn ($line): bool => $line->qty_carry > 0),
                     'closeout_variance_count' => (int) ($closeoutVarianceCounts[$assignment->cart_id] ?? 0),
-                    'cups_sold' => (int) ($closing?->lines->sum('qty_sold') ?? $sale->cups ?? 0),
+                    'cups_sold' => (int) ($closingLines?->sum('qty_sold') ?? $sale->cups ?? 0),
                     'expected_total' => (int) ($closing?->total_minor ?? $sale->revenue ?? 0),
                     'expected_total_minor' => (int) ($closing?->total_minor ?? $sale->revenue ?? 0),
                     'expected_cash_minor' => (int) ($closing?->cash_minor ?? $sale->cash ?? 0),
@@ -282,8 +291,14 @@ class SettlementService
 
         $products = Product::query()
             ->whereIn('id', $productIds)
+            ->operational()
             ->orderBy('sort_order')
             ->get(['id', 'name', 'unit', 'image_path']);
+
+        $closingLinesForSummary = $closing?->lines;
+        if ($closingLinesForSummary && $date->toDateString() >= '2026-10-22') {
+            $closingLinesForSummary = $closingLinesForSummary->whereIn('product_id', $products->pluck('id')->all());
+        }
 
         return [
             'cart_id' => $cart->id,
@@ -294,8 +309,9 @@ class SettlementService
             'sale_staff_ids' => $saleStaffIds,
             'area' => $assignment?->location?->name,
             'closing_id' => $closing?->id,
+            'closing_note' => $closing?->note,
             'closing_status' => $closing ? 'Sudah closing' : 'Legacy',
-            'carry_warning' => $closing?->lines->contains(fn ($line): bool => $line->qty_carry > 0) ?? false,
+            'carry_warning' => $closingLinesForSummary?->contains(fn ($line): bool => $line->qty_carry > 0) ?? false,
             'expected_total' => $closing?->total_minor ?? (int) $legacyExpectations?->total,
             'expected_total_minor' => $closing?->total_minor ?? (int) $legacyExpectations?->total,
             'expected_cash_minor' => $closing?->cash_minor ?? (int) $legacyExpectations?->cash,
@@ -575,6 +591,7 @@ class SettlementService
                     $rows[$productId] = ['returned' => $returned, 'rejected' => $rejected];
                 }
             }
+            Product::assertOperationalIds(array_keys($rows));
 
             $liveLines = $rows === [] ? collect() : collect($this->draft($cart, $locked->operating_date)['lines'])->keyBy('product_id');
 
@@ -653,7 +670,7 @@ class SettlementService
                 }
             }
 
-            $liveStock = $this->currentCartStock($cart->id);
+            $liveStock = $this->currentCartStock($cart->id, Product::query()->operational()->pluck('id')->all());
             if (collect($liveStock)->contains(fn (int $qty): bool => $qty > 0)) {
                 throw new RuntimeException('Masih ada cups di Coffee Bike. Tentukan jumlah kembali atau reject sebelum menyetujui setoran.');
             }

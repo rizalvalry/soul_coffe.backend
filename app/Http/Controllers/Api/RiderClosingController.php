@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\Rule;
 use RuntimeException;
 
 class RiderClosingController extends Controller implements HasMiddleware
@@ -48,6 +49,8 @@ class RiderClosingController extends Controller implements HasMiddleware
                 $request->user(), Carbon::today(), $data['lines'], (int) $data['qris'],
                 (int) $data['transfer'], $this->gps($data),
                 idempotencyKey: $request->header('Idempotency-Key'),
+                note: $data['note'] ?? null,
+                noteProvided: $request->exists('note'),
             );
         } catch (HttpResponseException $e) {
             throw $e;
@@ -68,6 +71,8 @@ class RiderClosingController extends Controller implements HasMiddleware
                 $closing->operating_date, $data['lines'], (int) $data['qris'],
                 (int) $data['transfer'], $this->gps($data, financeCorrection: true), $data['reason'],
                 idempotencyKey: $request->header('Idempotency-Key'),
+                note: $data['note'] ?? null,
+                noteProvided: $request->exists('note'),
             );
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
@@ -84,7 +89,7 @@ class RiderClosingController extends Controller implements HasMiddleware
     {
         return $request->validate([
             'lines' => ['required', 'array', 'min:1'],
-            'lines.*.product_id' => ['required', 'integer', 'exists:products,id'],
+            'lines.*.product_id' => ['required', 'integer', Rule::exists('products', 'id')->where('is_active', true)->where('is_sellable', true)],
             'lines.*.qty_remaining' => ['required', 'integer', 'min:0', 'max:9999'],
             'lines.*.qty_wasted' => ['required', 'integer', 'min:0', 'max:9999'],
             'qris' => ['required', 'integer', 'min:0', 'max:1000000000000'],
@@ -93,7 +98,8 @@ class RiderClosingController extends Controller implements HasMiddleware
             'gps_lng' => ['nullable', 'numeric', 'between:-180,180'],
             'gps_unavailable' => ['sometimes', 'boolean'],
             'reason' => [$finance ? 'required' : 'nullable', 'string', 'max:225'],
-        ]);
+            'note' => ['nullable', 'string', 'max:500'],
+        ], ['lines.*.product_id.exists' => 'Produk ini bukan produk utama']);
     }
 
     private function gps(array $data, bool $financeCorrection = false): array

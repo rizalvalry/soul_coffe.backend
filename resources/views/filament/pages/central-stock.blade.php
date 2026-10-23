@@ -18,6 +18,21 @@
     @endphp
 
     <div class="bsi">
+        <div class="bsi-cms-card">
+            <h2>Riwayat serah terima ke Coffee Bike</h2>
+            <div class="bsi-cms-table-scroll"><table class="bsi-cms-table">
+                <thead><tr><th>Waktu</th><th>Coffee Bike</th><th>Rider</th><th>Produk</th><th>Jumlah</th><th>Catatan lapangan</th></tr></thead>
+                <tbody>
+                    @forelse ($this->handoverHistory() as $handover)
+                        <tr><td>{{ \Illuminate\Support\Carbon::parse($handover->created_at)->format('d M H:i') }}</td>
+                            <td>{{ $handover->cart_code }}</td><td>{{ $handover->staff_name }}</td>
+                            <td>{{ $handover->product_name }}</td><td>{{ $handover->qty }}</td><td>{{ $handover->note ?: '-' }}</td></tr>
+                    @empty
+                        <tr><td colspan="6">Belum ada serah terima.</td></tr>
+                    @endforelse
+                </tbody>
+            </table></div>
+        </div>
         {{-- The three numbers the question is really about: how many cups exist, how many are
              still at the kitchen, how many are already out on carts. --}}
         <div class="bsi-stat-row">

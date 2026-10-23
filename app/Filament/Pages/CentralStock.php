@@ -9,6 +9,7 @@ use App\Models\CentralKitchen;
 use App\Models\Product;
 use App\Models\RawMaterial;
 use App\Services\Access\PermissionMatrix;
+use App\Services\CentralStockService;
 use App\Services\Reporting\StockOverviewService;
 use App\Services\StockAdjustmentService;
 use App\Services\StockLedgerService;
@@ -74,6 +75,11 @@ class CentralStock extends Page
         return app(StockOverviewService::class)->snapshot();
     }
 
+    public function handoverHistory(): array
+    {
+        return app(CentralStockService::class)->handoverHistory();
+    }
+
     /** @return array<int, Action> */
     protected function getHeaderActions(): array
     {
@@ -134,9 +140,11 @@ class CentralStock extends Page
                     Select::make('product_id')
                         ->label('Produk')
                         ->options(fn (): array => Product::query()
-                            ->where('is_active', true)
+                            ->where(fn ($query) => $query->where('is_active', true)->orWhere('is_sellable', false))
                             ->orderBy('sort_order')
-                            ->pluck('name', 'id')
+                            ->get(['id', 'name', 'is_sellable'])
+                            ->mapWithKeys(fn (Product $product): array => [$product->id => $product->is_sellable
+                                ? $product->name : $product->name.' (saldo lama)'])
                             ->all())
                         ->searchable()
                         ->visible(fn (Get $get): bool => $get('item_kind') !== 'raw_material')

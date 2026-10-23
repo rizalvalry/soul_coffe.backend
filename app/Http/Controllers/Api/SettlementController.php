@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\Rule;
 use RuntimeException;
 
 /**
@@ -120,11 +121,11 @@ class SettlementController extends Controller implements HasMiddleware
     {
         $data = $request->validate([
             'lines' => ['sometimes', 'array'],
-            'lines.*.product_id' => ['required', 'integer', 'exists:products,id'],
+            'lines.*.product_id' => ['required', 'integer', Rule::exists('products', 'id')->where('is_active', true)->where('is_sellable', true)],
             'lines.*.qty_returned' => ['required', 'integer', 'min:0', 'max:9999'],
             'lines.*.qty_rejected' => ['required', 'integer', 'min:0', 'max:9999'],
             'note' => ['nullable', 'string', 'max:500'],
-        ]);
+        ], ['lines.*.product_id.exists' => 'Produk ini bukan produk utama']);
 
         try {
             $approved = $this->settlements->approve(
