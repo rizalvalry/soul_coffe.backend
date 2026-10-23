@@ -3,7 +3,11 @@
         <section class="rounded-xl border p-4">
             <form wire:submit="save">{{ $this->remittanceForm }}
                 @php($status = $this->status())
-                <p>Terutang: Rp {{ number_format($status['accrued_minor'], 0, ',', '.') }} · Sudah disetor: Rp {{ number_format($status['paid_minor'], 0, ',', '.') }} · Selisih: Rp {{ number_format($status['difference_minor'], 0, ',', '.') }}</p>
+                <div class="bsi-cms-stats">
+                    <span class="bsi-cms-stat"><span>Terutang:</span><strong>Rp {{ number_format($status['accrued_minor'], 0, ',', '.') }}</strong></span>
+                    <span class="bsi-cms-stat"><span>Sudah disetor:</span><strong>Rp {{ number_format($status['paid_minor'], 0, ',', '.') }}</strong></span>
+                    <span class="bsi-cms-stat"><span>Selisih:</span><strong>Rp {{ number_format($status['difference_minor'], 0, ',', '.') }}</strong></span>
+                </div>
                 <p>Status: {{ match ($status['status']) { 'TERUTANG' => 'Terutang', 'SUDAH_DISETOR' => 'Sudah disetor', 'GABUNGAN_BELUM_RINCI' => 'Setoran gabungan belum dirinci per program', default => 'Selisih' } }}</p>
                 <button type="button" wire:click="prefill" class="rounded border p-2">Isi sisa utang</button>
                 <x-filament::button type="submit">Catat setoran</x-filament::button>
@@ -18,9 +22,9 @@
         </section>
         <section class="rounded-xl border p-4">
             <h2 class="text-lg font-semibold">Riwayat setor</h2>
-            <div class="overflow-x-auto"><table class="bsi-grid"><thead><tr><th>Masa</th><th>Jenis</th><th>Program</th><th>Tanggal</th><th>Nominal</th><th>NTPN / bukti</th><th>Status</th><th></th></tr></thead><tbody>
+            <div class="overflow-x-auto"><table class="bsi-grid"><thead><tr><th>Masa</th><th>Jenis</th><th>Program</th><th>Tanggal</th><th class="bsi-num">Nominal</th><th>NTPN / bukti</th><th>Status</th><th></th></tr></thead><tbody>
                 @foreach ($this->remittances() as $remittance)
-                    <tr><td>{{ $remittance->month->format('Y-m') }}</td><td>{{ $remittance->kind }}</td><td>{{ $remittance->program ?? 'Gabungan' }}</td><td>{{ $remittance->paid_on->format('d-m-Y') }}</td><td>Rp {{ number_format($remittance->amount_minor, 0, ',', '.') }}</td><td>{{ $remittance->receipt_number }}</td><td>{{ $remittance->status }}</td><td>@if ($remittance->status === 'POSTED')<button type="button" wire:click="$set('voidId', {{ $remittance->id }})" class="underline">Void</button>@endif</td></tr>
+                    <tr><td>{{ $remittance->month->format('Y-m') }}</td><td>{{ $remittance->kind }}</td><td>{{ $remittance->program ?? 'Gabungan' }}</td><td>{{ $remittance->paid_on->format('d-m-Y') }}</td><td class="bsi-num">Rp {{ number_format($remittance->amount_minor, 0, ',', '.') }}</td><td>{{ $remittance->receipt_number }}</td><td>{{ $remittance->status }}</td><td>@if ($remittance->status === 'POSTED')<button type="button" wire:click="$set('voidId', {{ $remittance->id }})" class="underline">Void</button>@endif</td></tr>
                 @endforeach
             </tbody></table></div>
             @if ($voidId)
@@ -29,7 +33,7 @@
             @endif
         </section>
         @foreach (['month', 'kind', 'program', 'paid_on', 'amount_minor', 'receipt_number', 'account_id', 'idempotency_key', 'entry_date', 'reason'] as $field)
-            @error($field)<p class="text-red-600">{{ $message }}</p>@enderror
+            @error($field)<p class="bsi-cms-danger">{{ $message }}</p>@enderror
         @endforeach
     </div>
 </x-filament-panels::page>

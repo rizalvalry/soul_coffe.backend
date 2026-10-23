@@ -1,4 +1,128 @@
 /* Legacy custom-page layout; semantic colors and type come from soul-teal-filament.css. */
+.bsi-cms-card {
+  min-width: 0;
+  max-width: 100%;
+  padding: 20px 24px;
+  background: var(--bsi-surface);
+  border: 1px solid var(--bsi-hairline);
+  border-radius: var(--sc-radius-lg);
+  box-shadow: var(--bsi-shadow-card);
+}
+
+.bsi-cms-heading {
+  margin: 0 0 6px;
+  color: var(--bsi-ink);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.bsi-cms-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  margin-top: 16px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bsi-cms-stat {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  width: min(100%, 320px);
+  font-variant-numeric: tabular-nums;
+}
+
+.bsi-cms-stat > strong {
+  text-align: right;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.bsi-cms-stat--compact { width: min(100%, 210px); }
+.bsi-erp form > .bsi-cms-stats { flex: 1 1 100%; }
+.bsi-cms-danger { color: var(--sc-text-danger); font-weight: 600; }
+
+.bsi-cms-field {
+  display: grid;
+  gap: 6px;
+  max-width: 260px;
+  margin-bottom: 16px;
+  color: var(--bsi-ink-2);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.bsi-cms-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  margin-top: 16px;
+  border: 1px solid var(--bsi-hairline);
+  border-radius: var(--sc-radius-sm);
+}
+
+.bsi-cms-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  color: var(--bsi-ink);
+  font-size: 13px;
+}
+
+.bsi-cms-table th,
+.bsi-cms-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--bsi-hairline);
+  text-align: left;
+  vertical-align: top;
+}
+
+.bsi-cms-table th {
+  background: var(--bsi-surface-2);
+  color: var(--bsi-ink-2);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.bsi-cms-table tr:last-child td { border-bottom: 0; }
+.bsi-cms-table .bsi-cms-money {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.bsi-cms-status { min-width: 190px; }
+.bsi-cms-badge {
+  display: inline-block;
+  max-width: 100%;
+  margin: 3px 4px 3px 0;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: normal;
+}
+
+.bsi-cms-badge--warning { color: var(--sc-text-warning); background: var(--sc-bg-warning); }
+.bsi-cms-badge--danger { color: var(--sc-text-danger); background: var(--sc-bg-danger); }
+
+.bsi-cms-page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; min-width: 0; max-width: 100%; }
+.bsi-cms-page > * { min-width: 0; max-width: 100%; }
+.bsi-cms-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
+.bsi-cms-form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; min-width: 0; }
+.bsi-cms-form-field { display: grid; gap: 6px; min-width: 0; color: var(--bsi-ink-2); font-size: 13px; font-weight: 500; }
+.bsi-cms-check { display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--bsi-ink); font-size: 13px; }
+.bsi-cms-check input { flex: none; }
+.bsi-cms-radius { width: 112px; }
+.bsi-cms-reason { min-width: 180px; }
+.bsi-cms-table .bsi-cms-radius { width: 112px; }
+.bsi-cms-table .bsi-cms-check { display: flex; }
+@media (max-width: 767px) {
+  .bsi-cms-form-grid { grid-template-columns: minmax(0, 1fr); }
+}
+.bsi-activity { min-width: 0; max-width: 100%; }
+
 .bsi {
   font-family: var(--bsi-font-sans);
   color: var(--bsi-ink);
@@ -21,7 +145,9 @@
   color: var(--bsi-ink);
 }
 
-.bsi-erp > section {
+.bsi-erp > section,
+.bsi-erp > .grid > section,
+.bsi-erp > section > section {
   min-width: 0;
   max-width: 100%;
   overflow-x: auto;
@@ -37,6 +163,11 @@
   border: 0;
   background: transparent;
   box-shadow: none;
+}
+
+.bsi-erp div.rounded.border {
+  background: var(--bsi-surface);
+  border-color: var(--bsi-hairline);
 }
 
 .bsi-erp form > .fi-grid {
@@ -104,33 +235,47 @@
   border-color: var(--bsi-ink);
 }
 
-.bsi-erp table {
+.bsi-erp table:not(.bsi-grid),
+.bsi-cms-page table:not(.bsi-grid) {
   width: max-content;
   min-width: 100%;
   border-collapse: collapse;
   font-size: 13px;
 }
 
-.bsi-erp table th,
-.bsi-erp table td {
+.bsi-erp table:not(.bsi-grid) th,
+.bsi-erp table:not(.bsi-grid) td,
+.bsi-cms-page table:not(.bsi-grid) th,
+.bsi-cms-page table:not(.bsi-grid) td {
   padding: 8px 12px;
   border-bottom: 1px solid var(--bsi-hairline);
   text-align: left;
   vertical-align: top;
 }
 
-.bsi-erp table th {
+.bsi-erp table:not(.bsi-grid) th,
+.bsi-cms-page table:not(.bsi-grid) th {
   color: var(--bsi-ink-2);
   background: var(--bsi-surface);
   font-size: 11px;
   font-weight: 600;
 }
 
-.bsi-erp table td.bsi-num {
+.bsi-erp table th.bsi-num,
+.bsi-erp table td.bsi-num,
+.bsi-cms-page table th.bsi-num,
+.bsi-cms-page table td.bsi-num {
   text-align: right;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+
+.bsi-erp table:not(.bsi-grid) td:not(:first-child),
+.bsi-cms-page table:not(.bsi-grid) td:not(:first-child) {
+  font-variant-numeric: tabular-nums;
+}
+
+.bsi-cms-page .overflow-x-auto { max-width: 100%; overflow-x: auto; }
 
 .bsi-erp .overflow-x-auto {
   max-width: 100%;

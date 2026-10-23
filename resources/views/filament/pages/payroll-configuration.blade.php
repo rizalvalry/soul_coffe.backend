@@ -11,9 +11,13 @@
             <x-filament::button type="submit">Cek kalkulasi</x-filament::button>
         </form>
         @if ($previewError)
-            <p role="alert" class="mt-3 text-red-600">{{ $previewError }}</p>
+            <p role="alert" class="mt-3 bsi-cms-danger">{{ $previewError }}</p>
         @elseif ($previewResult)
-            <p class="mt-3">Bruto Rp {{ number_format($previewResult['gross_pay_minor'], 0, ',', '.') }} · Potongan Rp {{ number_format($previewResult['gross_pay_minor'] - $previewResult['take_home_minor'], 0, ',', '.') }} · Dibawa pulang Rp {{ number_format($previewResult['take_home_minor'], 0, ',', '.') }}</p>
+            <div class="bsi-cms-stats">
+                <span class="bsi-cms-stat"><span>Bruto</span><strong>Rp {{ number_format($previewResult['gross_pay_minor'], 0, ',', '.') }}</strong></span>
+                <span class="bsi-cms-stat"><span>Potongan</span><strong>Rp {{ number_format($previewResult['gross_pay_minor'] - $previewResult['take_home_minor'], 0, ',', '.') }}</strong></span>
+                <span class="bsi-cms-stat"><span>Dibawa pulang</span><strong>Rp {{ number_format($previewResult['take_home_minor'], 0, ',', '.') }}</strong></span>
+            </div>
         @endif
     </section>
 
@@ -100,7 +104,7 @@
     <section class="rounded-xl border p-4">
         <h2 class="text-lg font-semibold">Tarif Pasal 17 Tahunan</h2>
         {{ $this->verificationForm }}
-        @error('verificationNote') <span class="text-red-600">{{ $message }}</span> @enderror
+        @error('verificationNote') <span class="bsi-cms-danger">{{ $message }}</span> @enderror
         <form wire:submit="saveAnnualVersion">
             {{ $this->annualVersionForm }}
             <x-filament::button type="submit">Tambah versi</x-filament::button>

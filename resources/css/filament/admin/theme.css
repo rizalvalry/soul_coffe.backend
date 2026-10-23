@@ -1,0 +1,5 @@
+@import '../../../../vendor/filament/filament/resources/css/theme.css';
+
+/* Build CMS utilities locally and ship the compiled public/build files. */
+@source '../../../views/filament/**/*.blade.php';
+@source '../../../../app/Filament/**/*.php';
