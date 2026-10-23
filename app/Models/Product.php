@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -13,6 +14,20 @@ use Illuminate\Validation\ValidationException;
 class Product extends Model
 {
     use HasFactory;
+
+    public function scopeOperational(Builder $query): Builder
+    {
+        return $query->where('is_active', true)->where('is_sellable', true);
+    }
+
+    /** Reject old saved lines as well as new product IDs before an operational write. */
+    public static function assertOperationalIds(array $ids): void
+    {
+        $ids = array_unique(array_map('intval', $ids));
+        if ($ids !== [] && self::query()->operational()->whereIn('id', $ids)->count() !== count($ids)) {
+            throw ValidationException::withMessages(['lines' => 'Produk ini bukan produk utama']);
+        }
+    }
 
     public function save(array $options = []): bool
     {

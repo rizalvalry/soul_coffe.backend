@@ -34,7 +34,7 @@ class StoreAllocationRequest extends FormRequest
             'staff_id' => ['required', 'integer', Rule::exists('users', 'id')],
             'location_id' => ['required', 'integer', Rule::exists('locations', 'id')],
             'lines' => ['required', 'array', 'min:1'],
-            'lines.*.product_id' => ['required', 'integer', 'distinct', Rule::exists('products', 'id')],
+            'lines.*.product_id' => ['required', 'integer', 'distinct', Rule::exists('products', 'id')->where('is_active', true)->where('is_sellable', true)],
             'lines.*.qty_issued' => ['required', 'integer', 'min:1', 'max:9999'],
             // Required only when this becomes the cart's second allocation of the day (E20);
             // that existence check cannot be expressed as a static rule, so it is enforced in
@@ -52,6 +52,7 @@ class StoreAllocationRequest extends FormRequest
             'lines.required' => 'Pilih minimal satu produk dulu ya.',
             'lines.min' => 'Pilih minimal satu produk dulu ya.',
             'lines.*.product_id.distinct' => 'Produk yang sama cukup satu baris ya.',
+            'lines.*.product_id.exists' => 'Produk ini bukan produk utama',
             'lines.*.qty_issued.min' => 'Jumlah harus lebih dari 0 ya.',
             'lines.*.qty_issued.max' => 'Jumlah cups per produk maksimal 9.999',
             'correction_reason.min' => 'Alasan koreksi perlu minimal 10 karakter ya.',

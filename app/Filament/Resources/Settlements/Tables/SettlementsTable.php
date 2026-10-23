@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Settlements\Tables;
 use App\Enums\PanelModule;
 use App\Models\Cart;
 use App\Models\Product;
+use App\Models\RiderClosing;
 use App\Models\Settlement;
 use App\Services\Access\PermissionMatrix;
 use App\Services\SettlementService;
@@ -34,7 +35,10 @@ class SettlementsTable
                 'staff:id,name',
                 'reconciledBy:id,name',
                 'lines.product',
-            ]))
+            ])->addSelect(['closing_note' => RiderClosing::query()->select('note')
+                ->whereColumn('rider_closings.cart_id', 'settlements.cart_id')
+                ->whereColumn('rider_closings.operating_date', 'settlements.operating_date')
+                ->limit(1)]))
             ->defaultSort('operating_date', 'desc')
             ->columns([
                 TextColumn::make('operating_date')
@@ -52,6 +56,8 @@ class SettlementsTable
                     ->label('Rider')
                     ->searchable()
                     ->placeholder('-'),
+                TextColumn::make('closing_note')->label('Catatan lapangan')
+                    ->placeholder('-')->wrap(),
 
                 TextColumn::make('cash_minor')
                     ->label('Tunai')
@@ -185,12 +191,13 @@ class SettlementsTable
                     ->schema([
                         Repeater::make('lines')->label('Cadangan: atur sisa cups di Coffee Bike')
                             ->schema([
-                                Select::make('product_id')->label('Produk')->options(fn (): array => Product::query()->orderBy('name')->pluck('name', 'id')->all())->required(),
+                                Select::make('product_id')->label('Produk')->options(fn (): array => Product::query()->operational()->orderBy('name')->pluck('name', 'id')->all())->required(),
                                 TextInput::make('qty_returned')->label('Kembali')->integer()->minValue(0)->required(),
                                 TextInput::make('qty_rejected')->label('Reject')->integer()->minValue(0)->required(),
                             ])
                             ->default(fn (Settlement $record): array => collect(app(StockLedgerService::class)
                                 ->stockMap(StockLedgerService::CART, $record->cart_id))
+                                ->only(Product::query()->operational()->pluck('id')->all())
                                 ->filter(fn (int $qty): bool => $qty > 0)
                                 ->map(fn (int $qty, int $productId): array => ['product_id' => $productId, 'qty_returned' => $qty, 'qty_rejected' => 0])->values()->all()),
                     ])

@@ -180,6 +180,7 @@ class RefillRequestStateMachine
                         'client_submitted_at' => $data['client_submitted_at'] ?? null,
                         'device_id' => $data['device_id'] ?? null,
                         'idempotency_key' => $idempotencyKey,
+                        'note' => $data['note'] ?? null,
                     ]);
 
                     break;
@@ -257,6 +258,7 @@ class RefillRequestStateMachine
             }
 
             $lines = $locked->lines()->get()->keyBy('id');
+            Product::assertOperationalIds($lines->pluck('product_id')->all());
             $anyReduced = false;
             $anyApproved = false;
 
@@ -459,6 +461,8 @@ class RefillRequestStateMachine
                 abort(409, 'Request belum disetujui Finance.');
             }
 
+            Product::assertOperationalIds($locked->lines()->pluck('product_id')->all());
+
             if (($kitchenId ?? $barista->kitchen_id) !== $locked->kitchen_id) {
                 abort(403, 'Produksi tidak berada di dapur yang sesuai.');
             }
@@ -506,6 +510,7 @@ class RefillRequestStateMachine
             }
 
             $lines = $locked->lines()->get()->keyBy('id');
+            Product::assertOperationalIds($lines->pluck('product_id')->all());
             $anyPrepared = false;
             $anyShortfall = false;
 
@@ -611,6 +616,7 @@ class RefillRequestStateMachine
             }
 
             $fresh = RefillRequest::findOrFail($refill->id);
+            Product::assertOperationalIds($fresh->lines()->pluck('product_id')->all());
 
             $this->history($fresh, RefillStatus::READY_TO_PICK, RefillStatus::PICKED_UP, $rider, null, $deviceId);
 
@@ -749,6 +755,7 @@ class RefillRequestStateMachine
                 : null;
 
             $lines = $locked->lines()->get()->keyBy('id');
+            Product::assertOperationalIds($lines->pluck('product_id')->all());
 
             foreach ($data['lines'] as $lineInput) {
                 $line = $lines->get($lineInput['line_id']);
@@ -936,6 +943,8 @@ class RefillRequestStateMachine
             if (! $product) {
                 throw ValidationException::withMessages(['lines' => ['Produk tidak ditemukan.']]);
             }
+
+            Product::assertOperationalIds([$product->id]);
 
             $priceVersion = $product->currentPriceVersion();
 

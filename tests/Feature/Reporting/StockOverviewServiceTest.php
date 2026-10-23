@@ -8,9 +8,11 @@ use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\Product;
 use App\Models\RawMaterial;
+use App\Models\StockLedger;
 use App\Models\User;
 use App\Services\Reporting\StockOverviewService;
 use App\Services\StockLedgerService;
+use App\Services\StockReconciliationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -187,7 +189,7 @@ class StockOverviewServiceTest extends TestCase
         $this->assertSame(['0001'], $codes);
     }
 
-    public function test_inactive_items_and_retired_cart_with_ledger_remain_visible(): void
+    public function test_inactive_product_is_hidden_but_retired_cart_and_ledger_history_remain(): void
     {
         $cart = $this->cart('0099');
         $this->brew($this->coffee->id, 10);
@@ -196,9 +198,13 @@ class StockOverviewServiceTest extends TestCase
         $this->coffee->update(['is_active' => false]);
 
         $snapshot = $this->service->snapshot();
-        $this->assertSame(10, $snapshot['grand_totals'][$this->coffee->id]);
-        $this->assertSame(3, $snapshot['carts']->firstWhere('cart.id', $cart->id)['qty'][$this->coffee->id]);
-        $this->assertContains($this->coffee->id, $snapshot['products']->pluck('id')->all());
+        $this->assertArrayNotHasKey($this->coffee->id, $snapshot['grand_totals']);
+        $this->assertNotNull($snapshot['carts']->firstWhere('cart.id', $cart->id));
+        $this->assertNotContains($this->coffee->id, $snapshot['products']->pluck('id')->all());
+        $this->assertSame(10, (int) StockLedger::query()->where('product_id', $this->coffee->id)->sum('qty_delta'));
+        $displayFindings = collect(app(StockReconciliationService::class)->findings())
+            ->where('code', 'DISPLAY_MISMATCH')->where('itemId', $this->coffee->id);
+        $this->assertCount(0, $displayFindings);
     }
 
     public function test_inactive_products_are_not_columns(): void

@@ -28,10 +28,6 @@ class ProductSeeder extends Seeder
             ['name' => 'Soul Matcha', 'unit' => 'cup', 'sellable' => true, 'sell' => 24000],
             ['name' => 'Soul Chocolate', 'unit' => 'cup', 'sellable' => true, 'sell' => 22000],
             ['name' => 'Lechee Tea', 'unit' => 'cup', 'sellable' => true, 'sell' => 18000],
-            // Non-sellable consumable (§3.1, Q3): tracked so it can be requested and
-            // refilled without polluting sales figures. No sell price; a small
-            // placeholder cost keeps its own request-value line non-zero for Finance.
-            ['name' => 'ES BATU', 'unit' => 'pack', 'sellable' => false, 'sell' => 0, 'cost' => 2000],
         ];
 
         foreach ($products as $i => $data) {

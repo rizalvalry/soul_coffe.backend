@@ -55,7 +55,7 @@ class CmsAdditionsTest extends TestCase
     {
         Livewire::test(CentralStock::class)
             ->assertSuccessful()
-            ->assertSee('Total seluruh cups')
+            ->assertSee('Total cups produk aktif')
             ->assertSee('Masih di dapur')
             ->assertSee('Sudah di Coffee Bike');
     }
@@ -178,6 +178,20 @@ class CmsAdditionsTest extends TestCase
     }
 
     // ── Product image (#1, CMS side) ─────────────────────────────────────
+
+    public function test_product_form_creates_only_cup_drinks_without_a_sellable_switch(): void
+    {
+        Livewire::test(CreateProduct::class)
+            ->assertDontSee('Dijual')
+            ->assertDontSee('pack')
+            ->fillForm(['code' => 'T072-DRINK', 'name' => 'Minuman baru', 'sort_order' => 11,
+                'unit' => 'pack', 'is_sellable' => false, 'is_active' => true])
+            ->call('create')->assertHasNoFormErrors();
+
+        $product = Product::query()->where('code', 'T072-DRINK')->firstOrFail();
+        $this->assertSame('cup', $product->unit);
+        $this->assertTrue($product->is_sellable);
+    }
 
     public function test_a_product_saves_without_an_image(): void
     {

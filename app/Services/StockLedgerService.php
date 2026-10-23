@@ -215,15 +215,19 @@ class StockLedgerService
         int $kitchenId,
         ?string $refType = null,
         ?int $refId = null,
+        ?string $note = null,
     ): void {
+        // Both legs represent one event, including a transfer posted across midnight.
+        $occurredAt = now();
         DB::transaction(function () use (
             $fromType, $fromId, $toType, $toId, $productId,
-            $outType, $inType, $qty, $actorId, $kitchenId, $refType, $refId
+            $outType, $inType, $qty, $actorId, $kitchenId, $refType, $refId, $note, $occurredAt
         ): void {
-            $out = $this->post($fromType, $fromId, $productId, $outType, $qty, $actorId, $kitchenId, $refType, $refId);
+            $out = $this->post($fromType, $fromId, $productId, $outType, $qty, $actorId, $kitchenId, $refType, $refId,
+                note: $note, occurredAt: $occurredAt);
             $this->post($toType, $toId, $productId, $inType, $qty, $actorId, $kitchenId,
                 $refType, $refId, costMinor: $out->cost_minor, costPending: $out->cost_pending,
-                costPendingQty: $out->cost_pending_qty);
+                costPendingQty: $out->cost_pending_qty, note: $note, occurredAt: $occurredAt);
         });
     }
 

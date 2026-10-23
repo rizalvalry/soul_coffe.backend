@@ -8,6 +8,7 @@ use App\Enums\Role;
 use App\Models\AuditLog;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
+use App\Models\Product;
 use App\Models\RiderClosing;
 use App\Models\StaffAssignment;
 use App\Models\StockLedger;
@@ -62,6 +63,7 @@ class CentralStockService
     ): void {
         $this->assertBarista($barista);
         $rows = $this->normalizeQuantities($qtyByProductId);
+        Product::assertOperationalIds(array_keys($rows));
 
         DB::transaction(function () use ($barista, $kitchen, $rows, $productionId, $costByProductId): void {
             foreach ($rows as $productId => $qty) {
@@ -114,6 +116,7 @@ class CentralStockService
         ?Carbon $operatingDate = null,
         ?int $locationId = null,
         ?int $selectedKitchenId = null,
+        ?string $note = null,
     ): StaffAssignment {
         $this->assertBarista($barista);
 
@@ -122,6 +125,7 @@ class CentralStockService
         }
 
         $rows = $this->normalizeQuantities($qtyByProductId);
+        Product::assertOperationalIds(array_keys($rows));
         $date = ($operatingDate ?? Carbon::today());
         $this->dayGate->assertReady($staff, $date, 'Rider belum absen hari ini. Minta Rider absen dulu ya.');
         $kitchenId = $cart->kitchen_id ?? $selectedKitchenId ?? $barista->kitchen_id;
@@ -131,7 +135,7 @@ class CentralStockService
         }
 
         return DB::transaction(function () use (
-            $barista, $cart, $staff, $rows, $allowanceAmount, $date, $kitchenId, $locationId
+            $barista, $cart, $staff, $rows, $allowanceAmount, $date, $kitchenId, $locationId, $note
         ): StaffAssignment {
             // Cart sales and refill submissions lock this row before checking the
             // active assignment. Whichever operation gets it first completes first.
@@ -164,7 +168,7 @@ class CentralStockService
                 );
             }
 
-            [$assignment, $displacedStaffIds] = $this->ensureAssignment($barista, $cart, $staff, $date, $kitchenId, $locationId);
+            [$assignment, $displacedStaffIds] = $this->ensureAssignment($barista, $cart, $staff, $date, $kitchenId, $locationId, $note);
 
             if ($assignment->wasRecentlyCreated) {
                 $this->events->publish(
@@ -204,6 +208,7 @@ class CentralStockService
                     $kitchenId,
                     'showcase_handover',
                     $assignment->id,
+                    $note,
                 );
             }
 
@@ -264,6 +269,7 @@ class CentralStockService
 
         $returned = $this->normalizeQuantities($returnedByProductId, allowEmpty: true);
         $rejected = $this->normalizeQuantities($rejectedByProductId, allowEmpty: true);
+        Product::assertOperationalIds([...array_keys($returned), ...array_keys($rejected)]);
 
         $kitchenId = $cart->kitchen_id ?? $selectedKitchenId ?? $barista->kitchen_id;
 
@@ -279,9 +285,10 @@ class CentralStockService
             if ($returned === [] && $rejected === [] && ! $closing) {
                 throw new RuntimeException('Tidak ada cups yang dilaporkan.');
             }
+            $operationalIds = Product::query()->operational()->pluck('id')->all();
             $productIds = array_unique([
                 ...array_keys($returned), ...array_keys($rejected),
-                ...($closing?->lines->pluck('product_id')->all() ?? []),
+                ...($closing?->lines->whereIn('product_id', $operationalIds)->pluck('product_id')->all() ?? []),
             ]);
             $locked = $this->ledger->lockAndProject(StockLedgerService::CART, $cart->id, $productIds);
 
@@ -409,6 +416,24 @@ class CentralStockService
         return $this->ledger->stockMap(StockLedgerService::KITCHEN, $kitchen->id);
     }
 
+    /** Read-only movement history; old product rows remain visible for audit. */
+    public function handoverHistory(?int $kitchenId = null): array
+    {
+        return DB::table('stock_ledger as ledger')
+            ->join('staff_assignments as assignment', 'assignment.id', '=', 'ledger.ref_id')
+            ->join('carts as cart', 'cart.id', '=', 'assignment.cart_id')
+            ->join('users as rider', 'rider.id', '=', 'assignment.user_id')
+            ->join('products as product', 'product.id', '=', 'ledger.product_id')
+            ->where('ledger.location_type', StockLedgerService::CART)
+            ->where('ledger.ref_type', 'showcase_handover')
+            ->where('ledger.movement_type', MovementType::ALLOCATION_IN->value)
+            ->when($kitchenId !== null, fn ($query) => $query->where('ledger.kitchen_id', $kitchenId))
+            ->orderByDesc('ledger.id')->limit(30)
+            ->get(['ledger.id', 'ledger.created_at', 'ledger.note', 'ledger.qty_delta as qty',
+                'cart.code as cart_code', 'rider.name as staff_name', 'product.name as product_name'])
+            ->all();
+    }
+
     private function assertCartAssignmentKitchen(Cart $cart, Carbon $date, int $kitchenId): void
     {
         $assignedKitchenId = StaffAssignment::query()
@@ -436,6 +461,7 @@ class CentralStockService
         Carbon $date,
         int $kitchenId,
         ?int $locationId = null,
+        ?string $note = null,
     ): array {
         $dateString = $date->toDateString();
         // Serialize the two identity slots before reading active rows. Historical rows are
@@ -457,6 +483,8 @@ class CentralStockService
             && (int) $row->location_id === (int) $resolvedLocationId
             && (bool) $row->location_setup_missing === $setupMissing);
         if ($same) {
+            $same->update(['note' => $note]);
+
             return [$same, []];
         }
 
@@ -482,6 +510,7 @@ class CentralStockService
             'assigned_by' => $barista->id,
             'kitchen_id' => $kitchenId,
             'source' => 'hand_to_cart',
+            'note' => $note,
         ]);
 
         if ($setupMissing) {

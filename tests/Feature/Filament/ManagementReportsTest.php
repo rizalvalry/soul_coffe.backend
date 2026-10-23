@@ -381,6 +381,18 @@ class ManagementReportsTest extends TestCase
         ]);
     }
 
+    public function test_current_product_margin_hides_retired_ice_but_old_period_keeps_history(): void
+    {
+        $ice = Product::query()->create(['code' => 'OLD-ICE', 'name' => 'Es Batu', 'unit' => 'pack',
+            'is_sellable' => false, 'is_active' => false, 'sort_order' => 90]);
+        $this->directSale($ice, '2026-10-20', 4000, 2000);
+
+        $old = app(ManagementReportService::class)->build(Carbon::parse('2026-10-20'), Carbon::parse('2026-10-20'));
+        $this->assertContains('Es Batu', array_column($old['sections']['margin_produk']['rows'], 0));
+        $current = app(ManagementReportService::class)->build(Carbon::parse('2026-10-20'), Carbon::parse('2026-10-23'));
+        $this->assertNotContains('Es Batu', array_column($current['sections']['margin_produk']['rows'], 0));
+    }
+
     private function sale(Cart $cart, Product $product, string $date, int $qty, int $subtotal, int $unitCost, bool $void = false): void
     {
         $id = DB::table('sales')->insertGetId([

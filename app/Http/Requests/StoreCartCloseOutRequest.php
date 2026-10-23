@@ -34,11 +34,11 @@ class StoreCartCloseOutRequest extends FormRequest
             // day where everything left is rejected is a bad one, and both must be expressible.
             // A zero physical count is valid after Rider Closing and is flagged against it.
             'returned' => ['nullable', 'array'],
-            'returned.*.product_id' => ['required_with:returned', 'integer', Rule::exists('products', 'id')],
+            'returned.*.product_id' => ['required_with:returned', 'integer', Rule::exists('products', 'id')->where('is_active', true)->where('is_sellable', true)],
             'returned.*.qty' => ['required_with:returned', 'integer', 'min:1'],
 
             'rejected' => ['nullable', 'array'],
-            'rejected.*.product_id' => ['required_with:rejected', 'integer', Rule::exists('products', 'id')],
+            'rejected.*.product_id' => ['required_with:rejected', 'integer', Rule::exists('products', 'id')->where('is_active', true)->where('is_sellable', true)],
             'rejected.*.qty' => ['required_with:rejected', 'integer', 'min:1'],
         ];
     }
@@ -51,6 +51,8 @@ class StoreCartCloseOutRequest extends FormRequest
         return [
             'returned.*.qty.min' => 'Jumlah sisa harus lebih dari 0',
             'rejected.*.qty.min' => 'Jumlah reject harus lebih dari 0',
+            'returned.*.product_id.exists' => 'Produk ini bukan produk utama',
+            'rejected.*.product_id.exists' => 'Produk ini bukan produk utama',
         ];
     }
 

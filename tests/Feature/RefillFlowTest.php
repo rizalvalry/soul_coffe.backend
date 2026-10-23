@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\Role;
+use App\Filament\Resources\RefillRequests\RefillRequestResource;
 use App\Models\AppNotification;
 use App\Models\Attendance;
 use App\Models\Cart;
@@ -185,6 +186,45 @@ class RefillFlowTest extends TestCase
             'evidence_media_id' => $this->makeEvidenceMedia($this->staff)->id,
             'lines' => [['product_id' => $this->product->id, 'qty_requested' => 1]],
         ];
+    }
+
+    public function test_support_products_are_rejected_but_rider_field_note_survives_list_and_detail(): void
+    {
+        $support = Product::query()->create(['code' => 'T072-ICE', 'name' => 'Es Batu', 'unit' => 'pack',
+            'is_sellable' => false, 'is_active' => true, 'sort_order' => 90]);
+        $payload = $this->refillPayload();
+        $payload['lines'][0]['product_id'] = $support->id;
+        $this->actingAs($this->staff)->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/refills', $payload)->assertUnprocessable()
+            ->assertSeeText('Produk ini bukan produk utama');
+        $this->assertDatabaseCount('refill_requests', 0);
+
+        $payload = $this->refillPayload();
+        $payload['note'] = 'Butuh es batu 2 pack';
+        $created = $this->actingAs($this->staff)->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/refills', $payload)->assertCreated()
+            ->assertJsonPath('data.note', 'Butuh es batu 2 pack');
+        $id = $created->json('data.id');
+        $this->assertDatabaseHas('refill_requests', ['id' => $id, 'note' => 'Butuh es batu 2 pack']);
+        $this->actingAs($this->staff)->getJson("/api/v1/refills/{$id}")
+            ->assertOk()->assertJsonPath('data.note', 'Butuh es batu 2 pack');
+        $this->assertSame('Butuh es batu 2 pack', collect($this->actingAs($this->staff)
+            ->getJson('/api/v1/refills')->assertOk()->json('data'))->firstWhere('id', $id)['note']);
+        $this->actingAs($this->admin, 'web')->get(RefillRequestResource::getUrl())
+            ->assertOk()->assertSeeText('Butuh es batu 2 pack');
+    }
+
+    public function test_approval_rejects_a_saved_line_whose_product_was_retired(): void
+    {
+        $refill = $this->submitRefill();
+        $lineId = $refill->lines()->firstOrFail()->id;
+        $this->product->update(['is_active' => false]);
+        $this->actingAs($this->finance)->getJson("/api/v1/refills/{$refill->id}")
+            ->assertOk()->assertJsonPath('data.lines.0.is_operational', false);
+        $this->actingAs($this->finance)->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson("/api/v1/refills/{$refill->id}/approve", [
+                'lines' => [['line_id' => $lineId, 'qty_approved' => 5]],
+            ])->assertUnprocessable()->assertSeeText('Produk ini bukan produk utama');
     }
 
     public function test_rider_refill_request_still_rejects_101_cups(): void

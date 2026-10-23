@@ -20,6 +20,7 @@ class StaffAssignment extends Model
         'source',
         'superseded_at',
         'location_setup_missing',
+        'note',
     ];
 
     protected function casts(): array

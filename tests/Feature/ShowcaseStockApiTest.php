@@ -7,18 +7,24 @@ use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Models\Account;
 use App\Models\Cart;
+use App\Models\CentralKitchen;
 use App\Models\JournalEntry;
 use App\Models\Location;
 use App\Models\Product;
 use App\Models\Production;
 use App\Models\RawMaterial;
 use App\Models\StaffAssignment;
+use App\Models\StockLedger;
 use App\Models\User;
 use App\Services\Access\PermissionMatrix;
 use App\Services\AttendanceService;
 use App\Services\RecipeService;
+use App\Services\Reporting\StockOverviewService;
 use App\Services\StockLedgerService;
+use App\Services\StockReconciliationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -78,6 +84,153 @@ class ShowcaseStockApiTest extends TestCase
     {
         return app(StockLedgerService::class)
             ->stockFor(StockLedgerService::CART, $this->cart->id, $this->product->id);
+    }
+
+    public function test_support_and_inactive_products_are_hidden_and_rejected_by_operational_writes(): void
+    {
+        $support = Product::query()->create(['code' => 'T072-ICE', 'name' => 'Es Batu', 'unit' => 'pack',
+            'is_sellable' => false, 'is_active' => true, 'sort_order' => 90]);
+        $inactive = Product::query()->create(['code' => 'T072-INACTIVE', 'name' => 'Kopi lama', 'unit' => 'cup',
+            'is_sellable' => true, 'is_active' => false, 'sort_order' => 91]);
+
+        $ids = collect($this->actingAs($this->barista, 'sanctum')->getJson('/api/v1/products')->assertOk()->json('data'))
+            ->pluck('id')->all();
+        $this->assertNotContains($support->id, $ids);
+        $this->assertNotContains($inactive->id, $ids);
+
+        foreach ([$support, $inactive] as $product) {
+            $this->actingAs($this->barista, 'sanctum')->withHeader('Idempotency-Key', $this->key())
+                ->postJson('/api/v1/showcase/brew', ['lines' => [['product_id' => $product->id, 'qty' => 1]]])
+                ->assertUnprocessable()->assertSeeText('Produk ini bukan produk utama');
+            $this->actingAs($this->barista, 'sanctum')->withHeader('Idempotency-Key', $this->key())
+                ->postJson('/api/v1/showcase/hand-to-cart', ['cart_id' => $this->cart->id,
+                    'staff_id' => $this->staff->id, 'lines' => [['product_id' => $product->id, 'qty' => 1]]])
+                ->assertUnprocessable()->assertSeeText('Produk ini bukan produk utama');
+            $this->actingAs($this->runner, 'sanctum')->withHeader('Idempotency-Key', $this->key())
+                ->postJson('/api/v1/showcase/close-out', ['kitchen_id' => $this->cart->kitchen_id,
+                    'cart_id' => $this->cart->id, 'returned' => [['product_id' => $product->id, 'qty' => 1]]])
+                ->assertUnprocessable()->assertSeeText('Produk ini bukan produk utama');
+        }
+    }
+
+    public function test_handover_note_is_in_history_without_extra_stock_or_journal_on_retry_and_wrong_role_gets_403(): void
+    {
+        $bookValue = (int) DB::table('journal_lines as line')->join('accounts as account', 'account.id', '=', 'line.account_id')
+            ->where('account.code', '1-1600')->selectRaw('SUM(line.debit_minor - line.credit_minor) AS value')->value('value');
+        $key = $this->key();
+        $body = ['cart_id' => $this->cart->id, 'staff_id' => $this->staff->id,
+            'lines' => [['product_id' => $this->product->id, 'qty' => 2]],
+            'note' => 'Butuh sedotan besok'];
+        $response = $this->actingAs($this->barista, 'sanctum')->withHeader('Idempotency-Key', $key)
+            ->postJson('/api/v1/showcase/hand-to-cart', $body)->assertCreated()
+            ->assertJsonPath('data.note', 'Butuh sedotan besok');
+        $assignmentId = $response->json('data.assignment_id');
+        $this->assertDatabaseHas('staff_assignments', ['id' => $assignmentId, 'note' => 'Butuh sedotan besok']);
+        $this->actingAs($this->barista, 'sanctum')->getJson('/api/v1/showcase/handovers')
+            ->assertOk()->assertJsonPath('data.0.note', 'Butuh sedotan besok');
+        $this->actingAs($this->staff, 'sanctum')->getJson('/api/v1/showcase/handovers')->assertForbidden();
+
+        $stock = $this->cartStock();
+        $kitchenStock = app(StockLedgerService::class)->stockFor(StockLedgerService::KITCHEN, $this->cart->kitchen_id, $this->product->id);
+        $overview = app(StockOverviewService::class)->snapshot();
+        $this->assertSame($stock, collect($overview['carts'])->firstWhere('cart.id', $this->cart->id)['qty'][$this->product->id]);
+        $this->assertSame($kitchenStock, collect($overview['kitchens'])->firstWhere('kitchen.id', $this->cart->kitchen_id)['qty'][$this->product->id]);
+        $this->assertSame($stock, collect($this->actingAs($this->staff, 'sanctum')->getJson('/api/v1/me/stock')->assertOk()->json('data'))
+            ->firstWhere('product_id', $this->product->id)['qty']);
+        $this->assertSame($kitchenStock, collect($this->actingAs($this->barista, 'sanctum')->getJson('/api/v1/showcase/stock')->assertOk()->json('data'))
+            ->firstWhere('product_id', $this->product->id)['qty']);
+        $pair = StockLedger::query()->where('ref_type', 'showcase_handover')->where('ref_id', $assignmentId)->get();
+        $this->assertSame(0, (int) $pair->sum('qty_delta'));
+        $this->assertSame(0, (int) $pair->sum(fn (StockLedger $row): int => ($row->qty_delta < 0 ? -1 : 1) * (int) $row->cost_minor));
+        $this->assertGreaterThanOrEqual(0, min($stock, $kitchenStock));
+        $this->assertSame($bookValue, (int) DB::table('journal_lines as line')->join('accounts as account', 'account.id', '=', 'line.account_id')
+            ->where('account.code', '1-1600')->selectRaw('SUM(line.debit_minor - line.credit_minor) AS value')->value('value'));
+        $ledgerCount = StockLedger::query()->count();
+        $journalCount = JournalEntry::query()->count();
+        $this->actingAs($this->barista, 'sanctum')->withHeader('Idempotency-Key', $key)
+            ->postJson('/api/v1/showcase/hand-to-cart', $body)->assertCreated();
+        $this->assertSame($stock, $this->cartStock());
+        $this->assertSame($ledgerCount, StockLedger::query()->count());
+        $this->assertSame($journalCount, JournalEntry::query()->count());
+    }
+
+    public function test_legacy_cart_returns_on_two_days_use_each_selected_kitchen_without_false_alert(): void
+    {
+        $kitchenId = $this->barista->kitchen_id;
+        $this->cart->update(['kitchen_id' => null]);
+
+        $this->actingAs($this->barista, 'sanctum')->withHeader('Idempotency-Key', $this->key())
+            ->postJson('/api/v1/showcase/hand-to-cart', ['cart_id' => $this->cart->id,
+                'staff_id' => $this->staff->id,
+                'lines' => [['product_id' => $this->product->id, 'qty' => 2]]])->assertCreated();
+        $this->actingAs($this->runner, 'sanctum')->withHeader('Idempotency-Key', $this->key())
+            ->postJson('/api/v1/showcase/close-out', ['kitchen_id' => $kitchenId,
+                'cart_id' => $this->cart->id,
+                'returned' => [['product_id' => $this->product->id, 'qty' => 2]]])->assertOk();
+
+        $return = StockLedger::query()->where('ref_type', 'cart_closeout_return')->get();
+        $this->assertCount(2, $return);
+        $this->assertSame(0, (int) $return->sum('qty_delta'));
+        $this->assertSame((int) $kitchenId, (int) $return->firstWhere('movement_type', MovementType::RETURN_IN->value)->location_id);
+        $secondKitchen = CentralKitchen::query()->create(['name' => 'Dapur T072 Kedua',
+            'address' => 'Jl. T072', 'open_at' => '00:00', 'close_at' => '23:59', 'is_active' => true]);
+        $secondBarista = User::factory()->role(Role::BARISTA)->create(['kitchen_id' => $secondKitchen->id]);
+        $tomorrow = today()->addDay()->setTime(10, 0);
+        Carbon::setTestNow($tomorrow);
+        try {
+            $attendance = app(AttendanceService::class);
+            $attendance->clockIn($secondBarista);
+            $attendance->openStaffWindow($secondBarista);
+            $attendance->clockIn($this->staff);
+            app(StockLedgerService::class)->post(StockLedgerService::KITCHEN, $secondKitchen->id,
+                $this->product->id, MovementType::PRODUCTION_IN, 2, $secondBarista->id, $secondKitchen->id);
+            $this->actingAs($secondBarista, 'sanctum')->withHeader('Idempotency-Key', $this->key())
+                ->postJson('/api/v1/showcase/hand-to-cart', ['cart_id' => $this->cart->id,
+                    'staff_id' => $this->staff->id,
+                    'lines' => [['product_id' => $this->product->id, 'qty' => 2]]])->assertCreated();
+            $this->actingAs($this->runner, 'sanctum')->withHeader('Idempotency-Key', $this->key())
+                ->postJson('/api/v1/showcase/close-out', ['kitchen_id' => $secondKitchen->id,
+                    'cart_id' => $this->cart->id,
+                    'returned' => [['product_id' => $this->product->id, 'qty' => 2]]])->assertOk();
+        } finally {
+            Carbon::setTestNow();
+        }
+
+        $return = StockLedger::query()->where('ref_type', 'cart_closeout_return')->get();
+        $this->assertCount(4, $return);
+        $this->assertSame(0, (int) $return->sum('qty_delta'));
+        $this->assertSame(1, $return->where('movement_type', MovementType::RETURN_IN->value)
+            ->where('location_id', $secondKitchen->id)->count());
+        $unpaired = collect(app(StockReconciliationService::class)->findings())
+            ->where('code', 'UNPAIRED_TRANSFER')->where('itemId', $this->product->id);
+        $this->assertCount(0, $unpaired);
+    }
+
+    public function test_opposite_orphan_return_legs_on_different_days_do_not_cancel(): void
+    {
+        $kitchenId = $this->barista->kitchen_id;
+        $this->cart->update(['kitchen_id' => null]);
+        $this->actingAs($this->barista, 'sanctum')->withHeader('Idempotency-Key', $this->key())
+            ->postJson('/api/v1/showcase/hand-to-cart', ['cart_id' => $this->cart->id,
+                'staff_id' => $this->staff->id,
+                'lines' => [['product_id' => $this->product->id, 'qty' => 2]]])->assertCreated();
+
+        $ledger = app(StockLedgerService::class);
+        $ledger->post(StockLedgerService::CART, $this->cart->id, $this->product->id,
+            MovementType::RETURN_OUT, 2, $this->runner->id, $kitchenId,
+            'cart_closeout_return', $this->cart->id);
+        Carbon::setTestNow(today()->addDay()->setTime(10, 0));
+        try {
+            $ledger->post(StockLedgerService::KITCHEN, $kitchenId, $this->product->id,
+                MovementType::RETURN_IN, 2, $this->runner->id, $kitchenId,
+                'cart_closeout_return', $this->cart->id);
+        } finally {
+            Carbon::setTestNow();
+        }
+
+        $unpaired = collect(app(StockReconciliationService::class)->findings())
+            ->where('code', 'UNPAIRED_TRANSFER')->where('itemId', $this->product->id);
+        $this->assertCount(2, $unpaired);
     }
 
     public function test_a_barista_sees_their_showcase_stock(): void

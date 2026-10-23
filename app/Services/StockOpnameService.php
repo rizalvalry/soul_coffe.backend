@@ -46,7 +46,7 @@ class StockOpnameService
         $stock = $this->ledger->stockMap($locationType, $locationId);
 
         return Product::query()
-            ->where('is_active', true)
+            ->operational()
             ->orderBy('sort_order')
             ->get(['id', 'name', 'unit'])
             ->map(fn (Product $product): array => [
@@ -104,7 +104,7 @@ class StockOpnameService
         }
 
         $stock = $this->ledger->stockMap($locationType, $locationId);
-        $products = Product::query()->whereIn('id', array_keys($merged))->where('is_active', true)->get()->keyBy('id');
+        $products = Product::query()->whereIn('id', array_keys($merged))->operational()->get()->keyBy('id');
 
         return DB::transaction(function () use ($locationType, $locationId, $merged, $stock, $products, $reason, $actor): StockOpname {
             $opname = StockOpname::query()->create([
@@ -158,6 +158,7 @@ class StockOpnameService
             }
 
             $productIds = $locked->lines->pluck('product_id')->all();
+            Product::assertOperationalIds($productIds);
             $kitchenId = $this->kitchenIdFor($locked->location_type, $locked->location_id);
 
             $current = $this->ledger->lockAndProject($locked->location_type, $locked->location_id, $productIds);

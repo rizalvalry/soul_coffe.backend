@@ -12,7 +12,9 @@
             <tbody>
             @foreach ($this->queue() as $row)
                 <tr>
-                    <td>{{ $row['cart_code'] }}</td><td>{{ $row['staff_name'] }}</td>
+                    <td>{{ $row['cart_code'] }}</td><td>{{ $row['staff_name'] }}
+                        @if ($row['closing_note'])<div class="bsi-muted">Catatan: {{ $row['closing_note'] }}</div>@endif
+                    </td>
                     <td>{{ $row['arrived_at'] ? \Illuminate\Support\Carbon::parse($row['arrived_at'])->format('H:i') : 'Belum tiba' }}</td>
                     <td class="bsi-cms-money">Rp {{ number_format($row['expected_cash_minor'], 0, ',', '.') }}</td>
                     <td class="bsi-cms-money">Rp {{ number_format($row['expected_qris_minor'], 0, ',', '.') }}</td>

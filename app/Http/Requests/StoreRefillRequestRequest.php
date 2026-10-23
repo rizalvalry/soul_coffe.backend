@@ -35,7 +35,8 @@ class StoreRefillRequestRequest extends FormRequest
             'client_submitted_at' => ['nullable', 'date'],
             'device_id' => ['nullable', 'string', 'max:191'],
             'lines' => ['required', 'array', 'min:1'],
-            'lines.*.product_id' => ['required', 'integer', 'exists:products,id'],
+            'lines.*.product_id' => ['required', 'integer', Rule::exists('products', 'id')->where('is_active', true)->where('is_sellable', true)],
+            'note' => ['nullable', 'string', 'max:500'],
             'lines.*.qty_requested' => ['required', 'integer', 'min:1', "max:{$maxQty}"],
         ];
     }
@@ -54,6 +55,7 @@ class StoreRefillRequestRequest extends FormRequest
             'lines.*.qty_requested.max' => "Jumlah harus antara 1 dan {$maxQty} cups",
             'cart_id.exists' => 'Coffee Bike tidak ditemukan.',
             'evidence_media_id.exists' => 'Foto bukti tidak ditemukan atau tidak valid.',
+            'lines.*.product_id.exists' => 'Produk ini bukan produk utama',
         ];
     }
 }

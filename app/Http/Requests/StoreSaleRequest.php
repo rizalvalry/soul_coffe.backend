@@ -31,7 +31,7 @@ class StoreSaleRequest extends FormRequest
             'cart_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
 
             'lines' => ['required', 'array', 'min:1', 'max:50'],
-            'lines.*.product_id' => ['required', 'integer', 'exists:products,id'],
+            'lines.*.product_id' => ['required', 'integer', Rule::exists('products', 'id')->where('is_active', true)->where('is_sellable', true)],
             // Upper bound per line is a typo guard, not the suspect rule — 999 cups of one
             // product in one transaction is a slipped finger, not a busy morning.
             'lines.*.qty' => ['required', 'integer', 'min:1', 'max:999'],
@@ -53,6 +53,7 @@ class StoreSaleRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'lines.*.product_id.exists' => 'Produk ini bukan produk utama',
             'cart_id.integer' => 'Coffee Bike asal transaksi ini nggak valid. Cek lagi ya.',
             'cart_id.min' => 'Coffee Bike asal transaksi ini nggak valid. Cek lagi ya.',
             'lines.required' => 'Pilih dulu cups yang terjual.',

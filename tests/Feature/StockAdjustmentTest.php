@@ -7,6 +7,7 @@ use App\Enums\Role;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\Product;
+use App\Models\RawMaterial;
 use App\Models\StockLedger;
 use App\Models\User;
 use App\Services\StockAdjustmentService;
@@ -351,7 +352,7 @@ class StockAdjustmentTest extends TestCase
     {
         $retired = Product::create([
             'code' => 'LAMA', 'name' => 'Produk Lama', 'unit' => 'cup',
-            'is_sellable' => false, 'sort_order' => 9, 'is_active' => false,
+            'is_sellable' => true, 'sort_order' => 9, 'is_active' => false,
         ]);
 
         $this->expectException(RuntimeException::class);
@@ -364,6 +365,24 @@ class StockAdjustmentTest extends TestCase
             'Alasan yang cukup panjang untuk lolos',
             $this->admin,
         );
+    }
+
+    public function test_finance_can_clear_retired_support_balance_with_an_append_only_adjustment(): void
+    {
+        $ice = Product::create(['code' => 'OLD-ICE', 'name' => 'ES BATU', 'unit' => 'pack',
+            'is_sellable' => false, 'sort_order' => 9, 'is_active' => false]);
+        StockLedger::query()->create([
+            'location_type' => StockLedgerService::KITCHEN, 'location_id' => $this->kitchen->id,
+            'product_id' => $ice->id, 'movement_type' => MovementType::PRODUCTION_IN,
+            'qty_delta' => 5, 'actor_id' => $this->admin->id, 'kitchen_id' => $this->kitchen->id,
+        ]);
+
+        $row = $this->service()->adjust(StockLedgerService::KITCHEN, $this->kitchen->id, $ice->id,
+            0, 'Finance hitung ulang saldo es batu lama', $this->finance);
+
+        $this->assertSame(-5, $row->qty_delta);
+        $this->assertSame(2, StockLedger::query()->where('product_id', $ice->id)->count());
+        $this->assertSame(0, app(StockLedgerService::class)->stockFor(StockLedgerService::KITCHEN, $this->kitchen->id, $ice->id));
     }
 
     public function test_an_unknown_location_is_refused(): void
@@ -382,9 +401,9 @@ class StockAdjustmentTest extends TestCase
 
     // ── Bahan baku ───────────────────────────────────────────────────────
 
-    private function milk(?int $reorderPoint = null): \App\Models\RawMaterial
+    private function milk(?int $reorderPoint = null): RawMaterial
     {
-        return \App\Models\RawMaterial::create([
+        return RawMaterial::create([
             'code' => 'SUSU', 'name' => 'Susu', 'unit' => 'ml',
             'reorder_point' => $reorderPoint, 'is_active' => true, 'sort_order' => 1,
         ]);
@@ -535,7 +554,7 @@ class StockAdjustmentTest extends TestCase
 
     public function test_an_inactive_raw_material_is_refused(): void
     {
-        $retired = \App\Models\RawMaterial::create([
+        $retired = RawMaterial::create([
             'code' => 'LAMA', 'name' => 'Bahan Lama', 'unit' => 'g',
             'is_active' => false, 'sort_order' => 9,
         ]);

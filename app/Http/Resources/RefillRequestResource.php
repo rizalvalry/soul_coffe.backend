@@ -47,6 +47,7 @@ class RefillRequestResource extends JsonResource
                 ? 'Request ini tidak selesai pada tanggal operasionalnya. Rider dapat mengajukan request baru; Finance memutuskan barang fisik secara terpisah.'
                 : null,
             'version' => $this->version,
+            'note' => $this->note,
 
             'cart' => $this->whenLoaded('cart', fn () => [
                 'id' => $this->cart->id,

@@ -7,6 +7,7 @@ use App\Models\Account;
 use App\Models\AuditLog;
 use App\Models\CentralKitchen;
 use App\Models\JournalEntry;
+use App\Models\Product;
 use App\Models\Production;
 use App\Models\ProductionLine;
 use App\Models\RawMaterial;
@@ -52,6 +53,7 @@ class ProductionService
     {
         $kitchen = CentralKitchen::query()->findOrFail($kitchenId);
         $rows = $this->normalizeQuantities($qtyByProductId);
+        Product::assertOperationalIds(array_keys($rows));
 
         /** @var array<int, ?Recipe> $recipeByProduct */
         $recipeByProduct = [];

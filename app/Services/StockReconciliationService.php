@@ -54,6 +54,7 @@ class StockReconciliationService
     {
         $findings = [];
         $snapshot = $this->overview->snapshot();
+        $visibleProductIds = array_fill_keys($snapshot['products']->pluck('id')->all(), true);
         $display = [];
         foreach (['kitchens' => StockLedgerService::KITCHEN, 'carts' => StockLedgerService::CART] as $key => $type) {
             foreach ($snapshot[$key] as $row) {
@@ -81,7 +82,9 @@ class StockReconciliationService
             $ledgerKeys[$key] = true;
             $qty = (int) $balance->qty;
             $shown = $display[$key] ?? null;
-            if ($shown !== $qty) {
+            // Retired products remain in the ledger and book value, but no longer have
+            // operational stock columns to compare against.
+            if (($kind !== 'product' || isset($visibleProductIds[$itemId])) && $shown !== $qty) {
                 $findings[] = $this->finding('DISPLAY_MISMATCH', $balance->location_type,
                     (int) $balance->location_id, $kind, $itemId, $qty, $shown);
             }
@@ -123,10 +126,14 @@ class StockReconciliationService
             [MovementType::RETURN_OUT, MovementType::RETURN_IN],
         ] as [$out, $in]) {
             $legs = DB::table('stock_ledger')->whereIn('movement_type', [$out->value, $in->value])
-                ->select('ref_type', 'ref_id', 'product_id', 'movement_type', 'location_type', 'location_id')
-                ->selectRaw('SUM(qty_delta) AS qty')
-                ->groupBy('ref_type', 'ref_id', 'product_id', 'movement_type', 'location_type', 'location_id')
-                ->get()->groupBy(fn ($leg): string => ($leg->ref_type ?? '').':'.($leg->ref_id ?? 0).':'.$leg->product_id);
+                ->select('ref_type', 'ref_id', 'product_id', 'movement_type', 'location_type', 'location_id', 'kitchen_id')
+                ->selectRaw('DATE(created_at) AS movement_date, SUM(qty_delta) AS qty')
+                ->groupBy('ref_type', 'ref_id', 'product_id', 'movement_type', 'location_type', 'location_id', 'kitchen_id')
+                // Legacy carts use their cart ID as the close-out reference across days.
+                // Split batches by day and selected kitchen recorded on both transfer legs.
+                ->groupByRaw('DATE(created_at)')
+                ->get()->groupBy(fn ($leg): string => ($leg->ref_type ?? '').':'.($leg->ref_id ?? 0)
+                    .':'.$leg->product_id.':'.($leg->kitchen_id ?? 0).':'.$leg->movement_date);
             foreach ($legs as $group) {
                 $source = $group->where('movement_type', $out->value)->values();
                 $destination = $group->where('movement_type', $in->value)->values();
@@ -134,7 +141,7 @@ class StockReconciliationService
                 $net = (int) $group->sum('qty');
                 $outType = $out === MovementType::RETURN_OUT ? StockLedgerService::CART : StockLedgerService::KITCHEN;
                 $inType = $out === MovementType::RETURN_OUT ? StockLedgerService::KITCHEN : StockLedgerService::CART;
-                $expected = $this->expectedTransfer($first->ref_type, $first->ref_id);
+                $expected = $this->expectedTransfer($first->ref_type, $first->ref_id, $first->kitchen_id);
                 $valid = $first->ref_type !== null && $first->ref_id !== null
                     && $source->count() === 1 && $destination->count() === 1 && $net === 0
                     && $source[0]->location_type === $outType && $destination[0]->location_type === $inType
@@ -194,15 +201,18 @@ class StockReconciliationService
     }
 
     /** @return array<string, int>|null */
-    private function expectedTransfer(?string $refType, ?int $refId): ?array
+    private function expectedTransfer(?string $refType, ?int $refId, ?int $recordedKitchenId): ?array
     {
         if ($refId === null) {
             return null;
         }
         if ($refType === 'cart_closeout_return') {
             $cart = DB::table('carts')->where('id', $refId)->first(['id', 'kitchen_id']);
+            // A legacy cart can have no fixed kitchen. Close-out records the selected
+            // kitchen on both transfer legs, so use that batch's persisted provenance.
+            $kitchenId = $cart?->kitchen_id ?? $recordedKitchenId;
 
-            return [StockLedgerService::KITCHEN => (int) ($cart?->kitchen_id ?? 0),
+            return [StockLedgerService::KITCHEN => (int) $kitchenId,
                 StockLedgerService::CART => (int) ($cart?->id ?? 0)];
         }
         $table = match ($refType) {

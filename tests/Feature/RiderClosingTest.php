@@ -9,6 +9,7 @@ use App\Enums\Role;
 use App\Exports\RevenueExport;
 use App\Models\Account;
 use App\Models\AppNotification;
+use App\Models\AuditLog;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\JournalEntry;
@@ -116,6 +117,85 @@ class RiderClosingTest extends TestCase
     private function closingKey(): string
     {
         return (string) Str::uuid();
+    }
+
+    public function test_retired_product_is_absent_from_drafts_and_rejected_on_closing(): void
+    {
+        $support = Product::query()->create(['code' => 'T072-ICE', 'name' => 'Es Batu', 'unit' => 'pack',
+            'is_sellable' => false, 'is_active' => false, 'sort_order' => 90]);
+        ProductPriceVersion::query()->create(['product_id' => $support->id, 'cost_price_minor' => 2000,
+            'sell_price_minor' => 0, 'effective_from' => now()->subDay()]);
+        $this->issue(10, MovementType::ALLOCATION_IN);
+        app(StockLedgerService::class)->post(StockLedgerService::CART, $this->cart->id, $support->id,
+            MovementType::ALLOCATION_IN, 2, $this->barista->id, $this->cart->kitchen_id);
+
+        $draft = $this->actingAs($this->rider, 'sanctum')->getJson('/api/v1/me/closing/draft')->assertOk();
+        $this->assertSame([$this->product->id], collect($draft->json('data.lines'))->pluck('product_id')->all());
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', [
+                ...$this->body(3, 0), 'qris' => 0, 'transfer' => 0,
+                'lines' => [['product_id' => $support->id, 'qty_remaining' => 2, 'qty_wasted' => 0]],
+            ])->assertUnprocessable()->assertSeeText('Produk ini bukan produk utama');
+
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', [...$this->body(3, 0), 'qris' => 0, 'transfer' => 0])->assertCreated();
+        $settlement = $this->actingAs($this->finance, 'sanctum')
+            ->getJson('/api/v1/settlements/draft/'.$this->cart->id)->assertOk();
+        $this->assertSame([$this->product->id], collect($settlement->json('data.lines'))->pluck('product_id')->all());
+    }
+
+    public function test_note_only_closing_revision_preserves_stock_and_journals(): void
+    {
+        $this->issue(10, MovementType::ALLOCATION_IN);
+        $body = [...$this->body(3, 0), 'qris' => 0, 'transfer' => 0];
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', [...$body, 'note' => 'Butuh sedotan'])
+            ->assertCreated()->assertJsonPath('data.note', 'Butuh sedotan');
+        $ledgerCount = StockLedger::query()->count();
+        $journalCount = JournalEntry::query()->count();
+        $stock = app(StockLedgerService::class)->stockFor(StockLedgerService::CART, $this->cart->id, $this->product->id);
+
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', [...$body, 'note' => 'Es batu juga menipis'])
+            ->assertOk()->assertJsonPath('data.note', 'Es batu juga menipis');
+        $this->assertSame($ledgerCount, StockLedger::query()->count());
+        $this->assertSame($journalCount, JournalEntry::query()->count());
+        $this->assertSame($stock, app(StockLedgerService::class)->stockFor(StockLedgerService::CART, $this->cart->id, $this->product->id));
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', [...$body, 'note' => null])
+            ->assertOk()->assertJsonPath('data.note', null);
+        $this->assertSame($ledgerCount, StockLedger::query()->count());
+        $this->assertSame($journalCount, JournalEntry::query()->count());
+        $this->assertSame(2, AuditLog::query()->where('action', 'rider_closing.corrected')->count());
+        $this->assertSame(2, OutboxEvent::query()->where('name', 'RiderClosingCorrected')->count());
+    }
+
+    public function test_correction_rejects_saved_retired_product_without_changing_historical_line(): void
+    {
+        $this->issue(10, MovementType::ALLOCATION_IN);
+        $body = [...$this->body(3, 0), 'qris' => 0, 'transfer' => 0];
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', $body)->assertCreated();
+        $closing = RiderClosing::query()->firstOrFail();
+        $ice = Product::query()->create(['code' => 'T072-OLD-ICE', 'name' => 'Es Batu', 'unit' => 'pack',
+            'is_sellable' => false, 'is_active' => false, 'sort_order' => 90]);
+        DB::table('rider_closing_lines')->insert([
+            'rider_closing_id' => $closing->id, 'product_id' => $ice->id,
+            'qty_in' => 3, 'qty_carry' => 1, 'qty_remaining' => 2, 'qty_wasted' => 0,
+            'qty_sold' => 2, 'qty_sale_posted' => 0, 'qty_waste_posted' => 0,
+            'unit_price_minor' => 0, 'unit_cost_minor' => 2000, 'subtotal_minor' => 0,
+        ]);
+        $queue = $this->actingAs($this->finance, 'sanctum')->getJson('/api/v1/settlements/queue')->assertOk();
+        $row = collect($queue->json('data'))->firstWhere('cart_id', $this->cart->id);
+        $this->assertSame(7, $row['cups_sold']);
+        $this->assertFalse($row['carry_warning']);
+        $this->actingAs($this->finance, 'sanctum')->getJson('/api/v1/settlements/draft/'.$this->cart->id)
+            ->assertOk()->assertJsonPath('data.carry_warning', false);
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', [...$body, 'note' => 'Cek sedotan'])
+            ->assertUnprocessable()->assertSeeText('Produk ini bukan produk utama');
+        $this->assertDatabaseHas('rider_closing_lines', ['rider_closing_id' => $closing->id, 'product_id' => $ice->id]);
+        $this->assertSame($closing->total_minor, $closing->fresh()->total_minor);
     }
 
     public function test_office_sale_is_excluded_from_rider_closing_and_cart_stock(): void

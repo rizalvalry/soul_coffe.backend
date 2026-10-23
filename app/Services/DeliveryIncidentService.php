@@ -9,6 +9,7 @@ use App\Enums\RefillStatus;
 use App\Enums\Role;
 use App\Models\DeliveryIncident;
 use App\Models\DeliveryIncidentLine;
+use App\Models\Product;
 use App\Models\RefillRequest;
 use App\Models\RefillStatusHistory;
 use App\Models\User;
@@ -103,6 +104,7 @@ class DeliveryIncidentService
             }
 
             $refillLines = $locked->lines()->get()->keyBy('id');
+            Product::assertOperationalIds($refillLines->pluck('product_id')->all());
             $merged = [];
 
             foreach ($lines as $input) {
@@ -203,6 +205,7 @@ class DeliveryIncidentService
             $refill = RefillRequest::query()->whereKey($locked->refill_request_id)->lockForUpdate()->firstOrFail();
             $lines = $locked->lines()->get();
             $refillLines = $refill->lines()->get()->keyBy('id');
+            Product::assertOperationalIds($refillLines->pluck('product_id')->all());
             $writtenOff = 0;
 
             foreach ($lines as $line) {
