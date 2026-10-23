@@ -70,7 +70,7 @@ class CentralStockPanelTest extends TestCase
 
     public function test_listing_is_read_only_and_adjustments_have_a_separate_permission(): void
     {
-        $this->assertTrue(PanelModule::CENTRAL_STOCK->isReadOnly());
+        $this->assertFalse(PanelModule::CENTRAL_STOCK->isReadOnly());
         $this->assertFalse(PanelModule::STOCK_ADJUSTMENTS->isReadOnly());
     }
 
@@ -118,6 +118,23 @@ class CentralStockPanelTest extends TestCase
         Livewire::actingAs($finance)
             ->test(CentralStock::class)
             ->assertActionVisible('stockAdjustment');
+    }
+
+    public function test_reconcile_action_requires_central_stock_edit_and_does_not_change_stock(): void
+    {
+        $finance = User::factory()->role(Role::FINANCE)->create();
+        PermissionMatrix::set(Role::FINANCE, PanelModule::CENTRAL_STOCK, ['view']);
+        $page = Livewire::actingAs($finance)->test(CentralStock::class)
+            ->assertActionHidden('reconcileStock');
+        $this->assertFalse($page->instance()->getAction('reconcileStock')->isAuthorized());
+        $this->assertDatabaseCount('stock_reconciliation_results', 0);
+
+        PermissionMatrix::set(Role::FINANCE, PanelModule::CENTRAL_STOCK, ['view', 'edit']);
+        PermissionMatrix::forget();
+        Livewire::actingAs($finance)->test(CentralStock::class)
+            ->assertActionVisible('reconcileStock')->callAction('reconcileStock');
+        $this->assertDatabaseHas('stock_reconciliation_results', ['status' => 'BALANCED']);
+        $this->assertDatabaseCount('stock_ledger', 0);
     }
 
     // ── Aksi benar-benar memposting ──────────────────────────────────────

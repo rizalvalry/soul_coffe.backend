@@ -23,6 +23,13 @@ Schedule::command('refills:expire-stale')
     ->withoutOverlapping()
     ->onOneServer();
 
+// Run after the prior operating day's kitchens and carts have closed. The check reads stock
+// without correcting it; repeated runs replace the same day's result and dedupe alerts.
+Schedule::command('soul:stock-reconcile')
+    ->dailyAt('00:30')
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // The GPS trail is the one table that grows with time rather than with business activity, so its
 // retention window is enforced rather than hoped for. Runs at 03:10, well away from the midnight
 // batch, because a delete over a large range holds locks that the 00:00 writers would queue on.

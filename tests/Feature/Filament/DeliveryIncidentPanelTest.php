@@ -3,6 +3,7 @@
 namespace Tests\Feature\Filament;
 
 use App\Enums\IncidentStatus;
+use App\Enums\MovementType;
 use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Filament\Resources\DeliveryIncidents\DeliveryIncidentResource;
@@ -17,6 +18,7 @@ use App\Models\RefillRequest;
 use App\Models\RefillRequestLine;
 use App\Models\User;
 use App\Services\Access\PermissionMatrix;
+use App\Services\StockLedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
@@ -60,6 +62,9 @@ class DeliveryIncidentPanelTest extends TestCase
             'code' => 'KOPI', 'name' => 'Kopi Susu', 'unit' => 'cup',
             'is_sellable' => true, 'sort_order' => 1, 'is_active' => true,
         ]);
+        // Prepared refill cups already exist in the kitchen before an incident can write them off.
+        app(StockLedgerService::class)->post(StockLedgerService::KITCHEN, $kitchen->id,
+            $product->id, MovementType::PRODUCTION_IN, 10, $this->admin->id, $kitchen->id);
 
         $evidence = Media::create([
             'kind' => 'evidence',

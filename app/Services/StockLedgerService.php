@@ -103,6 +103,9 @@ class StockLedgerService
             } else {
                 [$onHand, $value] = $this->valuation($locationType, $locationId, $productId, $rawMaterialId);
             }
+            if ($onHand + $delta < 0) {
+                throw new RuntimeException('Stok di lokasi ini kurang, cek lagi jumlahnya ya.');
+            }
             $fallback = false;
             if ($costMinor === null && $movementType === MovementType::SALE_VOID_IN && $refId !== null) {
                 $originalType = str_replace('_void', '', (string) $refType);

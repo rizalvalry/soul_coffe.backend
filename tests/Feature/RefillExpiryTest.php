@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\MovementType;
 use App\Enums\PanelModule;
 use App\Enums\RefillStatus;
 use App\Enums\Role;
@@ -26,6 +27,7 @@ use App\Services\AttendanceService;
 use App\Services\RefillExpiryDecisionService;
 use App\Services\RefillRequestStateMachine;
 use App\Services\SettlementService;
+use App\Services\StockLedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
@@ -104,6 +106,13 @@ class RefillExpiryTest extends TestCase
         ]);
 
         return $refill;
+    }
+
+    private function seedPreparedKitchenCups(int $qty): void
+    {
+        app(StockLedgerService::class)->post(StockLedgerService::KITCHEN, $this->kitchen->id,
+            $this->product->id, MovementType::PRODUCTION_IN, $qty,
+            $this->barista->id, $this->kitchen->id, 'prepared_for_expired_refill', $qty);
     }
 
     public function test_every_open_status_expires_without_stock_change_and_notifies_all_parties(): void
@@ -225,16 +234,18 @@ class RefillExpiryTest extends TestCase
         }
         $this->assertSame(0, StockLedger::count());
 
+        $this->seedPreparedKitchenCups(5);
+
         $decision = $service->decide($refill, $this->finance, 'recognized', 'Cup ditemukan di lapangan.', [
             ['line_id' => $line->id, 'qty_recognized' => 3],
         ]);
         $this->assertSame(3, $decision->recognized_lines[$line->id]);
         $this->assertSame(1, $refill->expiryDecision()->count());
-        $this->assertSame(-3, (int) StockLedger::where('location_type', 'kitchen')->sum('qty_delta'));
+        $this->assertSame(2, (int) StockLedger::where('location_type', 'kitchen')->sum('qty_delta'));
         $this->assertSame(3, (int) StockLedger::where('location_type', 'cart')->sum('qty_delta'));
-        $this->assertSame(0, (int) StockLedger::sum('qty_delta'));
-        $this->assertSame(2, StockLedger::count());
-        $this->assertSame('2026-10-17', StockLedger::firstOrFail()->created_at->toDateString());
+        $this->assertSame(5, (int) StockLedger::sum('qty_delta'));
+        $this->assertSame(3, StockLedger::count());
+        $this->assertSame('2026-10-17', StockLedger::where('movement_type', MovementType::REFILL_OUT)->firstOrFail()->created_at->toDateString());
         $todayDraft = app(SettlementService::class)->draft($refill->cart, Carbon::today());
         $priorDraft = app(SettlementService::class)->draft($refill->cart, Carbon::parse('2026-10-17'));
         $this->assertSame(0, $todayDraft['lines'][0]['qty_issued']);
@@ -244,7 +255,7 @@ class RefillExpiryTest extends TestCase
             ['line_id' => $line->id, 'qty_recognized' => 3],
         ]);
         $this->assertSame($decision->id, $again->id);
-        $this->assertSame(2, StockLedger::count());
+        $this->assertSame(3, StockLedger::count());
         try {
             $service->decide($refill, $this->finance, 'recognized', 'Cup ditemukan di lapangan.', [
                 ['line_id' => $line->id, 'qty_recognized' => 4],
@@ -260,6 +271,7 @@ class RefillExpiryTest extends TestCase
     {
         $refill = $this->refill(RefillStatus::PREPARING);
         Artisan::call('refills:expire-stale');
+        $this->seedPreparedKitchenCups(3);
         $line = $refill->lines()->firstOrFail();
         $decision = app(RefillExpiryDecisionService::class)->decide(
             $refill, $this->finance, 'recognized', 'Tiga cup tersedia secara fisik.', [
@@ -268,8 +280,8 @@ class RefillExpiryTest extends TestCase
         );
         $this->assertSame(3, $decision->confirmed_prepared_lines[$line->id]);
         $this->assertSame(2, $decision->recognized_lines[$line->id]);
-        $this->assertSame(2, StockLedger::count());
-        $this->assertSame(0, (int) StockLedger::sum('qty_delta'));
+        $this->assertSame(3, StockLedger::count());
+        $this->assertSame(3, (int) StockLedger::sum('qty_delta'));
     }
 
     public function test_recognition_after_reconciliation_flags_the_snapshot_for_finance_without_rewriting_it(): void
@@ -286,6 +298,7 @@ class RefillExpiryTest extends TestCase
             'qty_issued' => 0, 'qty_sold' => 0, 'qty_remaining' => 0,
         ]);
         Artisan::call('refills:expire-stale');
+        $this->seedPreparedKitchenCups(2);
         app(RefillExpiryDecisionService::class)->decide(
             $refill, $this->finance, 'recognized', 'Dua cup ditemukan setelah setoran.', [
                 ['line_id' => $refill->lines()->firstOrFail()->id, 'qty_recognized' => 2],
@@ -298,7 +311,7 @@ class RefillExpiryTest extends TestCase
         $this->assertSame(0, $snapshot->fresh()->qty_issued);
         $this->assertSame(2, app(SettlementService::class)->draft($refill->cart, $refill->operating_date)['lines'][0]['qty_issued']);
         $this->assertSame(1, OutboxEvent::where('name', 'SettlementExpectedStale')->count());
-        $this->assertSame(0, (int) StockLedger::sum('qty_delta'));
+        $this->assertSame(2, (int) StockLedger::sum('qty_delta'));
     }
 
     public function test_direct_stale_write_is_expired_before_any_delivery_stock_can_post(): void
@@ -359,6 +372,7 @@ class RefillExpiryTest extends TestCase
         $failed = $this->refill(RefillStatus::PREPARING);
         $recognized = $this->refill(RefillStatus::READY_TO_PICK, prepared: 5);
         Artisan::call('refills:expire-stale');
+        $this->seedPreparedKitchenCups(3);
         $this->actingAs($this->finance);
 
         Livewire::test(ListRefillRequests::class)
@@ -376,6 +390,6 @@ class RefillExpiryTest extends TestCase
                 ]],
             ])->assertHasNoTableActionErrors();
         $this->assertSame('recognized', $recognized->expiryDecision()->firstOrFail()->outcome);
-        $this->assertSame(2, StockLedger::count());
+        $this->assertSame(3, StockLedger::count());
     }
 }
