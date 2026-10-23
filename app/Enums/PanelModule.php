@@ -63,6 +63,7 @@ enum PanelModule: string
     case RIDER_LOCATION_SETUP = 'rider_location_setup';
     case MANAGEMENT_REPORTS = 'management_reports';
     case PAYROLL = 'payroll';
+    case EMPLOYEE_ADVANCES = 'employee_advances';
     case PAYROLL_PRIOR_WITHHOLDING = 'payroll_prior_withholding';
     case TAX_SETTINGS = 'tax_settings';
     case ACCOUNTING_PERIODS = 'accounting_periods';
@@ -127,6 +128,7 @@ enum PanelModule: string
             self::RIDER_LOCATION_SETUP => 'Setup Lokasi Rider',
             self::MANAGEMENT_REPORTS => 'Laporan Management',
             self::PAYROLL => 'Payroll',
+            self::EMPLOYEE_ADVANCES => 'Kasbon Karyawan',
             self::PAYROLL_PRIOR_WITHHOLDING => 'PPh Sebelumnya',
             self::TAX_SETTINGS => 'Pengaturan Pajak',
             self::ACCOUNTING_PERIODS => 'Periode Akuntansi',
@@ -184,7 +186,7 @@ enum PanelModule: string
             self::USERS, self::DEVICES, self::CUSTOMERS, self::EMPLOYEES, self::ROLE_MATRIX, self::AUDIT_LOGS,
             self::PIN_RESET_REQUESTS, self::AI_SETTINGS, self::LOCATION_SETTINGS, self::MENU_NAMING,
             self::NEWS_FEED => 'Pengguna & Pengaturan',
-            self::REPORTS, self::MANAGEMENT_REPORTS, self::PAYROLL,
+            self::REPORTS, self::MANAGEMENT_REPORTS, self::PAYROLL, self::EMPLOYEE_ADVANCES,
             self::PAYROLL_PRIOR_WITHHOLDING, self::TAX_SETTINGS, self::ACCOUNTING_PERIODS,
             self::OPENING_BALANCES, self::CHART_OF_ACCOUNTS, self::JOURNALS,
             self::JOURNAL_REVERSALS, self::GENERAL_LEDGER, self::CASH,

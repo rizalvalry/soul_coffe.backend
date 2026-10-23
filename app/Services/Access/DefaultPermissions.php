@@ -31,8 +31,8 @@ final class DefaultPermissions
     public static function seed(): void
     {
         foreach (PanelModule::cases() as $module) {
-            if ($module === PanelModule::CART_CLOSE_OUT) {
-                continue; // T-071 migration owns this grant so its rollback can remove it.
+            if (in_array($module, [PanelModule::CART_CLOSE_OUT, PanelModule::EMPLOYEE_ADVANCES], true)) {
+                continue; // Their feature migrations own these grants and their rollback.
             }
             self::insert(Role::ADMINISTRATOR, $module,
                 $module === PanelModule::LOCATION_SETTINGS ? ['view', 'edit'] : self::FULL);
@@ -43,7 +43,8 @@ final class DefaultPermissions
         // Existing rows are kept, including deliberate grants already edited in production.
         foreach ([Role::FINANCE, Role::MANAGEMENT] as $role) {
             foreach (PanelModule::cases() as $module) {
-                if ($module !== PanelModule::ROLE_MATRIX && $module !== PanelModule::CART_CLOSE_OUT) {
+                if (! in_array($module, [PanelModule::ROLE_MATRIX, PanelModule::CART_CLOSE_OUT,
+                    PanelModule::EMPLOYEE_ADVANCES], true)) {
                     self::insert($role, $module,
                         $module === PanelModule::LOCATION_SETTINGS ? ['view', 'edit'] : self::FULL);
                 }

@@ -21,6 +21,12 @@
             <h2 class="text-lg font-semibold">Review payroll · {{ $this->statusLabel($this->selectedStatus()) }}</h2>
             @if ($this->selectedStatus() === 'DRAFT')
                 <p>Tambah atau ubah komponen manual di <a href="{{ \App\Filament\Pages\PayrollConfiguration::getUrl() }}" class="underline">Konfigurasi Payroll</a>, lalu hitung ulang sebelum Approve.</p>
+                @if (\App\Services\Access\PermissionMatrix::can(auth()->user(), \App\Enums\PanelModule::EMPLOYEE_ADVANCES, 'edit'))
+                    <form wire:submit="saveAdvanceOverride">
+                        {{ $this->advanceOverrideForm }}
+                        <x-filament::button type="submit">Ubah potongan kasbon</x-filament::button>
+                    </form>
+                @endif
                 <button type="button" wire:click="recalculate" class="rounded border p-2">Hitung ulang</button>
                 <x-filament::button type="button" wire:click="approve" wire:confirm="Approve dan kunci payroll ini?">Approve</x-filament::button>
             @elseif ($this->selectedStatus() === 'APPROVED')

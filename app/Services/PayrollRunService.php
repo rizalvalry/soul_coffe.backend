@@ -24,6 +24,7 @@ class PayrollRunService
         private readonly PayrollCalculator $calculator,
         private readonly JournalService $journal,
         private readonly RiderCommissionService $commissions,
+        private readonly EmployeeAdvanceService $advances,
     ) {}
 
     public function create(string $period, User $actor): PayrollRun
@@ -93,7 +94,7 @@ class PayrollRunService
         $settings = $this->verifiedSettings($from);
         $snapshots = [];
         foreach ($employees as $user) {
-            $snapshots[$user->id] = $this->snapshotFor($user, $period, $from, $settings);
+            $snapshots[$user->id] = $this->snapshotFor($user, $period, $from, $settings, 0, $run);
         }
         $run->items()->delete();
         foreach ($snapshots as $userId => $snapshot) {
@@ -111,7 +112,8 @@ class PayrollRunService
         return $settings;
     }
 
-    private function snapshotFor(User $user, string $period, string $from, object $settings, int $additionalGross = 0): array
+    private function snapshotFor(User $user, string $period, string $from, object $settings, int $additionalGross = 0,
+        ?PayrollRun $run = null): array
     {
         $ptkp = DB::table('ptkp_rates')->where('status', $user->employeeProfile->ptkp_status)
             ->where('effective_from', '<=', $from)->orderByDesc('effective_from')->first();
@@ -170,6 +172,18 @@ class PayrollRunService
             $snapshot['bpjs_settings_id'] = $settings->id;
             $snapshot['ptkp_rate_id'] = $ptkp->id;
             $snapshot['ter_version_id'] = $ter->id;
+            $snapshot['advance_deductions'] = $this->advances->due($user, $period,
+                max(0, $snapshot['take_home_minor']), $run);
+            $advanceAccountId = Account::query()->where('code', '1-1500')->value('id');
+            foreach ($snapshot['advance_deductions'] as $deduction) {
+                $snapshot['components'][] = [
+                    'entry_id' => null, 'advance_id' => $deduction['advance_id'], 'name' => 'Cicilan kasbon',
+                    'kind' => 'DEDUCTION', 'code' => 'ADVANCE', 'account_id' => $advanceAccountId,
+                    'taxable' => false, 'amount_minor' => $deduction['amount_minor'],
+                ];
+                $snapshot['manual_deductions_minor'] += $deduction['amount_minor'];
+                $snapshot['take_home_minor'] -= $deduction['amount_minor'];
+            }
         } catch (\DomainException $exception) {
             throw ValidationException::withMessages(['period' => $user->name.': '.$exception->getMessage()]);
         }
@@ -256,13 +270,14 @@ class PayrollRunService
             if ($previousAccrual && ! $previousAccrual->reversal()->exists()) {
                 throw ValidationException::withMessages(['run' => 'Jurnal akrual sebelumnya masih aktif. Cek halaman Payroll ya.']);
             }
-            $this->journal->post([
+            $accrual = $this->journal->post([
                 'entry_date' => $run->period_start->format('Y-m-t'),
                 'description' => 'Akrual payroll '.$run->period_start->format('Y-m'),
                 'source_type' => $previousAccrual ? 'payroll_run_accrual_retry' : 'payroll_run',
                 'source_id' => $previousAccrual ? $previousAccrual->reversal()->firstOrFail()->id : $run->id,
                 'purpose' => 'PAYROLL_ACCRUAL', 'posted_by' => $actor->id,
             ], $lines);
+            $this->advances->recordPayroll($run, $accrual, $actor);
             $run->update(['status' => 'APPROVED', 'approved_by' => $actor->id, 'approved_at' => now()]);
             $this->audit($run, $actor, 'payroll_run_approved');
         }, 3);
@@ -407,7 +422,8 @@ class PayrollRunService
                     : 'Approve run dulu sebelum bisa dibatalkan.']);
             }
             $this->assertNoLockedDecemberDependency($run);
-            $this->journal->reverse($accrual, $reason, $run, $actor);
+            $reversal = $this->journal->reverse($accrual, $reason, $run, $actor);
+            $this->advances->reversePayroll($run, $reversal, $actor);
         }, 3);
         // The database already hides the old PDF path if rendering needs a retry.
         $this->ensureSlips($run);
