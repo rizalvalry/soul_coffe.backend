@@ -41,7 +41,7 @@
                         <p class="bsi-cms-stat"><span>Setoran bulan ini:</span><strong>Rp {{ number_format($report['paid_minor'], 0, ',', '.') }}</strong></p>
                         @if ($type === 'PBJT' && $report['threshold_minor'] !== null)
                             <p class="bsi-cms-stat"><span>Ambang omzet:</span><strong>Rp {{ number_format($report['threshold_minor'], 0, ',', '.') }}</strong></p>
-                            <p>· {{ $report['gross_minor'] > $report['threshold_minor'] ? 'Di atas ambang' : 'Belum lewat ambang' }} (informasi saja)</p>
+                            <p>{{ $report['gross_minor'] > $report['threshold_minor'] ? 'Di atas ambang' : 'Belum lewat ambang' }} (informasi saja)</p>
                         @endif
                         @if ($type === 'PPH')
                             <p class="bsi-cms-stat"><span>Perkiraan PPh Final:</span><strong>Rp {{ number_format($report['final_estimate_minor'], 0, ',', '.') }}</strong></p>
