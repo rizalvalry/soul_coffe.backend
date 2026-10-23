@@ -65,7 +65,7 @@ class StaffLocationService
             User::query()->whereKey($staff->id)->lockForUpdate()->firstOrFail();
             $assignment = $this->assignmentFor($staff);
             $kitchen = $assignment?->kitchen ?? $assignment?->cart?->kitchen;
-            $hasGeofence = $kitchen && $kitchen->lat !== null && $kitchen->lng !== null && $kitchen->geofence_m;
+            $hasGeofence = $kitchen && $kitchen->lat !== null && $kitchen->lng !== null;
             // A locking read sees the preceding upload after the Rider lock becomes available.
             $last = $this->latestFor($staff, lockForUpdate: true);
             $wasInside = $hasGeofence && $last
@@ -352,7 +352,7 @@ class StaffLocationService
     {
         // Match SettlementService's queue projection so the signal and displayed status agree.
         return $this->metresBetween((float) $kitchen->lat, (float) $kitchen->lng, $lat, $lng)
-            <= $kitchen->geofence_m;
+            <= app(LocationSettings::class)->radiusFor($kitchen);
     }
 
     /**

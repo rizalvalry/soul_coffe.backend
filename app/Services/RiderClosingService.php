@@ -260,7 +260,7 @@ class RiderClosingService
                     ->where('source', 'hand_to_cart')->latest('id')->first();
                 $point = $assignment ? app(RiderClosingPoint::class)->for($rider, $assignment) : [
                     'basis' => 'kitchen', 'lat' => null, 'lng' => null,
-                    'radius_m' => (int) config('soul.absen_geofence_m', 10),
+                    'radius_m' => app(LocationSettings::class)->absenRadius(),
                 ];
                 $locationCheck = app(RiderClosingPoint::class)->check($point, $gps);
             }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreCartCloseOutRequest;
@@ -14,6 +15,7 @@ use App\Models\CentralKitchen;
 use App\Models\RiderClosing;
 use App\Models\StaffAssignment;
 use App\Models\User;
+use App\Services\Access\PermissionMatrix;
 use App\Services\AllocationService;
 use App\Services\CentralStockService;
 use App\Services\DailyAllowanceService;
@@ -29,10 +31,10 @@ use Illuminate\Routing\Controllers\Middleware;
 use RuntimeException;
 
 /**
- * The showcase flow, barista-side (docs: see CentralStockService).
+ * The showcase flow (docs: see CentralStockService).
  *
- * Barista-only throughout: brewing, handing cups to a cart, and sorting what comes back are all
- * kitchen-side acts. Rider read their own cart's stock through `GET /me/stock`, which already
+ * Produksi brews and hands cups to a cart; Runner sorts the returned cups at close-out.
+ * Rider reads their own cart's stock through `GET /me/stock`, which already
  * exists and already reads the same ledger, so nothing here is duplicated for them.
  *
  * Business-rule failures come out of the service as RuntimeException and are translated to 422
@@ -52,9 +54,11 @@ class ShowcaseStockController extends Controller implements HasMiddleware
     {
         return [
             new Middleware('permission:kitchen_operations,view', only: [
-                'kitchens', 'index', 'allowance', 'staff', 'closeOutDraft',
+                'index', 'allowance', 'staff',
             ]),
-            new Middleware('permission:kitchen_operations,edit', only: ['brew', 'handToCart', 'closeOut']),
+            new Middleware('permission:kitchen_operations,edit', only: ['brew', 'handToCart']),
+            new Middleware('permission:cart_close_out,view', only: ['closeOutDraft']),
+            new Middleware('permission:cart_close_out,edit', only: ['closeOut']),
         ];
     }
 
@@ -63,7 +67,8 @@ class ShowcaseStockController extends Controller implements HasMiddleware
      */
     public function kitchens(Request $request): JsonResponse
     {
-        KitchenContext::authorize($request->user());
+        abort_unless(PermissionMatrix::can($request->user(), PanelModule::KITCHEN_OPERATIONS, 'view')
+            || PermissionMatrix::can($request->user(), PanelModule::CART_CLOSE_OUT, 'view'), 403);
 
         return response()->json(['data' => CentralKitchen::query()->where('is_active', true)
             ->orderBy('name')->get(['id', 'name'])]);
@@ -155,7 +160,7 @@ class ShowcaseStockController extends Controller implements HasMiddleware
     /** End of day: unsold cups back to the showcase, or written off. */
     public function closeOut(StoreCartCloseOutRequest $request): JsonResponse
     {
-        $kitchenId = KitchenContext::resolve($request, 'edit');
+        $kitchenId = KitchenContext::resolve($request, 'edit', PanelModule::CART_CLOSE_OUT);
         $cart = Cart::query()->findOrFail($request->integer('cart_id'));
         KitchenContext::assertMatches($kitchenId, $cart->kitchen_id);
 
@@ -190,7 +195,7 @@ class ShowcaseStockController extends Controller implements HasMiddleware
 
     public function closeOutDraft(Request $request, Cart $cart): JsonResponse
     {
-        KitchenContext::assertCartMatches(KitchenContext::resolve($request), $cart);
+        KitchenContext::assertCartMatches(KitchenContext::resolve($request, 'view', PanelModule::CART_CLOSE_OUT), $cart);
         $closing = RiderClosing::query()->with('lines')->where('cart_id', $cart->id)
             ->whereDate('operating_date', today()->toDateString())->first();
         $liveStock = $this->allocations->stockRows(StockLedgerService::CART, $cart->id);

@@ -30,7 +30,8 @@ class PermissionMatrixTest extends TestCase
     public function test_seeded_templates_cover_every_module_without_role_inheritance(): void
     {
         foreach (PanelModule::cases() as $module) {
-            $this->assertSame(['view', 'create', 'edit', 'delete'],
+            $this->assertSame($module === PanelModule::LOCATION_SETTINGS
+                ? ['view', 'edit'] : ['view', 'create', 'edit', 'delete'],
                 PermissionMatrix::abilitiesFor(Role::ADMINISTRATOR, $module), $module->value);
 
             foreach ([Role::FINANCE, Role::MANAGEMENT] as $role) {
@@ -55,14 +56,20 @@ class PermissionMatrixTest extends TestCase
             foreach (PanelModule::cases() as $module) {
                 foreach (['view', 'create', 'edit', 'delete'] as $ability) {
                     $expected = match ($role) {
-                        Role::ADMINISTRATOR => true,
-                        Role::FINANCE, Role::MANAGEMENT => $module !== PanelModule::ROLE_MATRIX,
+                        Role::ADMINISTRATOR => $module !== PanelModule::LOCATION_SETTINGS
+                            || in_array($ability, ['view', 'edit'], true),
+                        Role::FINANCE, Role::MANAGEMENT => $module !== PanelModule::ROLE_MATRIX
+                            && ($module !== PanelModule::CART_CLOSE_OUT || in_array($ability, ['view', 'edit'], true))
+                            && ($module !== PanelModule::LOCATION_SETTINGS
+                                || in_array($ability, ['view', 'edit'], true)),
                         Role::CONTENT_CREATOR => $module === PanelModule::NEWS_FEED
                             || ($module === PanelModule::PAYROLL && $ability === 'view'),
                         Role::BARISTA => $module === PanelModule::KITCHEN_OPERATIONS
                             || (($module === PanelModule::RIDER_LOCATION_SETUP || $module === PanelModule::PAYROLL)
                                 && $ability === 'view'),
-                        Role::STAFF, Role::RIDER => $module === PanelModule::PAYROLL && $ability === 'view',
+                        Role::STAFF => $module === PanelModule::PAYROLL && $ability === 'view',
+                        Role::RIDER => ($module === PanelModule::PAYROLL && $ability === 'view')
+                            || ($module === PanelModule::CART_CLOSE_OUT && in_array($ability, ['view', 'edit'], true)),
                     };
                     $this->assertSame($expected, PermissionMatrix::can($user, $module, $ability),
                         "{$role->value}:{$module->value}:{$ability}");

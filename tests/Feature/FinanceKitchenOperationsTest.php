@@ -41,6 +41,8 @@ class FinanceKitchenOperationsTest extends TestCase
 
     private User $finance;
 
+    private User $runner;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -58,6 +60,7 @@ class FinanceKitchenOperationsTest extends TestCase
         $this->staff = User::query()->where('role', Role::STAFF)->firstOrFail();
         $this->barista = User::query()->where('role', Role::BARISTA)->firstOrFail();
         $this->finance = User::query()->where('role', Role::FINANCE)->firstOrFail();
+        $this->runner = User::query()->where('role', Role::RIDER)->firstOrFail();
         RiderLocationSetup::query()->create([
             'rider_id' => $this->staff->id,
             'location_id' => Location::query()->firstOrFail()->id,
@@ -130,18 +133,25 @@ class FinanceKitchenOperationsTest extends TestCase
             'lines' => [['line_id' => $line->id, 'qty_prepared' => 1]],
         ]))->assertOk();
 
-        $this->postAs($actor, 'showcase/close-out', $this->kitchenPayload($actor, [
+        $closeOutActor = $actor->role === Role::BARISTA ? $this->runner : $actor;
+        $this->postAs($closeOutActor, 'showcase/close-out', ['kitchen_id' => $this->kitchen->id] + [
             'cart_id' => $this->cart->id,
             'returned' => [['product_id' => $this->product->id, 'qty' => 1]],
             'rejected' => [['product_id' => $this->product->id, 'qty' => 1]],
-        ]))->assertOk();
+        ])->assertOk();
 
         $audit = AuditLog::query()->where('actor_id', $actor->id)
             ->whereIn('action', ['staff_attendance_window.opened', 'central_stock.brew',
                 'central_stock.hand_to_cart', 'daily_allocation.create', 'central_stock.close_out',
                 'refill.start_preparing', 'refill.ready'])
             ->whereDate('created_at', today())->get();
-        $this->assertCount(7, $audit);
+        $this->assertCount($actor->role === Role::BARISTA ? 6 : 7, $audit);
+        if ($actor->role === Role::BARISTA) {
+            $this->assertDatabaseHas('audit_log', [
+                'action' => 'central_stock.close_out', 'actor_id' => $this->runner->id,
+                'actor_role' => Role::RIDER->value,
+            ]);
+        }
         foreach ($audit as $row) {
             $this->assertSame($actor->role->value, $row->actor_role);
             $this->assertSame($this->kitchen->id, (int) $row->after_json['kitchen_id']);
@@ -150,12 +160,12 @@ class FinanceKitchenOperationsTest extends TestCase
             $refill->fresh()->statusHistory()->where('to_status', 'READY_TO_PICK')->firstOrFail()->actor_role);
 
         $movements = StockLedger::query()->where('id', '>', $lastMovementId)
-            ->where('actor_id', $actor->id)->whereDate('created_at', today())
+            ->whereIn('actor_id', [$actor->id, $closeOutActor->id])->whereDate('created_at', today())
             ->orderBy('id')->get()->map(fn (StockLedger $row): array => [
                 $row->movement_type->value, (int) $row->qty_delta,
             ])->all();
         $journals = JournalEntry::query()->with('lines')->where('id', '>', $lastJournalId)
-            ->where('posted_by', $actor->id)
+            ->whereIn('posted_by', [$actor->id, $closeOutActor->id])
             ->whereDate('entry_date', today())->orderBy('id')->get()
             ->map(fn (JournalEntry $entry): array => [$entry->source_type,
                 preg_replace('/DAY_\d{8}/', 'DAY_DATE', $entry->purpose),
@@ -207,14 +217,20 @@ class FinanceKitchenOperationsTest extends TestCase
         $refill = RefillRequest::query()->firstOrFail();
         foreach ([Role::STAFF, Role::RIDER, Role::CONTENT_CREATOR] as $role) {
             $user = User::factory()->role($role)->create();
-            foreach (['showcase/kitchens', 'showcase/stock', 'showcase/staff', 'kitchen/stock',
-                'allocations/today', 'showcase/close-out/draft/'.$this->cart->id,
+            foreach (['showcase/stock', 'showcase/staff', 'kitchen/stock',
+                'allocations/today',
                 'showcase/allowance/'.$this->cart->id] as $path) {
                 $this->actingAs($user, 'sanctum')->getJson('/api/v1/'.$path)->assertForbidden();
             }
             foreach (['absen/open', 'showcase/brew', 'showcase/hand-to-cart',
-                'showcase/close-out', 'allocations'] as $path) {
+                'allocations'] as $path) {
                 $this->postAs($user, $path, [])->assertForbidden();
+            }
+            if ($role !== Role::RIDER) {
+                $this->actingAs($user, 'sanctum')->getJson('/api/v1/showcase/kitchens')->assertForbidden();
+                $this->actingAs($user, 'sanctum')
+                    ->getJson('/api/v1/showcase/close-out/draft/'.$this->cart->id)->assertForbidden();
+                $this->postAs($user, 'showcase/close-out', [])->assertForbidden();
             }
             $this->postAs($user, 'refills/'.$refill->id.'/start-preparing', [])->assertForbidden();
             $this->postAs($user, 'refills/'.$refill->id.'/ready', [])->assertForbidden();

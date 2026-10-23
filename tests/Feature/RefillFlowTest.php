@@ -187,6 +187,19 @@ class RefillFlowTest extends TestCase
         ];
     }
 
+    public function test_rider_refill_request_still_rejects_101_cups(): void
+    {
+        $payload = $this->refillPayload();
+        $payload['lines'][0]['qty_requested'] = 101;
+
+        $response = $this->actingAs($this->staff)
+            ->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/refills', $payload)
+            ->assertUnprocessable();
+        $this->assertStringContainsString('Jumlah harus antara 1 dan 100 cups', $response->json('message'));
+        $this->assertDatabaseCount('refill_requests', 0);
+    }
+
     public function test_closed_day_rejects_refill_submit_cancel_and_evidence_upload(): void
     {
         $refill = $this->submitRefill();

@@ -260,7 +260,7 @@ class CentralStockService
         array $rejectedByProductId = [],
         ?int $selectedKitchenId = null,
     ): void {
-        $this->assertBarista($barista);
+        KitchenContext::authorize($barista, 'edit', PanelModule::CART_CLOSE_OUT);
 
         $returned = $this->normalizeQuantities($returnedByProductId, allowEmpty: true);
         $rejected = $this->normalizeQuantities($rejectedByProductId, allowEmpty: true);

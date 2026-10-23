@@ -32,6 +32,7 @@ enum PanelModule: string
     case SALE_CORRECTIONS = 'sale_corrections';
     case ALLOCATIONS = 'allocations';
     case KITCHEN_OPERATIONS = 'kitchen_operations';
+    case CART_CLOSE_OUT = 'cart_close_out';
     case CLOSING_LOCATION_EVIDENCE = 'closing_location_evidence';
     case DIRECT_SALE_ACTIONS = 'direct_sale_actions';
     case PURCHASE_ORDER_ACTIONS = 'purchase_order_actions';
@@ -44,6 +45,7 @@ enum PanelModule: string
     case AUDIT_LOGS = 'audit_logs';
     case PIN_RESET_REQUESTS = 'pin_reset_requests';
     case AI_SETTINGS = 'ai_settings';
+    case LOCATION_SETTINGS = 'location_settings';
 
     // Phase 2 — raw materials & recipes (BOM), and the purchasing that brings stock in with a
     // real cost. RAW_MATERIALS/SUPPLIERS/RECIPES/PURCHASE_ORDERS are full-CRUD-shaped modules;
@@ -102,6 +104,7 @@ enum PanelModule: string
             self::SALE_CORRECTIONS => 'Pembatalan Penjualan',
             self::ALLOCATIONS => 'Alokasi Harian',
             self::KITCHEN_OPERATIONS => 'Operasional Dapur di HP',
+            self::CART_CLOSE_OUT => 'Tutup Coffee Bike',
             self::CLOSING_LOCATION_EVIDENCE => 'Bukti Lokasi Closing',
             self::DIRECT_SALE_ACTIONS => 'Aksi Penjualan Langsung',
             self::PURCHASE_ORDER_ACTIONS => 'Aksi Pembelian',
@@ -114,6 +117,7 @@ enum PanelModule: string
             self::AUDIT_LOGS => 'Audit Trail',
             self::PIN_RESET_REQUESTS => 'Permintaan Reset PIN',
             self::AI_SETTINGS => 'Pengaturan AI',
+            self::LOCATION_SETTINGS => 'Pengaturan Lokasi',
             self::RAW_MATERIALS => 'Bahan Baku',
             self::SUPPLIERS => 'Pemasok',
             self::RECIPES => 'Resep',
@@ -179,7 +183,7 @@ enum PanelModule: string
     {
         return match ($this) {
             self::USERS, self::DEVICES, self::CUSTOMERS, self::EMPLOYEES, self::ROLE_MATRIX, self::AUDIT_LOGS,
-            self::PIN_RESET_REQUESTS, self::AI_SETTINGS, self::MENU_NAMING,
+            self::PIN_RESET_REQUESTS, self::AI_SETTINGS, self::LOCATION_SETTINGS, self::MENU_NAMING,
             self::NEWS_FEED => 'Pengguna & Pengaturan',
             self::REPORTS, self::MANAGEMENT_REPORTS, self::PAYROLL,
             self::PAYROLL_PRIOR_WITHHOLDING, self::TAX_SETTINGS, self::ACCOUNTING_PERIODS,

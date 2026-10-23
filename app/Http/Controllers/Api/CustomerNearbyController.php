@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\LocationSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -49,10 +50,11 @@ class CustomerNearbyController extends Controller
                 'locations.lng', 'attendances.clocked_in_at')
             ->get();
 
-        $result = $carts->map(function ($cart) use ($position): ?array {
+        $radius = app(LocationSettings::class)->customerRadius();
+        $result = $carts->map(function ($cart) use ($position, $radius): ?array {
             $distance = $this->distanceMeters((float) $position['lat'], (float) $position['lng'],
                 (float) $cart->lat, (float) $cart->lng);
-            if ($distance >= 2000) {
+            if ($distance >= $radius) {
                 return null;
             }
 
