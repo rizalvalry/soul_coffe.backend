@@ -50,7 +50,7 @@ class InventoryJournalService
                 && $movement->ref_type === 'rider_closing_waste_compensation');
         $isAdjustment = $movement->movement_type === MovementType::OPNAME_ADJUSTMENT
             || ($movement->movement_type === MovementType::ADJUSTMENT
-                && in_array($movement->ref_type, ['stock_adjustment', 'cart_closeout_count_adjustment', 'rider_closing_after_disposition'], true));
+                && in_array($movement->ref_type, ['stock_adjustment', 'cart_closeout_count_adjustment', 'rider_closing_after_disposition', 'kitchen_reject_correction'], true));
         if (! $isWaste && ! $isAdjustment) {
             return;
         }

@@ -225,7 +225,8 @@ class PendingStockCostService
             $row->movement_type === MovementType::WASTE_OUT,
             $row->movement_type === MovementType::OPNAME_ADJUSTMENT,
             in_array($row->ref_type, ['stock_adjustment', 'cart_closeout_count_adjustment',
-                'rider_closing_after_disposition', 'rider_closing_waste_compensation'], true) => '6-1910',
+                'rider_closing_after_disposition', 'rider_closing_waste_compensation',
+                'kitchen_reject_correction'], true) => '6-1910',
             default => '6-1920',
         };
 
