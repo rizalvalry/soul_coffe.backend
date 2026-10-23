@@ -94,6 +94,13 @@ class CentralStockPanelTest extends TestCase
         $this->actingAs($finance)->get(CentralStock::getUrl())->assertForbidden();
     }
 
+    public function test_barista_gets_403_on_central_stock_page(): void
+    {
+        $barista = User::factory()->role(Role::BARISTA)->create();
+
+        $this->actingAs($barista)->get(CentralStock::getUrl())->assertForbidden();
+    }
+
     // ── Tombol penyesuaian mengikuti matriks ─────────────────────────────
 
     public function test_view_only_does_not_get_the_adjustment_action(): void
