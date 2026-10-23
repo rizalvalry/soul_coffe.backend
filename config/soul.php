@@ -6,6 +6,7 @@
  * rather than disabling a guard.
  */
 return [
+    'stock_reconcile_alerts' => (bool) env('SOUL_STOCK_RECONCILE_ALERTS', false),
     // Enable after the Owner confirms every field phone has the updated APK.
     'device_binding_enforce' => (bool) env('SOUL_DEVICE_BINDING_ENFORCE', false),
     // Historical sales-only operating days can still be reconciled. Current days require Closing.

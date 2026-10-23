@@ -34,6 +34,7 @@ class StockLedger extends Model
         'cost_pending_qty',
         'ref_type',
         'ref_id',
+        'transfer_pair_id',
         'note',
         'actor_id',
         'kitchen_id',
