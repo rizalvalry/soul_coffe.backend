@@ -8,6 +8,7 @@ use App\Enums\RefillStatus;
 use App\Enums\Role;
 use App\Filament\Resources\RefillRequests\Pages\ListRefillRequests;
 use App\Filament\Resources\RefillRequests\RefillRequestResource;
+use App\Models\AuditLog;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\Location;
@@ -28,6 +29,7 @@ use App\Services\RefillExpiryDecisionService;
 use App\Services\RefillRequestStateMachine;
 use App\Services\SettlementService;
 use App\Services\StockLedgerService;
+use App\Services\StockReconciliationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
@@ -265,6 +267,31 @@ class RefillExpiryTest extends TestCase
             $this->assertSame(409, $e->getStatusCode());
         }
         $this->assertSame(RefillStatus::EXPIRED, $refill->fresh()->status);
+    }
+
+    public function test_expired_refill_recognition_keeps_short_stock_and_flags_finance(): void
+    {
+        $refill = $this->refill(RefillStatus::PICKED_UP, prepared: 5);
+        Artisan::call('refills:expire-stale');
+        $line = $refill->lines()->firstOrFail();
+
+        $decision = app(RefillExpiryDecisionService::class)->decide(
+            $refill, $this->finance, 'recognized', 'Cup diterima meski stok dapur belum tercatat.', [
+                ['line_id' => $line->id, 'qty_recognized' => 3],
+            ],
+        );
+
+        $this->assertSame(3, $decision->recognized_lines[$line->id]);
+        $out = StockLedger::query()->where('movement_type', MovementType::REFILL_OUT)->sole();
+        $this->assertSame(-3, $out->qty_delta);
+        $this->assertSame(-3, app(StockLedgerService::class)->stockFor(
+            StockLedgerService::KITCHEN, $this->kitchen->id, $this->product->id));
+        $marker = AuditLog::query()->where('action', 'stock_ledger.negative_balance')->sole();
+        $this->assertSame($out->id, $marker->subject_id);
+        $this->assertSame($this->finance->id, $marker->actor_id);
+        $this->assertSame(-3, $marker->after_json['balance_qty']);
+        $this->assertContains('NEGATIVE_BALANCE',
+            array_column(app(StockReconciliationService::class)->findings(), 'code'));
     }
 
     public function test_finance_can_confirm_unrecorded_prepared_cups_on_an_expired_preparing_request(): void

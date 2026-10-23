@@ -18,7 +18,8 @@ class AuditLogInfolist
                     ->columns(2)
                     ->schema([
                         TextEntry::make('created_at')->label('Waktu')->dateTime('d M Y H:i:s'),
-                        TextEntry::make('action')->label('Aksi')->badge(),
+                        TextEntry::make('action')->label('Aksi')->badge()
+                            ->formatStateUsing(fn (string $state): string => AuditLog::labelForAction($state)),
                         TextEntry::make('actor.name')->label('Pelaku')->placeholder('sistem'),
                         TextEntry::make('actor_role')
                             ->label('Role pelaku')

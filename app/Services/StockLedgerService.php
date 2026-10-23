@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\MovementType;
+use App\Models\AuditLog;
 use App\Models\Product;
 use App\Models\StockLedger;
 use Illuminate\Support\Carbon;
@@ -103,9 +104,6 @@ class StockLedgerService
             } else {
                 [$onHand, $value] = $this->valuation($locationType, $locationId, $productId, $rawMaterialId);
             }
-            if ($onHand + $delta < 0) {
-                throw new RuntimeException('Stok di lokasi ini kurang, cek lagi jumlahnya ya.');
-            }
             $fallback = false;
             if ($costMinor === null && $movementType === MovementType::SALE_VOID_IN && $refId !== null) {
                 $originalType = str_replace('_void', '', (string) $refType);
@@ -165,6 +163,22 @@ class StockLedgerService
                 'initialized' => true,
             ]);
             app(InventoryJournalService::class)->postMovement($movement);
+            if ($onHand + $delta < 0) {
+                // Keep the physical event even when earlier stock was not recorded. Finance
+                // can investigate the audit row; the daily reconciliation reports I-3.
+                AuditLog::recordAction($movement->actor, 'stock_ledger.negative_balance', $movement,
+                    ['balance_qty' => $onHand], [
+                        'balance_qty' => $onHand + $delta,
+                        'location_type' => $locationType,
+                        'location_id' => $locationId,
+                        'product_id' => $productId,
+                        'raw_material_id' => $rawMaterialId,
+                        'movement_type' => $movementType->value,
+                        'qty_delta' => $delta,
+                        'ref_type' => $refType,
+                        'ref_id' => $refId,
+                    ]);
+            }
 
             return $movement;
         });

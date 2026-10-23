@@ -12,6 +12,7 @@ use App\Filament\Resources\PurchaseOrders\Pages\CreatePurchaseOrder;
 use App\Filament\Resources\PurchaseOrders\Pages\ListPurchaseOrders;
 use App\Filament\Resources\StockOpnames\Pages\ListStockOpnames;
 use App\Models\AppNotification;
+use App\Models\AuditLog;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\DeliveryIncident;
@@ -46,7 +47,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
-use RuntimeException;
 use Tests\TestCase;
 
 class IntegratedStockBalanceTest extends TestCase
@@ -585,16 +585,18 @@ class IntegratedStockBalanceTest extends TestCase
             array_column(app(StockReconciliationService::class)->findings(), 'code'));
     }
 
-    public function test_writer_refuses_a_negative_balance_before_accepting_a_movement(): void
+    public function test_writer_keeps_and_flags_a_negative_balance_for_finance(): void
     {
-        try {
-            app(StockLedgerService::class)->post('cart', $this->cart->id, $this->product->id,
-                MovementType::SALE_OUT, 1, $this->rider->id, $this->kitchen->id);
-            $this->fail('Negative balance was accepted.');
-        } catch (RuntimeException $exception) {
-            $this->assertStringContainsString('Stok di lokasi ini kurang', $exception->getMessage());
-        }
-        $this->assertDatabaseCount('stock_ledger', 0);
+        $movement = app(StockLedgerService::class)->post('cart', $this->cart->id, $this->product->id,
+            MovementType::WASTE_OUT, 1, $this->rider->id, $this->kitchen->id);
+        $this->assertSame(-1, $movement->qty_delta);
+        $this->assertDatabaseHas('audit_log', ['action' => 'stock_ledger.negative_balance',
+            'subject_id' => $movement->id, 'actor_id' => $this->rider->id]);
+        $this->assertSame(-1, AuditLog::query()->where('subject_id', $movement->id)
+            ->where('action', 'stock_ledger.negative_balance')->sole()->after_json['balance_qty']);
+        $this->assertSame('Stok minus tercatat', AuditLog::labelForAction('stock_ledger.negative_balance'));
+        $this->assertContains('NEGATIVE_BALANCE',
+            array_column(app(StockReconciliationService::class)->findings(), 'code'));
     }
 
     public function test_dry_run_checks_without_writing_results_or_notifications(): void
