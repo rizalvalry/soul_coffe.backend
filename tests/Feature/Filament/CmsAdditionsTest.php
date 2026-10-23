@@ -55,7 +55,7 @@ class CmsAdditionsTest extends TestCase
     {
         Livewire::test(CentralStock::class)
             ->assertSuccessful()
-            ->assertSee('Total seluruh cups')
+            ->assertSee('Total cups produk aktif')
             ->assertSee('Masih di dapur')
             ->assertSee('Sudah di Coffee Bike');
     }

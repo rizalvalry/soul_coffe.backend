@@ -1,4 +1,4 @@
-<div class="space-y-3">
+<div class="bsi-note">
     <p><strong>{{ $request->code }}</strong> · {{ $request->staff?->name }} · Coffee Bike {{ $request->cart?->code }}</p>
     <p>Status: {{ $request->status->label() }}</p>
     <p>Catatan lapangan: {{ $request->note ?: '-' }}</p>
