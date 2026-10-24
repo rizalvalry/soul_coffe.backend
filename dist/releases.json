@@ -1,18 +1,20 @@
 {
     "oapk": [
         {
-            "version": "1.5.10",
-            "version_code": 30,
-            "file": "soul-coffeemate-v1.5.10.apk",
-            "size_bytes": 25036460,
-            "sha256": "1614FCE6F0121E0A2FB34DC1281681EF819F03BDABD5347F2720FB848A222E7B",
-            "released_at": "2026-10-23",
+            "version": "1.5.11",
+            "version_code": 31,
+            "file": "soul-coffeemate-v1.5.11.apk",
+            "size_bytes": 25042864,
+            "sha256": "E68E1AAD399FE593CF447F941C6563AC472373033838556347BD5621323554BD",
+            "released_at": "2026-10-24",
             "notes": [
-                "Brew dan alokasi sekarang bisa mencatat sampai 9.999 cup per produk, sesuai stok yang tersedia.",
-                "Runner bisa mencatat Tutup Coffee Bike, dengan Finance sebagai cadangan.",
-                "Catatan lapangan kini lebih mudah diisi saat kerja harian."
+                "Produksi bisa mencatat Reject Dapur langsung dari HP: pilih produk dan jumlah, alasan, lalu foto. Finance langsung dapat notifikasi.",
+                "Brew, alokasi, dan serah terima showcase bisa sampai 9.999 cup per produk, tetap sesuai stok yang ada.",
+                "Tutup Coffee Bike sekarang dikerjakan Runner, Finance sebagai cadangan.",
+                "Es batu dan barang non-kopi tidak muncul lagi di HP; bahan pendukung diinput Finance di CMS.",
+                "Rider dan Produksi bisa menulis catatan lapangan di refill, Closing, dan serah terima."
             ],
-            "min_backend": "79c0cee"
+            "min_backend": "a80ed2a"
         }
     ],
     "capps": []
