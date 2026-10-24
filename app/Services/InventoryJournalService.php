@@ -62,7 +62,9 @@ class InventoryJournalService
         $this->postAmount('stock_ledger', $movement->id, 'STOCK_LOSS',
             $movement->created_at->toDateString(), $movement->qty_delta < 0 ? $amount : -$amount,
             $movement->raw_material_id !== null,
-            $movement->actor_id, 'Rusak / selisih stok #'.$movement->id);
+            $movement->actor_id, ($movement->ref_type === 'promotional_use'
+                ? 'Pemakaian konten/lapak #' : 'Rusak / selisih stok #').$movement->id,
+            $movement->ref_type === 'promotional_use' ? '6-1930' : '6-1910');
     }
 
     private function postSaleCost(StockLedger $movement, ?int $overrideAmount = null,
@@ -90,7 +92,7 @@ class InventoryJournalService
     }
 
     public function postAmount(string $sourceType, int $sourceId, string $purpose, string $date,
-        int $lossMinor, bool $rawMaterial, ?int $actorId, string $description): void
+        int $lossMinor, bool $rawMaterial, ?int $actorId, string $description, string $expenseCode = '6-1910'): void
     {
         if ($lossMinor === 0) {
             return;
@@ -100,7 +102,7 @@ class InventoryJournalService
         if ($amount > 1000000000000) {
             throw ValidationException::withMessages(['amount' => 'Nilai selisih stok terlalu besar.']);
         }
-        $expense = Account::query()->where('code', '6-1910')->firstOrFail();
+        $expense = Account::query()->where('code', $expenseCode)->firstOrFail();
         $stock = Account::query()->where('code', $rawMaterial ? '1-1700' : '1-1600')->firstOrFail();
         $this->journals->post([
             'entry_date' => $date, 'description' => $description,

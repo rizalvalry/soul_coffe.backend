@@ -6,6 +6,7 @@ use App\Enums\MovementType;
 use App\Enums\PanelModule;
 use App\Enums\RefillStatus;
 use App\Enums\Role;
+use App\Enums\WasteReason;
 use App\Exports\RevenueExport;
 use App\Models\Account;
 use App\Models\AppNotification;
@@ -118,6 +119,24 @@ class RiderClosingTest extends TestCase
     private function closingKey(): string
     {
         return (string) Str::uuid();
+    }
+
+    public function test_two_wasted_cups_keep_the_stock_loss_journal_and_get_damaged_reason(): void
+    {
+        $this->issue(10, MovementType::ALLOCATION_IN);
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', [...$this->body(3, 2), 'qris' => 0, 'transfer' => 0])
+            ->assertCreated();
+        $waste = StockLedger::query()->where('ref_type', 'rider_closing')
+            ->where('movement_type', MovementType::WASTE_OUT)->sole();
+        $this->assertSame(-2, $waste->qty_delta);
+        $this->assertSame(16000, $waste->cost_minor);
+        $this->assertSame(WasteReason::DAMAGED, $waste->wasteClassification->reason_code);
+        $debit = DB::table('journal_entries as j')->join('journal_lines as l', 'l.entry_id', '=', 'j.id')
+            ->join('accounts as a', 'a.id', '=', 'l.account_id')
+            ->where('j.source_type', 'stock_ledger')->where('j.source_id', $waste->id)
+            ->where('a.code', '6-1910')->sum('l.debit_minor');
+        $this->assertSame(16000, (int) $debit);
     }
 
     public function test_retired_product_is_absent_from_drafts_and_rejected_on_closing(): void
