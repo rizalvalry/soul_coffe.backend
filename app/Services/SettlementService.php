@@ -696,7 +696,7 @@ class SettlementService
 
             $locked->save();
 
-            app(RiderCommissionService::class)->lockForSettlement($locked->cart_id, $locked->operating_date->toDateString());
+            app(RiderCommissionService::class)->lockForSettlement($locked->cart_id, $locked->operating_date->toDateString(), $finance->id);
 
             $this->postJournals($locked, $finance);
 

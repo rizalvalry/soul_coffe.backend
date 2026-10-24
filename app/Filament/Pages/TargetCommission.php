@@ -8,6 +8,7 @@ use App\Filament\Concerns\RenameableModule;
 use App\Models\User;
 use App\Services\Access\PermissionMatrix;
 use App\Services\RiderCommissionService;
+use App\Services\RiderIncentiveBalanceService;
 use BackedEnum;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\DatePicker;
@@ -81,7 +82,7 @@ class TargetCommission extends Page
         abort_unless(self::canAccess(), 403);
         $this->period = today()->format('Y-m');
         $this->effectiveFrom = today()->toDateString();
-        $this->tiers = [['min_cups' => '100', 'amount_per_cup_minor' => '1000']];
+        $this->tiers = $this->defaultTiers();
         $this->requestKey = (string) Str::uuid();
     }
 
@@ -147,6 +148,7 @@ class TargetCommission extends Page
         $through = Carbon::parse($from)->endOfMonth()->toDateString();
         $ids = array_map(fn (User $rider): int => $rider->id, $riders);
         $commissions = app(RiderCommissionService::class);
+        $balances = app(RiderIncentiveBalanceService::class)->balances($ids);
         $period = $commissions->summaries($ids, $from, $through);
         $today = today()->toDateString();
         $todayRows = $today >= $from && $today <= $through
@@ -163,6 +165,7 @@ class TargetCommission extends Page
                 'today_has_closing' => $todaySummary['has_closing'] ?? false,
                 'period_cups' => $this->sumDays($monthDays, 'cups_sold'),
                 'period_commission_minor' => $this->sumDays($monthDays, 'commission_minor'),
+                'balance_minor' => $balances[$rider->id] ?? 0,
             ];
         }
 
@@ -189,13 +192,21 @@ class TargetCommission extends Page
         $riderId = (int) $this->selectedRiderId;
         abort_unless(User::query()->whereKey($riderId)->where('role', Role::STAFF->value)->where('is_active', true)->exists(), 404);
         $tiers = app(RiderCommissionService::class)->tiersFor($riderId, $this->effectiveFrom);
-        $this->tiers = $tiers === [] ? [['min_cups' => '100', 'amount_per_cup_minor' => '1000']]
+        $this->tiers = $tiers === [] ? $this->defaultTiers()
             : array_map(fn (array $row): array => [
                 'min_cups' => (string) $row['min_cups'],
                 'amount_per_cup_minor' => (string) $row['amount_per_cup_minor'],
             ], $tiers);
         $this->targetRiderIds = [(string) $riderId];
         $this->requestKey = (string) Str::uuid();
+    }
+
+    private function defaultTiers(): array
+    {
+        return [
+            ['min_cups' => '1', 'amount_per_cup_minor' => '1000'],
+            ['min_cups' => '101', 'amount_per_cup_minor' => '1500'],
+        ];
     }
 
     public function addTier(): void

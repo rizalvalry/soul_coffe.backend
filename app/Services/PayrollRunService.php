@@ -25,6 +25,7 @@ class PayrollRunService
         private readonly JournalService $journal,
         private readonly RiderCommissionService $commissions,
         private readonly EmployeeAdvanceService $advances,
+        private readonly RiderIncentiveBalanceService $incentiveBalances,
     ) {}
 
     public function create(string $period, User $actor): PayrollRun
@@ -230,6 +231,19 @@ class PayrollRunService
             $this->calculate($run);
             $this->assertNoLockedDecemberDependency($run);
             $items = $run->items()->with('user')->get();
+            $previousMonthEnd = $run->period_start->copy()->subDay()->toDateString();
+            foreach ($items as $item) {
+                if ($this->incentiveBalances->payableBalance($item->user_id, $previousMonthEnd) <= 0) {
+                    continue;
+                }
+                $previousApproved = PayrollRun::query()
+                    ->whereDate('period_start', substr($previousMonthEnd, 0, 7).'-01')
+                    ->whereIn('status', ['APPROVED', 'PAID'])
+                    ->whereHas('items', fn ($query) => $query->where('user_id', $item->user_id))->exists();
+                if (! $previousApproved) {
+                    throw ValidationException::withMessages(['run' => 'Saldo insentif bulan sebelumnya belum masuk payroll. Approve periode sebelumnya dulu ya.']);
+                }
+            }
             if ($this->commissions->hasUnlockedClosing(
                 $items->pluck('user_id')->map(fn ($id): int => (int) $id)->all(),
                 $run->period_start->format('Y-m-d'), $run->period_start->format('Y-m-t'),
@@ -240,7 +254,8 @@ class PayrollRunService
             $credits = [];
             foreach ($items as $item) {
                 $s = $item->snapshot;
-                $this->sum($debits, '6-1200', $s['gross_pay_minor']);
+                $this->sum($debits, '6-1200', $s['gross_pay_minor'] - ($s['rider_incentive_balance_minor'] ?? 0));
+                $this->sum($debits, '2-1800', $s['rider_incentive_balance_minor'] ?? 0);
                 $this->sum($debits, '6-1300', $s['bpjs_employer_total_minor']);
                 $this->sum($credits, '2-1100', $s['take_home_minor']);
                 $this->sum($credits, '2-1200', $this->checkedAdd($s['bpjs_employee_total_minor'], $s['bpjs_employer_total_minor']));
@@ -278,6 +293,7 @@ class PayrollRunService
                 'purpose' => 'PAYROLL_ACCRUAL', 'posted_by' => $actor->id,
             ], $lines);
             $this->advances->recordPayroll($run, $accrual, $actor);
+            $this->incentiveBalances->recordPayroll($run, $accrual, $actor);
             $run->update(['status' => 'APPROVED', 'approved_by' => $actor->id, 'approved_at' => now()]);
             $this->audit($run, $actor, 'payroll_run_approved');
         }, 3);
@@ -422,8 +438,10 @@ class PayrollRunService
                     : 'Approve run dulu sebelum bisa dibatalkan.']);
             }
             $this->assertNoLockedDecemberDependency($run);
+            $this->assertNoLaterIncentiveDependency($run);
             $reversal = $this->journal->reverse($accrual, $reason, $run, $actor);
             $this->advances->reversePayroll($run, $reversal, $actor);
+            $this->incentiveBalances->reversePayroll($run, $reversal, $actor);
         }, 3);
         // The database already hides the old PDF path if rendering needs a retry.
         $this->ensureSlips($run);
@@ -493,6 +511,20 @@ class PayrollRunService
             ->whereHas('items', fn ($query) => $query->whereIn('user_id', $employeeIds))->exists();
         if ($decemberLocked) {
             throw ValidationException::withMessages(['run' => 'Payroll Desember sudah dikunci. Batalkan run Desember dulu ya.']);
+        }
+    }
+
+    private function assertNoLaterIncentiveDependency(PayrollRun $run): void
+    {
+        $riderIds = $run->items()->get()->filter(fn (PayrollItem $item): bool => ($item->snapshot['rider_incentive_minor'] ?? 0) > 0)->pluck('user_id')->all();
+        if ($riderIds === []) {
+            return;
+        }
+        $laterApproved = PayrollRun::query()->whereDate('period_start', '>', $run->period_start->toDateString())
+            ->whereIn('status', ['APPROVED', 'PAID'])
+            ->whereHas('items', fn ($query) => $query->whereIn('user_id', $riderIds))->exists();
+        if ($laterApproved) {
+            throw ValidationException::withMessages(['run' => 'Payroll periode setelahnya sudah disetujui. Batalkan yang terbaru dulu sebelum koreksi periode ini ya.']);
         }
     }
 

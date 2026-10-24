@@ -12,7 +12,10 @@ use InvalidArgumentException;
 
 class PayrollCalculator
 {
-    public function __construct(private readonly RiderCommissionService $commissions) {}
+    public function __construct(
+        private readonly RiderCommissionService $commissions,
+        private readonly RiderIncentiveBalanceService $balances,
+    ) {}
 
     /**
      * Monthly TER estimate. December still needs the annual reconciliation in T-013.
@@ -46,13 +49,14 @@ class PayrollCalculator
         }
 
         $cups = 0;
-        $incentive = 0;
-        // Closing is the sole commission evidence. Historic flat rules and sale rows remain
-        // intact for audit, but cannot create a commission without a Rider Closing.
+        // Cups remain informational on the slip. Only posted balance plus pre-feature locks
+        // is payable; unapproved Closing estimates never create payroll income.
         foreach ($this->commissions->summaries([$user->id], $from, $through)[$user->id] ?? [] as $day) {
             $cups = self::add($cups, $day['cups_sold']);
-            $incentive = self::add($incentive, $day['commission_minor']);
         }
+        $balanceIncentive = $this->balances->payableBalance($user->id, $through);
+        $legacyIncentive = $this->balances->legacyAmount($user->id, $from, $through);
+        $incentive = self::add($balanceIncentive, $legacyIncentive);
 
         $components = [];
         $manualEarnings = 0;
@@ -130,7 +134,9 @@ class PayrollCalculator
 
         return [
             'period' => $period, 'user_id' => $user->id, 'base_salary_minor' => $baseSalary,
-            'rider_cups' => $cups, 'rider_incentive_minor' => $incentive, 'components' => $components,
+            'rider_cups' => $cups, 'rider_incentive_minor' => $incentive,
+            'rider_incentive_balance_minor' => $balanceIncentive,
+            'rider_incentive_legacy_minor' => $legacyIncentive, 'components' => $components,
             'manual_earnings_minor' => $manualEarnings, 'manual_deductions_minor' => $manualDeductions,
             'gross_pay_minor' => $grossPay, 'taxable_gross_minor' => $taxableGross,
             'ptkp_status' => $profile->ptkp_status, 'ptkp_annual_minor' => (int) $ptkp->annual_amount_minor,

@@ -23,6 +23,7 @@ enum PanelModule: string
     case CENTRAL_KITCHENS = 'central_kitchens';
     case DAILY_TARGETS = 'daily_targets';
     case RIDER_COMMISSIONS = 'rider_commissions';
+    case RIDER_INCENTIVE_BALANCE = 'rider_incentive_balance';
     case CENTRAL_STOCK = 'central_stock';
     case STOCK_OPNAME = 'stock_opname';
     case SALES = 'sales';
@@ -98,6 +99,7 @@ enum PanelModule: string
             self::CENTRAL_KITCHENS => 'Dapur Pusat',
             self::DAILY_TARGETS => 'Target Harian',
             self::RIDER_COMMISSIONS => 'Target & Komisi',
+            self::RIDER_INCENTIVE_BALANCE => 'Saldo Insentif Rider',
             self::CENTRAL_STOCK => 'Stok Terpusat',
             self::STOCK_OPNAME => 'Stock Opname',
             self::SALES => 'Penjualan Coffee Bike',
@@ -191,6 +193,7 @@ enum PanelModule: string
             self::PIN_RESET_REQUESTS, self::AI_SETTINGS, self::LOCATION_SETTINGS, self::MENU_NAMING,
             self::NEWS_FEED => 'Pengguna & Pengaturan',
             self::REPORTS, self::FINANCE_DAILY_REPORT, self::MANAGEMENT_REPORTS, self::PAYROLL, self::EMPLOYEE_ADVANCES,
+            self::RIDER_INCENTIVE_BALANCE,
             self::PAYROLL_PRIOR_WITHHOLDING, self::TAX_SETTINGS, self::ACCOUNTING_PERIODS,
             self::OPENING_BALANCES, self::CHART_OF_ACCOUNTS, self::JOURNALS,
             self::JOURNAL_REVERSALS, self::GENERAL_LEDGER, self::CASH,

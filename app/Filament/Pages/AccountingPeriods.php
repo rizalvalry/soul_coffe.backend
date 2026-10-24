@@ -96,6 +96,7 @@ class AccountingPeriods extends Page implements HasTable
             'depreciation_unposted' => FixedAssetResource::getUrl(),
             'cash_settlement_balance' => GeneralLedger::getUrl(),
             'employee_advances_reconciliation' => EmployeeAdvances::getUrl(),
+            'rider_incentive_reconciliation' => RiderIncentiveBalances::getUrl(),
         };
     }
 
