@@ -5,6 +5,8 @@ namespace Tests\Feature\Filament;
 use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Filament\Pages\PayrollConfiguration;
+use App\Filament\Resources\AuditLogs\Pages\ViewAuditLog;
+use App\Models\AuditLog;
 use App\Models\User;
 use App\Services\Access\PermissionMatrix;
 use Database\Seeders\AccountSeeder;
@@ -41,6 +43,66 @@ class PayrollConfigurationPanelTest extends TestCase
         $this->assertSame(1, DB::table('payroll_component_entries')->count());
         $audit = DB::table('audit_log')->where('action', 'payroll_component_entry_created')->first();
         $this->assertSame(['payroll_detail' => '[redacted]'], json_decode($audit->after_json, true));
+    }
+
+    public function test_management_can_change_attendance_and_bonus_rules_but_field_role_gets_403(): void
+    {
+        $this->actingAs(User::factory()->role(Role::MANAGEMENT)->create());
+        Livewire::test(PayrollConfiguration::class)
+            ->set('attendanceRule.late_after', '09:30')
+            ->set('attendanceRule.target_cups', 40)
+            ->call('saveAttendanceRule')->assertHasNoErrors();
+        Livewire::test(PayrollConfiguration::class)
+            ->set('monthlyBonus.min_cups', 1000)
+            ->set('monthlyBonus.amount_minor', 200000)
+            ->call('saveMonthlyBonus')->assertHasNoErrors();
+        $this->assertDatabaseHas('payroll_attendance_settings', ['late_after' => '09:30', 'target_cups' => 40]);
+        $this->assertDatabaseHas('payroll_monthly_bonus_rules', ['min_cups' => 1000, 'amount_minor' => 200000]);
+        $this->actingAs(User::factory()->role(Role::STAFF)->create());
+        $this->get(PayrollConfiguration::getUrl())->assertForbidden();
+    }
+
+    public function test_bonus_audit_keeps_amount_private_from_audit_only_viewer(): void
+    {
+        $manager = User::factory()->role(Role::MANAGEMENT)->create();
+        $this->actingAs($manager);
+        Livewire::test(PayrollConfiguration::class)
+            ->set('monthlyBonus.min_cups', 1000)
+            ->set('monthlyBonus.amount_minor', 200000)
+            ->call('saveMonthlyBonus')->assertHasNoErrors();
+        $audit = AuditLog::query()->where('action', 'payroll_monthly_bonus_saved')->firstOrFail();
+        $this->assertStringNotContainsString('200000', json_encode($audit->after_json));
+        $this->assertSame(200000, $audit->displayChanges('after')['amount_minor']);
+
+        PermissionMatrix::set(Role::FINANCE, PanelModule::PAYROLL, []);
+        PermissionMatrix::set(Role::FINANCE, PanelModule::AUDIT_LOGS, ['view']);
+        $this->actingAs(User::factory()->role(Role::FINANCE)->create());
+        $this->assertSame('[redacted]', $audit->displayChanges('after')['amount_minor']);
+        $this->get(ViewAuditLog::getUrl(['record' => $audit]))->assertOk()->assertDontSee('200000');
+
+        $createdAt = DB::table('payroll_monthly_bonus_rules')->where('min_cups', 1000)->value('created_at');
+        $this->actingAs($manager);
+        Livewire::test(PayrollConfiguration::class)
+            ->set('monthlyBonus.min_cups', 1000)
+            ->set('monthlyBonus.amount_minor', 300000)
+            ->call('saveMonthlyBonus')->assertHasNoErrors();
+        $updatedAudit = AuditLog::query()->where('action', 'payroll_monthly_bonus_saved')->latest('id')->firstOrFail();
+        $this->assertSame(200000, (int) $updatedAudit->displayChanges('before')['amount_minor']);
+        $this->assertSame(300000, $updatedAudit->displayChanges('after')['amount_minor']);
+        $this->assertSame($createdAt, DB::table('payroll_monthly_bonus_rules')->where('min_cups', 1000)->value('created_at'));
+    }
+
+    public function test_field_role_gets_403_on_new_payroll_configuration_actions(): void
+    {
+        $manager = User::factory()->role(Role::MANAGEMENT)->create();
+        foreach (['saveAttendanceRule', 'saveMonthlyBonus', 'removeMonthlyBonus'] as $action) {
+            $this->actingAs($manager);
+            $page = Livewire::test(PayrollConfiguration::class);
+            $this->actingAs(User::factory()->role(Role::STAFF)->create());
+            $action === 'removeMonthlyBonus'
+                ? $page->call($action, 1000)->assertForbidden()
+                : $page->call($action)->assertForbidden();
+        }
     }
 
     public function test_configuration_history_is_bounded_to_latest_100_rows(): void

@@ -113,6 +113,19 @@ class EmployeeProfilePanelTest extends TestCase
             ->assertDontSee('7800000')->assertDontSee('8100000')->assertDontSee('_payroll_ciphertext');
     }
 
+    public function test_daily_basis_defaults_to_rounded_rate_and_keeps_it_encrypted(): void
+    {
+        $profile = $this->profile();
+        $profile->update(['base_salary_minor' => 1000000]);
+        $this->actingAs(User::factory()->role(Role::MANAGEMENT)->create());
+        Livewire::test(EditEmployeeProfile::class, ['record' => $profile->id])
+            ->fillForm(['salary_basis' => 'harian'])
+            ->call('save')->assertHasNoFormErrors();
+        $this->assertSame('harian', $profile->fresh()->salary_basis);
+        $this->assertSame(38462, $profile->fresh()->daily_rate_minor);
+        $this->assertNotSame('38462', DB::table('employee_profiles')->where('id', $profile->id)->value('daily_rate_minor'));
+    }
+
     public function test_administrator_can_view_and_edit_payroll_with_its_own_audit_role(): void
     {
         $profile = $this->profile();

@@ -2,11 +2,13 @@
 
 namespace App\Services;
 
+use App\Enums\Role;
 use App\Models\PayrollComponentEntry;
 use App\Models\PayrollPriorWithholding;
 use App\Models\User;
 use DateTimeImmutable;
 use DomainException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -48,11 +50,49 @@ class PayrollCalculator
             throw new DomainException('Gaji pokok harus rupiah bulat dan tidak boleh negatif.');
         }
 
+        $salaryBasis = $profile->salary_basis ?? 'bulanan';
+        $dailyRate = null;
+        $attendanceDays = null;
+        if ($salaryBasis === 'harian') {
+            if ($user->role === Role::RIDER) {
+                throw new DomainException('Gaji Runner tetap bulanan ya.');
+            }
+            $workingDays = max(1, (int) config('soul.attendance_working_days', 26));
+            $dailyRate = $profile->daily_rate_minor ?? (intdiv($baseSalary, $workingDays)
+                + (int) (($baseSalary % $workingDays) * 2 >= $workingDays));
+            if (! is_int($dailyRate) || $dailyRate < 0) {
+                throw new DomainException('Tarif harian harus rupiah bulat dan tidak boleh negatif.');
+            }
+            $attendanceDays = app(AttendanceSheetService::class)
+                ->monthlySheet(Carbon::parse($from), null, [$user->id])
+                ->first()['summary']['hadir'] ?? 0;
+            $baseSalary = self::multiply($dailyRate, $attendanceDays);
+        } elseif ($salaryBasis !== 'bulanan') {
+            throw new DomainException('Dasar gaji belum valid ya.');
+        }
+
         $cups = 0;
-        // Cups remain informational on the slip. Only posted balance plus pre-feature locks
-        // is payable; unapproved Closing estimates never create payroll income.
+        // Daily commission stays informational here. Only posted balance plus pre-feature locks
+        // is paid as Rider incentive; monthly bonus is calculated separately from Closing cups.
         foreach ($this->commissions->summaries([$user->id], $from, $through)[$user->id] ?? [] as $day) {
             $cups = self::add($cups, $day['cups_sold']);
+        }
+        $bonusCups = 0;
+        $bonus = 0;
+        $bonusThreshold = null;
+        if ($user->role === Role::STAFF) {
+            $bonusCups = (int) DB::table('rider_closings as closings')
+                ->join('rider_closing_lines as lines', 'lines.rider_closing_id', '=', 'closings.id')
+                ->join('products', 'products.id', '=', 'lines.product_id')
+                ->where('closings.rider_id', $user->id)
+                ->whereBetween('closings.operating_date', [$from, $through])
+                ->where('products.unit', 'cup')->sum('lines.qty_sold');
+            $bonusRule = DB::table('payroll_monthly_bonus_rules')
+                ->where('min_cups', '<=', $bonusCups)->orderByDesc('min_cups')->first();
+            if ($bonusRule) {
+                $bonus = (int) $bonusRule->amount_minor;
+                $bonusThreshold = (int) $bonusRule->min_cups;
+            }
         }
         $balanceIncentive = $this->balances->payableBalance($user->id, $through);
         $legacyIncentive = $this->balances->legacyAmount($user->id, $from, $through);
@@ -113,7 +153,7 @@ class PayrollCalculator
             throw new DomainException('Tarif PTKP/TER belum diisi dan diverifikasi akuntan, jadi payroll belum bisa dihitung.');
         }
 
-        $taxableGross = self::add(self::add(self::add($baseSalary, $incentive), $taxableEarnings), $additionalGross);
+        $taxableGross = self::add(self::add(self::add(self::add($baseSalary, $incentive), $bonus), $taxableEarnings), $additionalGross);
         $bracketVersion = DB::table('payroll_ter_versions')->where('category', $ptkp->ter_category)
             ->whereNotNull('published_at')->where('effective_from', '<=', $from)->max('effective_from');
         $bracket = $bracketVersion === null ? null : DB::table('pph21_ter_brackets')
@@ -126,7 +166,7 @@ class PayrollCalculator
             throw new DomainException('Tarif TER belum diisi dan diverifikasi akuntan untuk gaji ini, jadi payroll belum bisa dihitung.');
         }
         $pph21 = self::percent($taxableGross, (int) $bracket->rate_bps);
-        $grossPay = self::add(self::add(self::add($baseSalary, $incentive), $manualEarnings), $additionalGross);
+        $grossPay = self::add(self::add(self::add(self::add($baseSalary, $incentive), $bonus), $manualEarnings), $additionalGross);
         $employeeContribution = array_reduce($bpjsEmployee, fn (int $sum, int $amount): int => self::add($sum, $amount), 0);
         $employerContribution = array_reduce($bpjsEmployer, fn (int $sum, int $amount): int => self::add($sum, $amount), 0);
         $totalDeductions = self::add(self::add($manualDeductions, $employeeContribution), $pph21);
@@ -134,6 +174,9 @@ class PayrollCalculator
 
         return [
             'period' => $period, 'user_id' => $user->id, 'base_salary_minor' => $baseSalary,
+            'salary_basis' => $salaryBasis, 'daily_rate_minor' => $dailyRate,
+            'attendance_days' => $attendanceDays, 'monthly_bonus_minor' => $bonus,
+            'monthly_bonus_cups' => $bonusCups, 'monthly_bonus_min_cups' => $bonusThreshold,
             'rider_cups' => $cups, 'rider_incentive_minor' => $incentive,
             'rider_incentive_balance_minor' => $balanceIncentive,
             'rider_incentive_legacy_minor' => $legacyIncentive, 'components' => $components,

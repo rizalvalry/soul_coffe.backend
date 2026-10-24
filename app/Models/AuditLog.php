@@ -93,7 +93,7 @@ class AuditLog extends Model
         $canReadDetails = $this->subject_type === EmployeeAdvance::class
             ? $canReadAdvance : Gate::allows('manage-payroll');
         if (! in_array($this->subject_type, [EmployeeProfile::class, PayrollComponentEntry::class,
-            PayrollRun::class, EmployeeAdvance::class], true)
+            PayrollRun::class, EmployeeAdvance::class, 'payroll_monthly_bonus_rules'], true)
             || ! $canReadDetails) {
             return $values;
         }

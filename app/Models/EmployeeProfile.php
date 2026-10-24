@@ -21,6 +21,8 @@ class EmployeeProfile extends Model
         'position_title',
         'employment_status',
         'base_salary_minor',
+        'salary_basis',
+        'daily_rate_minor',
         'ptkp_status',
         'npwp',
         'bpjs_tk_enrolled',
@@ -30,13 +32,13 @@ class EmployeeProfile extends Model
     ];
 
     protected $hidden = [
-        'base_salary_minor', 'npwp', 'ptkp_status',
+        'base_salary_minor', 'daily_rate_minor', 'salary_basis', 'npwp', 'ptkp_status',
         'bpjs_tk_enrolled', 'bpjs_kes_enrolled', 'payroll_active',
     ];
 
     public function setAttribute($key, $value)
     {
-        if (in_array($key, ['base_salary_minor', 'npwp', 'employment_status', 'ptkp_status'], true)
+        if (in_array($key, ['base_salary_minor', 'daily_rate_minor', 'npwp', 'employment_status', 'ptkp_status'], true)
             && is_string($value) && trim($value) === '') {
             $value = null;
         }
@@ -44,6 +46,7 @@ class EmployeeProfile extends Model
         $allowed = match ($key) {
             'employment_status' => self::EMPLOYMENT_STATUSES,
             'ptkp_status' => self::PTKP_STATUSES,
+            'salary_basis' => ['bulanan', 'harian'],
             default => null,
         };
         if ($value !== null && $allowed !== null && ! in_array($value, $allowed, true)) {
@@ -57,6 +60,7 @@ class EmployeeProfile extends Model
     {
         return [
             'base_salary_minor' => EncryptedInteger::class,
+            'daily_rate_minor' => EncryptedInteger::class,
             'npwp' => 'encrypted',
             'bpjs_tk_enrolled' => 'boolean',
             'bpjs_kes_enrolled' => 'boolean',
@@ -73,7 +77,7 @@ class EmployeeProfile extends Model
     private function auditSensitiveChanges(bool $created): void
     {
         $changed = array_values(array_filter(
-            ['base_salary_minor', 'npwp', 'ptkp_status', 'bpjs_tk_enrolled', 'bpjs_kes_enrolled', 'payroll_active'],
+            ['base_salary_minor', 'daily_rate_minor', 'salary_basis', 'npwp', 'ptkp_status', 'bpjs_tk_enrolled', 'bpjs_kes_enrolled', 'payroll_active'],
             fn (string $field): bool => $created
                 ? $this->getAttribute($field) !== null
                 : array_key_exists($field, $this->getChanges()),

@@ -4,6 +4,29 @@
     <p>Riwayat di halaman ini menampilkan 100 versi terbaru per bagian; versi lama tetap tersimpan.</p>
 
     <section class="rounded-xl border p-4">
+        <h2>Aturan absensi Rider</h2>
+        <p>Kalau absen lewat dari batas jam dan Closing di bawah target cup, laporan memberi usulan T. Finance tetap bisa ganti kodenya.</p>
+        <form wire:submit="saveAttendanceRule">
+            {{ $this->attendanceRuleForm }}
+            <x-filament::button type="submit">Simpan aturan</x-filament::button>
+        </form>
+    </section>
+
+    <section class="rounded-xl border p-4">
+        <h2>Bonus bulanan Rider</h2>
+        <p>Belum ada bonus otomatis sampai aturan ditambahkan. Kalau ada beberapa target, sistem pakai target tertinggi yang tercapai.</p>
+        <form wire:submit="saveMonthlyBonus">
+            {{ $this->monthlyBonusForm }}
+            <x-filament::button type="submit">Simpan bonus</x-filament::button>
+        </form>
+        @foreach ($this->monthlyBonusRules() as $rule)
+            <p>{{ number_format($rule->min_cups, 0, ',', '.') }} cup: Rp {{ number_format($rule->amount_minor, 0, ',', '.') }}
+                <button type="button" wire:click="removeMonthlyBonus({{ $rule->min_cups }})">Hapus</button>
+            </p>
+        @endforeach
+    </section>
+
+    <section class="rounded-xl border p-4">
         <h2 class="text-lg font-semibold">Cek kalkulasi payroll</h2>
         <p>Preview ini tidak menyimpan atau memposting gaji.</p>
         <form wire:submit="previewPayroll" class="mt-3">

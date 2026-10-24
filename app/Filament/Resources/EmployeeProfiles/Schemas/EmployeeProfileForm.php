@@ -55,6 +55,18 @@ class EmployeeProfileForm
                         ->minValue(0)
                         ->rule('integer')
                         ->dehydrated(fn (): bool => Gate::allows('manage-payroll')),
+                    Select::make('salary_basis')
+                        ->label('Dasar gaji')
+                        ->options(fn (?EmployeeProfile $record): array => $record?->user?->role === Role::RIDER
+                            ? ['bulanan' => 'Bulanan'] : ['bulanan' => 'Bulanan', 'harian' => 'Harian'])
+                        ->default('bulanan')
+                        ->dehydrated(fn (): bool => Gate::allows('manage-payroll')),
+                    TextInput::make('daily_rate_minor')
+                        ->label('Tarif harian (rupiah)')
+                        ->helperText('Kosongkan untuk pakai gaji bulanan dibagi jumlah hari kerja di konfigurasi absensi.')
+                        ->numeric()->minValue(0)->rule('integer')
+                        ->visible(fn (?EmployeeProfile $record): bool => $record?->user?->role !== Role::RIDER)
+                        ->dehydrated(fn (): bool => Gate::allows('manage-payroll')),
                     TextInput::make('npwp')
                         ->label('NPWP')
                         ->maxLength(32)
