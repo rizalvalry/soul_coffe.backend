@@ -48,6 +48,10 @@ class CashCategoryResource extends Resource
                     ->whereIn('type', ['EXPENSE', 'ASSET', 'REVENUE', 'EQUITY'])
                     ->orderBy('code')->get()->mapWithKeys(fn (Account $account): array => [$account->id => $account->code.' '.$account->name])->all())
                 ->searchable()->required(),
+            TextInput::make('default_unit_price_minor')->label('Harga satuan bawaan (Rp)')
+                ->numeric()->rule('integer')->minValue(1),
+            TextInput::make('unit')->label('Satuan (opsional)')->maxLength(32),
+            Toggle::make('is_daily')->label('Kategori harian')->default(false),
             Toggle::make('is_active')->label('Aktif')->default(true),
         ]);
     }
@@ -58,6 +62,10 @@ class CashCategoryResource extends Resource
             TextColumn::make('name')->label('Nama')->searchable(),
             TextColumn::make('direction')->label('Arah')->badge(),
             TextColumn::make('account.code')->label('Akun'),
+            TextColumn::make('default_unit_price_minor')->label('Harga bawaan')
+                ->formatStateUsing(fn ($state): string => $state === null ? '-' : 'Rp '.number_format((int) $state, 0, ',', '.')),
+            TextColumn::make('unit')->label('Satuan'),
+            IconColumn::make('is_daily')->label('Harian')->boolean(),
             IconColumn::make('is_active')->label('Aktif')->boolean(),
         ])->recordActions([EditAction::make(), DeleteAction::make()]);
     }

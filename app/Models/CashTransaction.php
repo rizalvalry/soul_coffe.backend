@@ -10,11 +10,12 @@ class CashTransaction extends Model
 {
     protected $fillable = ['uuid', 'date', 'direction', 'cash_category_id', 'cash_account_id', 'amount_minor',
         'description', 'office_item_id', 'quantity', 'evidence_path', 'cart_id', 'recorded_by', 'status',
-        'voided_by', 'voided_at', 'void_reason'];
+        'voided_by', 'voided_at', 'void_reason', 'unit_price_minor', 'is_daily_expense', 'employee_id', 'location_id'];
 
     protected function casts(): array
     {
-        return ['date' => 'date', 'amount_minor' => 'integer', 'quantity' => 'integer', 'voided_at' => 'datetime'];
+        return ['date' => 'date', 'amount_minor' => 'integer', 'quantity' => 'integer',
+            'unit_price_minor' => 'integer', 'is_daily_expense' => 'boolean', 'voided_at' => 'datetime'];
     }
 
     protected static function booted(): void
@@ -35,6 +36,16 @@ class CashTransaction extends Model
     public function cart(): BelongsTo
     {
         return $this->belongsTo(Cart::class);
+    }
+
+    public function employee(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'employee_id');
+    }
+
+    public function location(): BelongsTo
+    {
+        return $this->belongsTo(Location::class);
     }
 
     public function officeItem(): BelongsTo

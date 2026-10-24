@@ -10,7 +10,7 @@ use Illuminate\Validation\ValidationException;
 
 class CashCategory extends Model
 {
-    protected $fillable = ['name', 'direction', 'account_id', 'is_active'];
+    protected $fillable = ['name', 'direction', 'account_id', 'is_active', 'default_unit_price_minor', 'unit', 'is_daily'];
 
     public function save(array $options = []): bool
     {
@@ -40,12 +40,18 @@ class CashCategory extends Model
 
     protected function casts(): array
     {
-        return ['is_active' => 'boolean'];
+        return ['is_active' => 'boolean', 'is_daily' => 'boolean', 'default_unit_price_minor' => 'integer'];
     }
 
     protected static function booted(): void
     {
         static::saving(function (self $category): void {
+            if ($category->is_daily && (! $category->exists || $category->isDirty(['is_daily', 'direction', 'account_id']))) {
+                $dailyType = Account::query()->whereKey($category->account_id)->value('type');
+                if ($category->direction !== 'OUT' || $dailyType !== 'EXPENSE') {
+                    throw ValidationException::withMessages(['is_daily' => 'Kategori harian harus kas keluar ke akun beban, ya.']);
+                }
+            }
             if ($category->exists && ! $category->isDirty(['direction', 'account_id'])) {
                 return;
             }
