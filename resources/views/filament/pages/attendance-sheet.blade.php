@@ -17,8 +17,8 @@
         $codes = $this->codeOptions();
 
         // Fill classes mirror the legend marks exactly, so the key and the grid agree.
-        $cellClass = ['M' => '', 'T' => 'bsi-cell--t', 'S' => 'bsi-cell--s', 'L' => 'bsi-cell--l'];
-        $markClass = ['M' => '', 'T' => 'bsi-mark--t', 'S' => 'bsi-mark--s', 'L' => 'bsi-mark--l'];
+        $cellClass = ['M' => '', 'T' => 'bsi-cell--t', 'S' => 'bsi-cell--s', 'L' => 'bsi-cell--l', 'A' => 'bsi-cell--s'];
+        $markClass = ['M' => '', 'T' => 'bsi-mark--t', 'S' => 'bsi-mark--s', 'L' => 'bsi-mark--l', 'A' => 'bsi-mark--s'];
         $roleLabel = $this->role === '' ? 'Semua Role' : \App\Enums\Role::from($this->role)->label();
     @endphp
 
@@ -69,6 +69,7 @@
                 <span class="bsi-mark bsi-mark--dotted">M</span>
                 Dari absen aplikasi
             </span>
+            <span class="bsi-legend__item">T usulan sistem ditandai "Usulan sistem"; Finance bisa ganti kodenya.</span>
         </div>
 
         <div class="bsi-note">
@@ -128,6 +129,7 @@
                             <th class="bsi-sum-first">Libur<br>(L)</th>
                             <th>Sakit<br>(S)</th>
                             <th>Berangkat siang /<br>tidak target</th>
+                            <th>Mangkir<br>(A)</th>
                             <th>Hadir<br>(M)</th>
                             <th>Jatah<br>klibur</th>
                             <th>Lebih dari jatah /<br>tidak masuk</th>
@@ -152,10 +154,11 @@
                                         $cell = $row['cells'][$day] ?? ['code' => null, 'source' => null, 'time' => null];
                                         $code = $cell['code'];
                                         $fromApp = $cell['source'] === 'app';
+                                        $fromSystem = $cell['source'] === 'system';
                                     @endphp
                                     <td
                                         class="bsi-day bsi-cell {{ $code ? ($cellClass[$code->value] ?? '') : '' }} {{ $fromApp ? 'bsi-cell--sourced' : '' }}"
-                                        @if ($fromApp) title="Absen dari aplikasi pukul {{ $cell['time'] }}" @endif
+                                        @if ($fromApp || $fromSystem) title="{{ $fromSystem ? 'Usulan sistem T' : 'Absen dari aplikasi' }} pukul {{ $cell['time'] }}" @endif
                                     >
                                         @if ($editable)
                                             {{-- Saves on change: a month gets filled in without
@@ -169,16 +172,16 @@
                                                  to the app, which is exactly what it reads as. --}}
                                             <select
                                                 class="bsi-cell__select"
-                                                aria-label="{{ $user->name }} tanggal {{ $day }}{{ $fromApp ? ' (absen aplikasi pukul '.$cell['time'].')' : '' }}"
+                                                aria-label="{{ $user->name }} tanggal {{ $day }}{{ $fromSystem ? ' (Usulan sistem T)' : ($fromApp ? ' (absen aplikasi pukul '.$cell['time'].')' : '') }}"
                                                 wire:change="setCell({{ $user->id }}, {{ $day }}, $event.target.value)"
                                             >
-                                                <option value="" @selected($cell['source'] !== 'manual')>{{ $fromApp ? 'M' : '–' }}</option>
+                                                <option value="" @selected($cell['source'] !== 'manual')>{{ $fromSystem ? 'T*' : ($code?->value ?? '–') }}</option>
                                                 @foreach ($codes as $option)
                                                     <option value="{{ $option->value }}" @selected($cell['source'] === 'manual' && $code === $option)>{{ $option->value }}</option>
                                                 @endforeach
                                             </select>
                                         @else
-                                            <span class="bsi-cell__static">{{ $code?->value ?? '' }}</span>
+                                            <span class="bsi-cell__static">{{ $code?->value ?? '' }}{{ $fromSystem ? '*' : '' }}</span>
                                         @endif
                                     </td>
                                 @endfor
@@ -186,6 +189,7 @@
                                 <td class="bsi-sum-first bsi-num bsi-num--strong">{{ $summary['libur'] }}</td>
                                 <td class="bsi-num">{{ $summary['sakit'] }}</td>
                                 <td class="bsi-num">{{ $summary['late'] }}</td>
+                                <td class="bsi-num">{{ $summary['absent'] }}</td>
                                 <td class="bsi-num bsi-num--strong">{{ $summary['hadir'] }}</td>
                                 <td class="bsi-num bsi-num--quiet">{{ $summary['quota'] }}</td>
                                 {{-- Danger red is the only hue this system has, and this is the
@@ -195,7 +199,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="{{ 4 + $daysInMonth + 7 }}">
+                                <td colspan="{{ 4 + $daysInMonth + 8 }}">
                                     <div class="bsi-empty">
                                         <p class="bsi-empty__title">Belum ada pegawai aktif untuk role ini</p>
                                         <p>Tambahkan lewat menu Master Data → Pengguna &amp; Role, lengkapi NIK dan jatah kliburnya, lalu kembali ke sini.</p>

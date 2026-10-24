@@ -8,6 +8,7 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Illuminate\Support\Facades\Gate;
 
@@ -54,6 +55,35 @@ class EmployeeProfileForm
                         ->numeric()
                         ->minValue(0)
                         ->rule('integer')
+                        ->dehydrated(fn (): bool => Gate::allows('manage-payroll')),
+                    Select::make('salary_basis')
+                        ->label('Dasar gaji')
+                        ->options(['bulanan' => 'Bulanan', 'harian' => 'Harian'])
+                        ->default('bulanan')
+                        ->dehydrated(fn (): bool => Gate::allows('manage-payroll')),
+                    TextInput::make('salary_effective_month')
+                        ->label('Berlaku mulai bulan')
+                        ->type('month')
+                        ->default(fn (): string => now('Asia/Jakarta')->startOfMonth()->addMonth()->format('Y-m'))
+                        ->helperText('Bawaan bulan depan. Bulan ini bisa dipilih sebelum payroll disetujui.')
+                        ->required()
+                        ->live()
+                        ->afterStateUpdated(function (?string $state, Set $set, ?EmployeeProfile $record): void {
+                            if (! $record || ! is_string($state)
+                                || ! preg_match('/^\d{4}-(0[1-9]|1[0-2])$/D', $state)) {
+                                return;
+                            }
+                            $version = $record->salaryVersionFor($state.'-01');
+                            $set('salary_basis', $version?->salary_basis ?? 'bulanan');
+                            $set('base_salary_minor', $version?->base_salary_minor);
+                            $set('daily_rate_minor', $version?->daily_rate_minor);
+                        })
+                        ->dehydrated(fn (): bool => Gate::allows('manage-payroll')),
+                    TextInput::make('daily_rate_minor')
+                        ->label('Tarif harian (rupiah)')
+                        ->helperText('Kosongkan untuk pakai gaji bulanan dibagi jumlah hari kerja di konfigurasi absensi.')
+                        ->numeric()->minValue(0)->rule('integer')
+                        ->visible(fn (?EmployeeProfile $record): bool => $record?->user?->role !== Role::RIDER)
                         ->dehydrated(fn (): bool => Gate::allows('manage-payroll')),
                     TextInput::make('npwp')
                         ->label('NPWP')

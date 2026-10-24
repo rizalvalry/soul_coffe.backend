@@ -17,8 +17,8 @@ use Maatwebsite\Excel\Concerns\WithTitle;
  * The absensi sheet as a real .xlsx — same column shape as the sheet this module was built from,
  * so the file can go straight into whatever payroll process already consumes it.
  *
- * A lowercase code marks a cell that came from the employee's own clock-in rather than from the
- * office, so the provenance the screen shows survives the export instead of being flattened away.
+ * A lowercase code marks an app clock-in or system T suggestion rather than a manual Finance mark,
+ * so provenance survives the export.
  */
 class AttendanceSheetExport implements FromCollection, ShouldAutoSize, WithHeadings, WithTitle
 {
@@ -38,6 +38,7 @@ class AttendanceSheetExport implements FromCollection, ShouldAutoSize, WithHeadi
                 'Libur (L)',
                 'Sakit (S)',
                 'Berangkat Siang / Tidak Target',
+                'Mangkir (A)',
                 'Hadir (M)',
                 'Jatah Klibur',
                 'Lebih dari Jatah / Tidak Masuk',
@@ -63,7 +64,7 @@ class AttendanceSheetExport implements FromCollection, ShouldAutoSize, WithHeadi
                         return '';
                     }
 
-                    return $cell['source'] === 'app'
+                    return in_array($cell['source'], ['app', 'system'], true)
                         ? strtolower($code->value)
                         : $code->value;
                 },
@@ -77,6 +78,7 @@ class AttendanceSheetExport implements FromCollection, ShouldAutoSize, WithHeadi
                     $summary['libur'],
                     $summary['sakit'],
                     $summary['late'],
+                    $summary['absent'],
                     $summary['hadir'],
                     $summary['quota'],
                     $summary['over_quota'],

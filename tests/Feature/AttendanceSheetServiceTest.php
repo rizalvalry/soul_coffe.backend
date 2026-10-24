@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\AttendanceCode;
 use App\Enums\Role;
+use App\Exports\AttendanceSheetExport;
 use App\Models\Attendance;
 use App\Models\AttendanceMark;
 use App\Models\User;
@@ -42,6 +43,19 @@ class AttendanceSheetServiceTest extends TestCase
     private function employee(Role $role = Role::RIDER, array $attributes = []): User
     {
         return User::factory()->role($role)->create($attributes);
+    }
+
+    public function test_absent_code_is_stored_counted_and_exported(): void
+    {
+        $rider = $this->employee(Role::STAFF);
+        $this->service->setCode($rider, Carbon::parse('2026-08-05'), AttendanceCode::ABSENT);
+        $row = $this->service->monthlySheet(Carbon::parse('2026-08-01'), Role::STAFF)->firstOrFail();
+        $this->assertSame(AttendanceCode::ABSENT, AttendanceMark::query()->firstOrFail()->code);
+        $this->assertSame(1, $row['summary']['absent']);
+        $this->assertSame(0, $row['summary']['hadir']);
+        $export = new AttendanceSheetExport(Carbon::parse('2026-08-01'), Role::STAFF);
+        $this->assertContains('Mangkir (A)', $export->headings());
+        $this->assertSame('A', $export->collection()->first()[8]);
     }
 
     // ── Provenance: app clock-in vs office entry ─────────────────────────

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\AttendanceCode;
 use App\Enums\MovementType;
 use App\Enums\PanelModule;
 use App\Enums\Role;
@@ -13,6 +14,7 @@ use App\Filament\Pages\PayrollRuns;
 use App\Filament\Resources\Journals\Pages\ListJournals;
 use App\Models\Account;
 use App\Models\AccountingPeriod;
+use App\Models\Attendance;
 use App\Models\AuditLog;
 use App\Models\Cart;
 use App\Models\CashAccount;
@@ -35,6 +37,7 @@ use App\Models\User;
 use App\Services\Access\PermissionMatrix;
 use App\Services\AccountingPeriodService;
 use App\Services\AttendanceService;
+use App\Services\AttendanceSheetService;
 use App\Services\CashTransactionService;
 use App\Services\DirectSaleService;
 use App\Services\JournalService;
@@ -49,6 +52,7 @@ use Database\Seeders\PayrollConfigurationSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -128,6 +132,244 @@ class PayrollRunTest extends TestCase
             'version_id' => $versionId, 'lower_taxable_minor' => 0, 'upper_taxable_minor' => null,
             'rate_bps' => 500,
         ]);
+    }
+
+    private function payrollClosing(string $date, int $cups): RiderClosing
+    {
+        $cart = Cart::query()->firstOrCreate(['code' => 'PAY-ATTENDANCE'], ['status' => 'active']);
+        $product = Product::query()->firstOrCreate(['code' => 'PAY-ATTENDANCE-CUP'],
+            ['name' => 'Cup Payroll', 'unit' => 'cup', 'sort_order' => 1]);
+        $closing = RiderClosing::query()->create([
+            'rider_id' => $this->employee->id, 'cart_id' => $cart->id,
+            'operating_date' => $date, 'total_minor' => 0, 'cogs_minor' => 0,
+            'qris_minor' => 0, 'transfer_minor' => 0, 'cash_minor' => 0,
+            'closed_at' => $date.' 18:00:00',
+        ]);
+        $closing->lines()->create([
+            'product_id' => $product->id, 'qty_in' => $cups, 'qty_carry' => 0,
+            'qty_remaining' => 0, 'qty_wasted' => 0, 'qty_sold' => $cups,
+            'qty_sale_posted' => $cups, 'qty_waste_posted' => 0,
+            'unit_price_minor' => 0, 'unit_cost_minor' => 0, 'subtotal_minor' => 0,
+        ]);
+
+        return $closing;
+    }
+
+    public function test_daily_salary_uses_eighteen_m_days_and_approved_snapshot_stays_fixed(): void
+    {
+        $this->employee->employeeProfile->setSalaryEffectiveFrom('2026-10-01');
+        $this->employee->employeeProfile->update([
+            'base_salary_minor' => 1000000, 'salary_basis' => 'harian', 'daily_rate_minor' => 38462,
+        ]);
+        $sheet = app(AttendanceSheetService::class);
+        foreach (range(1, 18) as $day) {
+            $sheet->setCode($this->employee, Carbon::parse('2026-10-'.sprintf('%02d', $day)), AttendanceCode::PRESENT, $this->manager);
+        }
+        $service = app(PayrollRunService::class);
+        $run = $service->create('2026-10', $this->manager);
+        $snapshot = $run->items()->firstOrFail()->snapshot;
+        $this->assertSame(692316, $snapshot['base_salary_minor']);
+        $this->assertSame(38462, $snapshot['daily_rate_minor']);
+        $this->assertSame(18, $snapshot['attendance_days']);
+        $service->approve($run, $this->manager);
+        $item = $run->fresh()->items()->firstOrFail();
+        $this->assertStringContainsString('38.462 × 18 hari M', view('payroll.slip', [
+            'run' => $run->fresh(), 'item' => $item, 'snapshot' => $item->snapshot,
+        ])->render());
+        $sheet->setCode($this->employee, Carbon::parse('2026-10-01'), AttendanceCode::ABSENT, $this->manager);
+        $this->assertSame(692316, $item->fresh()->snapshot['base_salary_minor']);
+        $this->assertSame(17, $sheet->monthlySheet(Carbon::parse('2026-10-01'), null, [$this->employee->id])->first()['summary']['hadir']);
+    }
+
+    public function test_monthly_salary_and_legacy_profile_keep_the_same_pay_independent_of_attendance(): void
+    {
+        $this->employee->employeeProfile->setSalaryEffectiveFrom('2026-10-01');
+        $this->employee->employeeProfile->update(['base_salary_minor' => 500000]);
+        $service = app(PayrollRunService::class);
+        $before = $service->create('2026-10', $this->manager)->items()->firstOrFail()->snapshot;
+        app(AttendanceSheetService::class)->setCode($this->employee, Carbon::parse('2026-10-05'), AttendanceCode::ABSENT);
+        $after = $service->preview($this->employee->fresh(), '2026-10', actor: $this->manager);
+        $this->assertSame('bulanan', $after['salary_basis']);
+        $this->assertSame(500000, $before['base_salary_minor']);
+        $this->assertSame(500000, $before['gross_pay_minor']);
+        $this->assertSame(25000, $before['pph21_minor']);
+        $this->assertSame(475000, $before['take_home_minor']);
+        $this->assertSame($before['base_salary_minor'], $after['base_salary_minor']);
+        $this->assertSame($before['gross_pay_minor'], $after['gross_pay_minor']);
+        $this->assertSame($before['pph21_minor'], $after['pph21_minor']);
+        $this->assertSame($before['take_home_minor'], $after['take_home_minor']);
+    }
+
+    public function test_migration_backfill_keeps_preexisting_monthly_payroll_amount(): void
+    {
+        $legacy = User::factory()->role(Role::BARISTA)->create(['joined_at' => '2026-01-01']);
+        $ciphertext = Crypt::encryptString('500000');
+        $profileId = DB::table('employee_profiles')->insertGetId([
+            'user_id' => $legacy->id, 'base_salary_minor' => $ciphertext,
+            'salary_basis' => 'bulanan', 'payroll_active' => true,
+            'ptkp_status' => 'TK/0', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $migration = require database_path('migrations/2026_10_24_000083_create_employee_salary_versions.php');
+        $migration->backfillProfiles();
+
+        $version = $legacy->employeeProfile->salaryVersionFor('2026-10-01');
+        $snapshot = app(PayrollCalculator::class)->calculate($legacy->fresh(), '2026-10');
+        $this->assertSame('2026-10-01', $version->effective_from->format('Y-m-d'));
+        $this->assertSame($ciphertext, DB::table('employee_salary_versions')
+            ->where('employee_profile_id', $profileId)->value('base_salary_minor'));
+        $this->assertSame(500000, $snapshot['base_salary_minor']);
+        $this->assertSame(475000, $snapshot['take_home_minor']);
+    }
+
+    public function test_late_closing_suggestion_is_overridden_by_finance_and_below_target_only(): void
+    {
+        $this->employee->employeeProfile->setSalaryEffectiveFrom('2026-10-01');
+        $this->employee->employeeProfile->update(['salary_basis' => 'harian', 'daily_rate_minor' => 38462]);
+        foreach ([10 => 30, 11 => 45] as $day => $cups) {
+            $date = '2026-10-'.$day;
+            Attendance::query()->create([
+                'operating_date' => $date, 'user_id' => $this->employee->id,
+                'role' => Role::STAFF, 'clocked_in_at' => Carbon::parse($date.' 09:15'),
+            ]);
+            $this->payrollClosing($date, $cups);
+        }
+        $sheet = app(AttendanceSheetService::class);
+        $row = $sheet->monthlySheet(Carbon::parse('2026-10-01'), null, [$this->employee->id])->first();
+        $this->assertSame('system', $row['cells'][10]['source']);
+        $this->assertSame(AttendanceCode::LATE, $row['cells'][10]['code']);
+        $this->assertSame(AttendanceCode::PRESENT, $row['cells'][11]['code']);
+        $this->assertSame(1, $row['summary']['hadir']);
+        $this->assertSame(38462, app(PayrollCalculator::class)->calculate($this->employee->fresh(), '2026-10')['base_salary_minor']);
+        $sheet->setCode($this->employee, Carbon::parse('2026-10-10'), AttendanceCode::PRESENT, $this->manager);
+        $row = $sheet->monthlySheet(Carbon::parse('2026-10-01'), null, [$this->employee->id])->first();
+        $this->assertSame('manual', $row['cells'][10]['source']);
+        $this->assertSame(2, $row['summary']['hadir']);
+        $this->assertSame(76924, app(PayrollCalculator::class)->calculate($this->employee->fresh(), '2026-10')['base_salary_minor']);
+    }
+
+    public function test_automatic_t_uses_seconds_after_nine_wib_and_exposes_inactive_payroll_roster(): void
+    {
+        foreach (['2026-10-10 09:00:00', '2026-10-11 09:00:01'] as $stamp) {
+            $date = substr($stamp, 0, 10);
+            Attendance::query()->create([
+                'operating_date' => $date, 'user_id' => $this->employee->id,
+                'role' => Role::STAFF, 'clocked_in_at' => Carbon::parse($stamp),
+            ]);
+            $this->payrollClosing($date, 30);
+        }
+        $this->employee->update(['is_active' => false]);
+        $row = app(AttendanceSheetService::class)->monthlySheet(Carbon::parse('2026-10-01'), Role::STAFF)
+            ->firstWhere('user.id', $this->employee->id);
+        $this->assertNotNull($row);
+        $this->assertSame(AttendanceCode::PRESENT, $row['cells'][10]['code']);
+        $this->assertSame(AttendanceCode::LATE, $row['cells'][11]['code']);
+        $this->assertSame(1, $row['summary']['hadir']);
+    }
+
+    public function test_role_change_keeps_historical_t_and_monthly_bonus(): void
+    {
+        $this->employee->employeeProfile->setSalaryEffectiveFrom('2026-10-01');
+        $this->employee->employeeProfile->update(['salary_basis' => 'harian', 'daily_rate_minor' => 38462]);
+        DB::table('payroll_monthly_bonus_rules')->insert(['min_cups' => 20, 'amount_minor' => 200000]);
+        Attendance::query()->create([
+            'operating_date' => '2026-10-10', 'user_id' => $this->employee->id,
+            'role' => Role::STAFF, 'clocked_in_at' => Carbon::parse('2026-10-10 09:15'),
+        ]);
+        $this->payrollClosing('2026-10-10', 30);
+
+        $super = User::factory()->role(Role::ADMINISTRATOR)->create(['is_super_admin' => true]);
+        $this->actingAs($super);
+        $this->employee->update(['role' => Role::BARISTA]);
+        $this->actingAs($this->manager);
+        $row = app(AttendanceSheetService::class)
+            ->monthlySheet(Carbon::parse('2026-10-01'), null, [$this->employee->id])->first();
+        $this->assertSame(AttendanceCode::LATE, $row['cells'][10]['code']);
+        $this->assertSame('system', $row['cells'][10]['source']);
+        $this->assertSame(0, $row['summary']['hadir']);
+        $snapshot = app(PayrollCalculator::class)->calculate($this->employee->fresh(), '2026-10');
+        $this->assertSame(0, $snapshot['base_salary_minor']);
+        $this->assertSame(200000, $snapshot['monthly_bonus_minor']);
+    }
+
+    public function test_runner_role_change_requires_monthly_salary_basis(): void
+    {
+        $this->employee->employeeProfile->setSalaryEffectiveFrom('2026-10-01');
+        $this->employee->employeeProfile->update(['salary_basis' => 'harian', 'daily_rate_minor' => 38462]);
+        $super = User::factory()->role(Role::ADMINISTRATOR)->create(['is_super_admin' => true]);
+        $this->actingAs($super);
+
+        try {
+            $this->employee->update(['role' => Role::RIDER]);
+            $this->fail('Akun dengan gaji harian tidak boleh diubah jadi Runner.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('role', $exception->errors());
+        }
+
+        $this->employee->employeeProfile->setSalaryEffectiveFrom('2027-02-01');
+        $this->employee->employeeProfile->update(['salary_basis' => 'bulanan']);
+        $this->employee->refresh()->update(['role' => Role::RIDER]);
+        $this->assertSame(Role::RIDER, $this->employee->fresh()->role);
+        $this->assertSame('harian', app(PayrollCalculator::class)->calculate($this->employee->fresh(), '2026-10')['salary_basis']);
+    }
+
+    public function test_salary_version_keeps_draft_october_daily_when_november_becomes_monthly(): void
+    {
+        $profile = $this->employee->employeeProfile;
+        $profile->setSalaryEffectiveFrom('2026-10-01');
+        $profile->update(['base_salary_minor' => 1000000, 'salary_basis' => 'harian', 'daily_rate_minor' => 38462]);
+        app(AttendanceSheetService::class)->setCode(
+            $this->employee, Carbon::parse('2026-10-10'), AttendanceCode::PRESENT, $this->manager
+        );
+
+        $service = app(PayrollRunService::class);
+        $run = $service->create('2026-10', $this->manager);
+        $this->assertSame(38462, $run->items()->firstOrFail()->snapshot['base_salary_minor']);
+
+        $profile->setSalaryEffectiveFrom('2026-11-01');
+        $profile->update(['base_salary_minor' => 500000, 'salary_basis' => 'bulanan']);
+        $service->approve($run, $this->manager);
+        $october = $run->fresh()->items()->firstOrFail()->snapshot;
+        $november = $service->preview($this->employee->fresh(), '2026-11', actor: $this->manager);
+
+        $this->assertSame('harian', $october['salary_basis']);
+        $this->assertSame('2026-10-01', $october['salary_effective_from']);
+        $this->assertSame(38462, $october['base_salary_minor']);
+        $this->assertSame('bulanan', $november['salary_basis']);
+        $this->assertSame('2026-11-01', $november['salary_effective_from']);
+        $this->assertSame(500000, $november['base_salary_minor']);
+    }
+
+    public function test_no_attendance_in_october_does_not_take_november_monthly_salary(): void
+    {
+        $profile = $this->employee->employeeProfile;
+        $profile->setSalaryEffectiveFrom('2026-10-01');
+        $profile->update(['base_salary_minor' => 1000000, 'salary_basis' => 'harian', 'daily_rate_minor' => 38462]);
+        $profile->setSalaryEffectiveFrom('2026-11-01');
+        $profile->update(['base_salary_minor' => 500000, 'salary_basis' => 'bulanan']);
+
+        $october = app(PayrollCalculator::class)->calculate($this->employee->fresh(), '2026-10');
+        $this->assertSame('harian', $october['salary_basis']);
+        $this->assertSame(0, $october['attendance_days']);
+        $this->assertSame(0, $october['base_salary_minor']);
+    }
+
+    public function test_monthly_bonus_uses_highest_closing_cup_tier_and_appears_on_slip(): void
+    {
+        DB::table('payroll_monthly_bonus_rules')->insert([
+            ['min_cups' => 1000, 'amount_minor' => 200000],
+            ['min_cups' => 1500, 'amount_minor' => 300000],
+        ]);
+        $this->payrollClosing('2026-10-10', 1200);
+        $snapshot = app(PayrollCalculator::class)->calculate($this->employee->fresh(), '2026-10');
+        $this->assertSame(1200, $snapshot['monthly_bonus_cups']);
+        $this->assertSame(1000, $snapshot['monthly_bonus_min_cups']);
+        $this->assertSame(200000, $snapshot['monthly_bonus_minor']);
+        $this->assertSame(10200000, $snapshot['gross_pay_minor']);
+        $run = app(PayrollRunService::class)->create('2026-10', $this->manager);
+        $item = $run->items()->firstOrFail();
+        $this->assertStringContainsString('Bonus bulanan (1200 cup; target 1000 cup)', view('payroll.slip', [
+            'run' => $run, 'item' => $item, 'snapshot' => $item->snapshot,
+        ])->render());
     }
 
     public function test_selected_payroll_run_uses_filament_table_with_integer_rupiah(): void

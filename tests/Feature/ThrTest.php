@@ -152,6 +152,24 @@ class ThrTest extends TestCase
         $this->assertSame(2500000, (int) $debits['6-2200']);
     }
 
+    public function test_future_salary_change_does_not_reprice_earlier_thr_or_provision(): void
+    {
+        $profile = $this->employee->employeeProfile;
+        $profile->setSalaryEffectiveFrom('2026-11-01');
+        $profile->update(['base_salary_minor' => 3000000]);
+        app(ThrService::class)->saveSettings($this->manager, [
+            'effective_from' => '2026-10-01', 'component_type_ids' => [],
+            'minimum_months' => 1, 'full_months' => 12, 'prorata_denominator' => 12,
+            'reminder_days' => 7, 'reserve_enabled' => true, 'reason' => 'Cadangan THR versi gaji',
+        ]);
+
+        $this->assertSame(500000, app(ThrService::class)->provision($this->manager, '2026-10'));
+        $run = $this->createThrRun('2026-10-01', [$this->employee->id], 'thr-salary-version-079');
+        $snapshot = $run->items()->firstOrFail()->snapshot;
+        $this->assertSame(6000000, $snapshot['base_minor']);
+        $this->assertSame('2026-10-01', $snapshot['salary_effective_from']);
+    }
+
     public function test_december_thr_uses_annual_pasal_17_increment_instead_of_monthly_ter(): void
     {
         $versionId = DB::table('payroll_annual_tax_versions')->insertGetId([

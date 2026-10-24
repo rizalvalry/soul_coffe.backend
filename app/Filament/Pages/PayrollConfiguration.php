@@ -64,6 +64,10 @@ class PayrollConfiguration extends Page
 
     public array $preview = [];
 
+    public array $attendanceRule = [];
+
+    public array $monthlyBonus = [];
+
     public ?array $previewResult = null;
 
     public ?string $previewError = null;
@@ -93,6 +97,103 @@ class PayrollConfiguration extends Page
         $this->annualVersion = ['effective_from' => '', 'source_note' => ''];
         $this->annualBracket = ['version_id' => '', 'lower_taxable_minor' => 0, 'upper_taxable_minor' => null, 'rate_bps' => 0];
         $this->preview = ['user_id' => '', 'period' => now()->format('Y-m')];
+        $attendance = DB::table('payroll_attendance_settings')->first();
+        $this->attendanceRule = [
+            'late_after' => $attendance?->late_after ?? '09:00',
+            'target_cups' => $attendance?->target_cups ?? 38,
+        ];
+        $this->monthlyBonus = ['min_cups' => '', 'amount_minor' => ''];
+    }
+
+    public function attendanceRuleForm(Schema $schema): Schema
+    {
+        return $schema->components([
+            TextInput::make('late_after')->label('Batas jam absen (WIB)')->type('time')->required(),
+            TextInput::make('target_cups')->label('Target cup harian Rider')
+                ->numeric()->minValue(1)->rule('integer')->required(),
+        ])->columns(['default' => 1, 'md' => 2])->statePath('attendanceRule');
+    }
+
+    public function monthlyBonusForm(Schema $schema): Schema
+    {
+        return $schema->components([
+            TextInput::make('min_cups')->label('Minimal cup sebulan')->numeric()->minValue(1)->rule('integer')->required(),
+            TextInput::make('amount_minor')->label('Bonus (rupiah)')->numeric()->minValue(0)->rule('integer')->required(),
+        ])->columns(['default' => 1, 'md' => 2])->statePath('monthlyBonus');
+    }
+
+    public function saveAttendanceRule(): void
+    {
+        Gate::authorize('manage-payroll');
+        $data = $this->validate([
+            'attendanceRule.late_after' => ['required', 'date_format:H:i'],
+            'attendanceRule.target_cups' => ['required', 'integer', 'between:1,1000000'],
+        ])['attendanceRule'];
+        DB::transaction(function () use ($data): void {
+            DB::table('payroll_attendance_settings')->insertOrIgnore([
+                'id' => 1, 'late_after' => $data['late_after'], 'target_cups' => (int) $data['target_cups'],
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+            DB::table('payroll_attendance_settings')->where('id', 1)->update([
+                'late_after' => $data['late_after'], 'target_cups' => (int) $data['target_cups'],
+                'updated_at' => now(),
+            ]);
+            $this->audit('payroll_attendance_rule_saved', 'payroll_attendance_settings', 1, $data);
+        });
+        $this->success();
+    }
+
+    public function saveMonthlyBonus(): void
+    {
+        Gate::authorize('manage-payroll');
+        $data = $this->validate([
+            'monthlyBonus.min_cups' => ['required', 'integer', 'between:1,1000000'],
+            'monthlyBonus.amount_minor' => ['required', 'integer', 'between:0,1000000000'],
+        ])['monthlyBonus'];
+        DB::transaction(function () use ($data): void {
+            $inserted = DB::table('payroll_monthly_bonus_rules')->insertOrIgnore([
+                'amount_minor' => (int) $data['amount_minor'], 'created_at' => now(), 'updated_at' => now(),
+                'min_cups' => (int) $data['min_cups'],
+            ]);
+            $before = $inserted ? null : DB::table('payroll_monthly_bonus_rules')
+                ->where('min_cups', (int) $data['min_cups'])->lockForUpdate()->first();
+            DB::table('payroll_monthly_bonus_rules')->where('min_cups', (int) $data['min_cups'])->update([
+                'amount_minor' => (int) $data['amount_minor'], 'updated_at' => now(),
+            ]);
+            $this->audit('payroll_monthly_bonus_saved', 'payroll_monthly_bonus_rules', (int) $data['min_cups'], [
+                'min_cups' => (int) $data['min_cups'], 'amount_minor' => '[redacted]',
+                '_payroll_ciphertext' => Crypt::encryptString(json_encode([
+                    'before' => ['amount_minor' => $before?->amount_minor],
+                    'after' => ['amount_minor' => (int) $data['amount_minor']],
+                ], JSON_THROW_ON_ERROR)),
+            ]);
+        });
+        $this->monthlyBonus = ['min_cups' => '', 'amount_minor' => ''];
+        $this->success();
+    }
+
+    public function removeMonthlyBonus(int $minCups): void
+    {
+        Gate::authorize('manage-payroll');
+        DB::transaction(function () use ($minCups): void {
+            $before = DB::table('payroll_monthly_bonus_rules')->where('min_cups', $minCups)->lockForUpdate()->first();
+            DB::table('payroll_monthly_bonus_rules')->where('min_cups', $minCups)->delete();
+            $this->audit('payroll_monthly_bonus_removed', 'payroll_monthly_bonus_rules', $minCups, [
+                'min_cups' => $minCups, 'amount_minor' => '[redacted]',
+                '_payroll_ciphertext' => Crypt::encryptString(json_encode([
+                    'before' => ['amount_minor' => $before?->amount_minor],
+                    'after' => ['amount_minor' => null],
+                ], JSON_THROW_ON_ERROR)),
+            ]);
+        });
+        $this->success();
+    }
+
+    public function monthlyBonusRules(): array
+    {
+        Gate::authorize('manage-payroll');
+
+        return DB::table('payroll_monthly_bonus_rules')->orderByDesc('min_cups')->get()->all();
     }
 
     public function previewForm(Schema $schema): Schema
