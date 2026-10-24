@@ -116,7 +116,7 @@ class PendingStockCostService
 
             $date = today()->toDateString();
             $this->journals->assertOpenDate($date);
-            $accounts = Account::query()->whereIn('code', ['1-1600', '5-1100', '6-1910', '6-1920'])
+            $accounts = Account::query()->whereIn('code', ['1-1600', '5-1100', '6-1930', '6-1910', '6-1920'])
                 ->pluck('id', 'code');
             $totals = [];
             $locationDeltas = [];
@@ -222,6 +222,7 @@ class PendingStockCostService
             $row->movement_type === MovementType::SALE_OUT,
             $row->movement_type === MovementType::SALE_VOID_IN,
             $row->ref_type === 'rider_closing_sale_compensation' => '5-1100',
+            $row->movement_type === MovementType::WASTE_OUT && $row->ref_type === 'promotional_use' => '6-1930',
             $row->movement_type === MovementType::WASTE_OUT,
             $row->movement_type === MovementType::OPNAME_ADJUSTMENT,
             in_array($row->ref_type, ['stock_adjustment', 'cart_closeout_count_adjustment',

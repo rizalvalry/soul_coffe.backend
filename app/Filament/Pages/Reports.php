@@ -3,19 +3,19 @@
 namespace App\Filament\Pages;
 
 use App\Enums\PanelModule;
-use App\Filament\Concerns\RenameableModule;
 use App\Exports\AttendanceExport;
 use App\Exports\RefillRequestsExport;
 use App\Exports\RevenueExport;
+use App\Filament\Concerns\RenameableModule;
 use App\Services\Access\PermissionMatrix;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;
+use Filament\Pages\Page;
 use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Components\EmbeddedSchema;
 use Filament\Schemas\Components\Form;
 use Filament\Schemas\Components\Grid;
-use Filament\Pages\Page;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Carbon;
@@ -111,6 +111,11 @@ class Reports extends Page
                                 ->icon('heroicon-o-arrow-down-tray')
                                 ->color('gray')
                                 ->action('exportAttendance'),
+                            Action::make('wasteReport')
+                                ->label('Laporan Barang Terbuang')
+                                ->icon('heroicon-o-arrow-top-right-on-square')
+                                ->url(WasteManagement::getUrl())
+                                ->visible(fn (): bool => PermissionMatrix::can(Auth::user(), PanelModule::WASTE_MANAGEMENT, 'view')),
                         ]),
                     ]),
             ]);

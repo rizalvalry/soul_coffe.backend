@@ -43,6 +43,7 @@ class AccountSeeder extends Seeder
             ['6-1600', 'Beban Keperluan Kantor', 'EXPENSE'],
             ['6-1700', 'Beban Fasilitas Karyawan', 'EXPENSE'],
             ['6-1800', 'Beban Lain-lain', 'EXPENSE'],
+            ['6-1930', 'Beban Promosi Konten/Lapak', 'EXPENSE'],
             ['6-1910', 'Beban Rusak & Selisih Persediaan', 'EXPENSE'],
             ['6-1920', 'Selisih Penilaian Persediaan', 'EXPENSE'],
             ['6-1950', 'Beban PPh Final', 'EXPENSE'],

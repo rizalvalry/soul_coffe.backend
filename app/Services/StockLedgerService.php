@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Enums\KitchenRejectReason;
 use App\Enums\MovementType;
+use App\Enums\WasteReason;
 use App\Models\AuditLog;
 use App\Models\Product;
 use App\Models\StockLedger;
@@ -160,6 +162,18 @@ class StockLedgerService
                 'actor_id' => $actorId,
                 'kitchen_id' => $kitchenId,
             ]);
+            if ($movementType === MovementType::WASTE_OUT) {
+                $reason = match ($refType) {
+                    'rider_closing', 'cart_closeout_reject', 'settlement_reject', 'delivery_incident' => WasteReason::DAMAGED,
+                    'refill_expired' => WasteReason::EXPIRED,
+                    'promotional_use' => WasteReason::PROMOTION,
+                    'kitchen_reject' => WasteReason::fromKitchenReject(
+                        KitchenRejectReason::tryFrom((string) DB::table('kitchen_rejects')
+                            ->where('id', $refId)->value('reason_code')) ?? KitchenRejectReason::OTHER),
+                    default => WasteReason::DISCARDED,
+                };
+                $movement->wasteClassification()->create(['reason_code' => $reason]);
+            }
             DB::table('stock_valuation_locks')->where('id', $state->id)->update([
                 'quantity' => $onHand + $delta,
                 'value_minor' => $value + ($delta < 0 ? -$costMinor : $costMinor),
@@ -462,13 +476,25 @@ class StockLedgerService
             ->all();
     }
 
-    /**
-     * Row-lock the ledger rows for the given raw materials at a location, in ascending id order —
-     * the raw-material twin of lockAndProject(), same deadlock-avoidance reasoning.
-     *
-     * @param  array<int,int>  $rawMaterialIds
-     * @return array<int,int> raw_material_id => locked qty
-     */
+    /** @return array{tracked:bool,quantity:int,value_minor:int} Current raw-material valuation under its writer mutex. */
+    public function lockRawMaterialState(int $kitchenId, int $rawMaterialId): array
+    {
+        $lock = ['location_type' => self::RAW_MATERIAL_STORE, 'location_id' => $kitchenId,
+            'catalogue_type' => 'raw', 'catalogue_id' => $rawMaterialId];
+        DB::table('stock_valuation_locks')->insertOrIgnore($lock);
+        $state = DB::table('stock_valuation_locks')->where($lock)->lockForUpdate()->first();
+        if ($state->initialized) {
+            return ['tracked' => true, 'quantity' => (int) $state->quantity,
+                'value_minor' => (int) $state->value_minor];
+        }
+        [$quantity, $value] = $this->valuation(self::RAW_MATERIAL_STORE, $kitchenId, null, $rawMaterialId);
+        $tracked = StockLedger::query()->where('location_type', self::RAW_MATERIAL_STORE)
+            ->where('location_id', $kitchenId)->where('raw_material_id', $rawMaterialId)->exists();
+
+        return ['tracked' => $tracked, 'quantity' => $quantity, 'value_minor' => $value];
+    }
+
+    /** @return array<int,int> raw_material_id => locked qty */
     public function lockAndProjectRawMaterials(string $locationType, int $locationId, array $rawMaterialIds): array
     {
         $this->assertLocationType($locationType);
@@ -480,17 +506,15 @@ class StockLedgerService
             return [];
         }
 
-        StockLedger::query()
-            ->where('location_type', $locationType)
-            ->where('location_id', $locationId)
-            ->whereIn('raw_material_id', $ids)
-            ->orderBy('raw_material_id')
-            ->lockForUpdate()
-            ->get(['id']);
+        if ($locationType !== self::RAW_MATERIAL_STORE) {
+            throw new RuntimeException('Bahan baku hanya tersedia di gudang dapur.');
+        }
+        $projected = [];
+        foreach ($ids as $id) {
+            $projected[$id] = $this->lockRawMaterialState($locationId, $id)['quantity'];
+        }
 
-        $projected = $this->rawMaterialStockMap($locationType, $locationId);
-
-        return array_combine($ids, array_map(fn (int $id): int => $projected[$id] ?? 0, $ids));
+        return $projected;
     }
 
     private function assertLocationType(string $locationType): void
