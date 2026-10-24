@@ -2,6 +2,7 @@
 
 namespace App\Exports;
 
+use App\Enums\KitchenRejectReason;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Concerns\FromQuery;
@@ -49,7 +50,7 @@ class KitchenRejectExport extends DefaultValueBinder implements FromQuery, WithC
         return [$row->operating_date, $row->kitchen_name, $row->product_name,
             $active ? (int) $row->qty : 0,
             $this->includeCost ? ($active ? (int) $row->cost_minor + (int) $row->resolved_cost_minor : 0) : '',
-            $row->reason_code, $row->actor_name, $row->status, $row->note];
+            KitchenRejectReason::labelFor($row->reason_code), $row->actor_name, $row->status, $row->note];
     }
 
     public function bindValue(Cell $cell, $value): bool
