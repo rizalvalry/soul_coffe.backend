@@ -67,6 +67,7 @@ class PermissionMatrixTest extends TestCase
                                 ? in_array($ability, ['view', 'create', 'edit'], true) : $ability === 'view'))
                             && ($module !== PanelModule::CART_CLOSE_OUT || in_array($ability, ['view', 'edit'], true))
                             && ($module !== PanelModule::EMPLOYEE_ADVANCES || $ability !== 'delete')
+                            && ($module !== PanelModule::RIDER_INCENTIVE_BALANCE || $ability !== 'delete')
                             && ($module !== PanelModule::LOCATION_SETTINGS
                                 || in_array($ability, ['view', 'edit'], true)),
                         Role::CONTENT_CREATOR => $module === PanelModule::NEWS_FEED

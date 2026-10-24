@@ -28,6 +28,7 @@ class AccountSeeder extends Seeder
             ['2-1600', 'Utang PPh Badan', 'LIABILITY'],
             ['2-1700', 'Cadangan THR', 'LIABILITY'],
             ['2-1710', 'Utang THR', 'LIABILITY'],
+            ['2-1800', 'Utang Insentif Rider', 'LIABILITY'],
             ['3-1100', 'Modal Pemilik', 'EQUITY'],
             ['3-1200', 'Saldo Awal Ekuitas', 'EQUITY'],
             ['4-1100', 'Pendapatan Penjualan Coffee Bike', 'REVENUE'],
@@ -49,6 +50,7 @@ class AccountSeeder extends Seeder
             ['6-2000', 'Beban Penyusutan', 'EXPENSE'],
             ['6-2100', 'Laba/Rugi Pelepasan Aset', 'EXPENSE'],
             ['6-2200', 'Beban THR', 'EXPENSE'],
+            ['6-2300', 'Beban Insentif Penjualan Rider', 'EXPENSE'],
         ];
 
         foreach ($accounts as [$code, $name, $type]) {

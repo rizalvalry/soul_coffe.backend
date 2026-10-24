@@ -29,7 +29,7 @@ class PayrollConfigurationPanelTest extends TestCase
         $this->actingAs($manager);
         $this->get(PayrollConfiguration::getUrl())->assertSuccessful()->assertSee('Konfigurasi Payroll');
 
-        $this->get(PayrollConfiguration::getUrl())->assertDontSee('Insentif Rider');
+        $this->get(PayrollConfiguration::getUrl())->assertDontSee('Aturan Insentif Rider');
         $this->assertSame(1, DB::table('rider_incentive_rules')->count());
 
         Livewire::test(PayrollConfiguration::class)

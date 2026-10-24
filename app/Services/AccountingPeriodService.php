@@ -52,6 +52,7 @@ class AccountingPeriodService
             ->selectRaw('COALESCE(SUM(CAST(line.debit_minor AS SIGNED) - CAST(line.credit_minor AS SIGNED)), 0) AS balance')
             ->value('balance');
         $advanceDifference = app(EmployeeAdvanceService::class)->reconciliation($end)['difference_minor'];
+        $incentiveDifference = app(RiderIncentiveBalanceService::class)->reconciliation($end)['difference_minor'];
 
         return [
             ['code' => 'settlements_pending', 'status' => $pendingSettlements ? 'blocking' : 'ok',
@@ -68,6 +69,8 @@ class AccountingPeriodService
                 'count' => max(0, $cashBalance), 'description' => 'Saldo Kas Setoran per akhir bulan Rp '.number_format(max(0, $cashBalance), 0, ',', '.').'.'],
             ['code' => 'employee_advances_reconciliation', 'status' => $advanceDifference !== 0 ? 'warning' : 'ok',
                 'count' => abs($advanceDifference), 'description' => 'Selisih kasbon dan buku besar 1-1500 Rp '.number_format(abs($advanceDifference), 0, ',', '.').'.'],
+            ['code' => 'rider_incentive_reconciliation', 'status' => $incentiveDifference !== 0 ? 'warning' : 'ok',
+                'count' => abs($incentiveDifference), 'description' => 'Selisih saldo insentif Rider dan buku besar 2-1800 Rp '.number_format(abs($incentiveDifference), 0, ',', '.').'.'],
         ];
     }
 

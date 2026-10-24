@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\AttendanceCode;
 use App\Enums\PanelModule;
+use App\Enums\Role;
 use App\Models\Account;
 use App\Models\AuditLog;
 use App\Models\EmployeeAdvance;
@@ -349,6 +350,41 @@ class EmployeeAdvanceService
                 $this->refreshStatus($advance);
             }
         }
+    }
+
+    /** The incentive journal owns the Dr liability / Cr receivable pair. */
+    public function recordIncentiveRepayment(EmployeeAdvance $advance, int $riderId, string $key, string $date, int $amount,
+        JournalEntry $journal, User $actor): EmployeeAdvanceMovement
+    {
+        $this->authorize($actor, 'create');
+        $advance = EmployeeAdvance::query()->whereKey($advance->id)->lockForUpdate()->firstOrFail();
+        if ($advance->status !== 'ACTIVE' || $advance->user_id !== $riderId || $advance->user->role !== Role::STAFF
+            || $date < $this->latestMovementDate($advance) || $amount > $advance->balanceMinor()) {
+            throw ValidationException::withMessages(['advance_id' => 'Kasbon Rider tidak aktif atau sisa cicilannya kurang ya.']);
+        }
+        $movement = $this->movement($advance, $key, $date, 'INCENTIVE_REPAYMENT', -$amount,
+            'Cicilan dari saldo insentif', $journal, null, $actor);
+        $this->refreshStatus($advance);
+
+        return $movement;
+    }
+
+    public function recordIncentiveRepaymentCorrection(EmployeeAdvance $advance, string $originalKey, string $key,
+        string $date, int $amount, JournalEntry $journal, User $actor): EmployeeAdvanceMovement
+    {
+        $this->authorize($actor, 'edit');
+        $advance = EmployeeAdvance::query()->whereKey($advance->id)->lockForUpdate()->firstOrFail();
+        $original = EmployeeAdvanceMovement::query()->where('request_key', $originalKey)->first();
+        if (! $original || $original->advance_id !== $advance->id || $original->kind !== 'INCENTIVE_REPAYMENT'
+            || $original->amount_minor !== -$amount || $advance->status === 'CANCELLED'
+            || $date < $this->latestMovementDate($advance)) {
+            throw ValidationException::withMessages(['advance_id' => 'Cicilan kasbon yang mau dikoreksi sudah berubah ya.']);
+        }
+        $movement = $this->movement($advance, $key, $date, 'INCENTIVE_REVERSAL', $amount,
+            'Koreksi cicilan dari saldo insentif', $journal, null, $actor);
+        $this->refreshStatus($advance);
+
+        return $movement;
     }
 
     public function reversePayroll(PayrollRun $run, JournalEntry $reversal, User $actor): void
