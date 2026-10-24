@@ -11,12 +11,18 @@ class Cart extends Model
 {
     use HasFactory;
 
+    public const BIKE_TYPES = [
+        'Pujasera 1', 'Pujasera 2', 'Pujasera 3', 'Pujasera Rinjani',
+        'Pujasera LTE', 'Both', 'Legend item',
+    ];
+
     protected $fillable = [
         'code',
         'plate',
         'status',
         'high_volume_zone',
         'kitchen_id',
+        'bike_type',
     ];
 
     protected function casts(): array
