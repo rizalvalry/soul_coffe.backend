@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\KitchenRejects;
 
+use App\Enums\KitchenRejectReason;
 use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Filament\Concerns\MatrixGoverned;
@@ -71,10 +72,7 @@ class KitchenRejectResource extends Resource
                 TextColumn::make('net_cost')->label('HPP neto saat ini (Rp)')->numeric()
                     ->visible(fn (): bool => self::maySeeCost())
                     ->summarize(Sum::make()->label('Total HPP neto saat ini')),
-                TextColumn::make('reason_code')->label('Alasan')->formatStateUsing(fn (string $state): string => match ($state) {
-                    'DROPPED' => 'Jatuh / tumpah', 'PACKAGING' => 'Kemasan rusak',
-                    'QUALITY' => 'Kualitas tidak layak', default => 'Lainnya',
-                }),
+                TextColumn::make('reason_code')->label('Alasan')->formatStateUsing(fn (string $state): string => KitchenRejectReason::labelFor($state)),
                 TextColumn::make('actor.name')->label('Pelaku'),
                 ImageColumn::make('photo.path')->label('Foto')->disk('public')->openUrlInNewTab(),
                 TextColumn::make('status')->label('Status')->badge()->formatStateUsing(fn (string $state): string => match ($state) {

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\KitchenRejectReason;
 use App\Enums\MovementType;
 use App\Enums\PanelModule;
 use App\Enums\Role;
@@ -103,6 +104,51 @@ class KitchenRejectTest extends TestCase
         $this->assertSame(1, StockLedger::query()->where('ref_type', 'kitchen_reject')->count());
         $this->actingAs($this->production, 'sanctum')->getJson('/api/v1/kitchen-rejects')
             ->assertOk()->assertJsonCount(1, 'data');
+    }
+
+    public function test_all_reason_labels_match_in_notifications_cms_and_excel(): void
+    {
+        $manager = User::factory()->role(Role::FINANCE)->create(['is_management' => true]);
+        $reasons = [
+            'DROPPED' => 'Jatuh / tumpah',
+            'PACKAGING' => 'Kemasan rusak',
+            'QUALITY' => 'Kualitas tidak layak',
+            'OTHER' => 'Lainnya',
+        ];
+
+        $imageWidth = 640;
+        foreach ($reasons as $code => $label) {
+            $payload = $this->payload(1, $imageWidth++);
+            $payload['reason_code'] = $code;
+            if ($code === 'OTHER') {
+                $payload['note'] = 'Alasan lain';
+            }
+
+            $this->submit($this->production, $payload)->assertCreated()
+                ->assertJsonPath('data.reason_code', $code);
+            $expectedBody = 'Kopi Uji 1 cup · '.$label.' · '.$this->production->name.' · Dapur Reject';
+            foreach ([$this->finance, $manager] as $recipient) {
+                $notification = AppNotification::query()->where('user_id', $recipient->id)
+                    ->where('type', 'KitchenRejectRecorded')->latest('id')->firstOrFail();
+                $this->assertSame($expectedBody, $notification->payload_json['body']);
+            }
+            $this->assertSame($label, KitchenRejectReason::labelFor($code));
+        }
+
+        $this->actingAs($this->finance, 'web')->get(KitchenRejectResource::getUrl())
+            ->assertOk();
+        $table = Livewire::test(ListKitchenRejects::class);
+        foreach ($reasons as $label) {
+            $table->assertSee($label);
+        }
+
+        $export = new KitchenRejectExport(KitchenRejectResource::getEloquentQuery(), true);
+        $exportLabels = $export->query()->get()->map(fn ($row): string => $export->map($row)[5])->all();
+        $this->assertSame(array_values($reasons), $exportLabels);
+
+        $report = app(ManagementReportService::class)->build(today(), today());
+        $reportLabels = array_column($report['sections']['reject_dapur']['rows'], 5);
+        $this->assertEqualsCanonicalizing(array_values($reasons), $reportLabels);
     }
 
     public function test_invalid_photo_other_note_stock_and_non_main_product_are_rejected(): void

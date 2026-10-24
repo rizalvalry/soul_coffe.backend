@@ -2,6 +2,7 @@
 
 namespace App\Services\Reporting;
 
+use App\Enums\KitchenRejectReason;
 use App\Models\PayrollItem;
 use App\Models\PayrollRun;
 use Illuminate\Support\Carbon;
@@ -291,7 +292,7 @@ class ManagementReportService
             ->selectRaw('SUM(qty) AS qty, SUM(cost_minor) AS cost_minor')
             ->get()->map(fn ($row): array => [
                 $row->movement_date, $row->kitchen_name, $row->product_name,
-                (int) $row->qty, (int) $row->cost_minor, $row->reason_code, $row->status,
+                (int) $row->qty, (int) $row->cost_minor, KitchenRejectReason::labelFor($row->reason_code), $row->status,
             ])->all();
 
         return [

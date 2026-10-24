@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\KitchenRejectReason;
 use App\Enums\MovementType;
 use App\Enums\PanelModule;
 use App\Enums\Role;
@@ -90,7 +91,7 @@ class KitchenRejectService
                 AuditLog::recordAction($actor, 'kitchen_reject.recorded', $reject, null,
                     ['kitchen_id' => $kitchenId, 'lines' => $lines, 'reason_code' => $reasonCode,
                         'status' => $reject->status, 'photo_media_id' => $media->id]);
-                $body = implode(', ', $detail).' · '.$reasonCode.' · '.$actor->name.' · '.$reject->kitchen->name;
+                $body = implode(', ', $detail).' · '.KitchenRejectReason::labelFor($reasonCode).' · '.$actor->name.' · '.$reject->kitchen->name;
                 if ($needsReview) {
                     $body .= ' · melewati batas harian';
                 }
