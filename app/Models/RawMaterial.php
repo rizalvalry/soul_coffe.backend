@@ -16,6 +16,7 @@ class RawMaterial extends Model
         'unit',
         'reorder_point',
         'is_active',
+        'is_packaging_cup',
         'sort_order',
     ];
 
@@ -24,6 +25,7 @@ class RawMaterial extends Model
         return [
             'reorder_point' => 'integer',
             'is_active' => 'boolean',
+            'is_packaging_cup' => 'boolean',
             'sort_order' => 'integer',
         ];
     }

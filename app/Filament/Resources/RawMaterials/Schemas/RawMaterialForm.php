@@ -45,6 +45,11 @@ class RawMaterialForm
                 Toggle::make('is_active')
                     ->label('Aktif')
                     ->default(true),
+
+                Toggle::make('is_packaging_cup')
+                    ->label('Cup kemasan')
+                    ->helperText('Aktifkan untuk bahan baku cup kemasan yang bisa dicatat terbuang.')
+                    ->default(false),
             ]);
     }
 }

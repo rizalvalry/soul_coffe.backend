@@ -17,6 +17,9 @@
             <div class="flex flex-wrap gap-2">
                 <button type="button" wire:click="exportExcel('all')" class="bsi-btn">Unduh semua Excel</button>
                 <button type="button" wire:click="exportPdf('all')" class="bsi-btn">Unduh semua PDF</button>
+                @if (\App\Filament\Pages\WasteManagement::canAccess())
+                    <a href="{{ \App\Filament\Pages\WasteManagement::getUrl() }}" class="bsi-btn">Laporan Barang Terbuang</a>
+                @endif
             </div>
         </div>
 

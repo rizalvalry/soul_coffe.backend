@@ -6,6 +6,7 @@ use App\Enums\MovementType;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * R6 — APPEND ONLY. Stock is a projection over SUM(qty_delta), never a mutable
@@ -71,6 +72,11 @@ class StockLedger extends Model
     public function kitchen(): BelongsTo
     {
         return $this->belongsTo(CentralKitchen::class, 'kitchen_id');
+    }
+
+    public function wasteClassification(): HasOne
+    {
+        return $this->hasOne(WasteClassification::class, 'stock_ledger_id');
     }
 
     /**
