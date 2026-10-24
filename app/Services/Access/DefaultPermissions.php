@@ -31,7 +31,7 @@ final class DefaultPermissions
     public static function seed(): void
     {
         foreach (PanelModule::cases() as $module) {
-            if (in_array($module, [PanelModule::CART_CLOSE_OUT, PanelModule::EMPLOYEE_ADVANCES, PanelModule::KITCHEN_REJECT], true)) {
+            if (in_array($module, [PanelModule::CART_CLOSE_OUT, PanelModule::EMPLOYEE_ADVANCES, PanelModule::RIDER_INCENTIVE_BALANCE, PanelModule::KITCHEN_REJECT], true)) {
                 continue; // Their feature migrations own these grants and their rollback.
             }
             self::insert(Role::ADMINISTRATOR, $module,
@@ -44,7 +44,7 @@ final class DefaultPermissions
         foreach ([Role::FINANCE, Role::MANAGEMENT] as $role) {
             foreach (PanelModule::cases() as $module) {
                 if (! in_array($module, [PanelModule::ROLE_MATRIX, PanelModule::CART_CLOSE_OUT, PanelModule::KITCHEN_REJECT,
-                    PanelModule::EMPLOYEE_ADVANCES], true)) {
+                    PanelModule::EMPLOYEE_ADVANCES, PanelModule::RIDER_INCENTIVE_BALANCE], true)) {
                     self::insert($role, $module,
                         $module === PanelModule::LOCATION_SETTINGS ? ['view', 'edit'] : self::FULL);
                 }

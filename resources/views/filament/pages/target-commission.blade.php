@@ -6,7 +6,7 @@
             <div class="bsi-sheet__head"><h2 class="bsi-title">Komisi Rider</h2></div>
             <div class="bsi-scroll">
             <table class="bsi-grid">
-                <thead><tr><th>Rider</th><th>Tier berlaku hari ini</th><th>Cup hari ini</th><th>Komisi hari ini</th><th>Cup periode</th><th>Komisi periode</th></tr></thead>
+                <thead><tr><th>Rider</th><th>Tier berlaku hari ini</th><th>Cup hari ini</th><th>Komisi hari ini</th><th>Cup periode</th><th>Komisi periode</th><th>Saldo insentif</th></tr></thead>
                 <tbody>
                 @foreach ($this->rows() as $row)
                     <tr wire:key="commission-rider-{{ $row['id'] }}">
@@ -22,6 +22,7 @@
                         <td class="bsi-num">Rp {{ number_format($row['today_commission_minor'], 0, ',', '.') }}</td>
                         <td class="bsi-num">{{ number_format($row['period_cups'], 0, ',', '.') }}</td>
                         <td class="bsi-num">Rp {{ number_format($row['period_commission_minor'], 0, ',', '.') }}</td>
+                        <td class="bsi-num">Rp {{ number_format($row['balance_minor'], 0, ',', '.') }}</td>
                     </tr>
                 @endforeach
                 </tbody>

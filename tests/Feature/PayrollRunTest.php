@@ -220,8 +220,11 @@ class PayrollRunTest extends TestCase
         $lines = DB::table('journal_lines')->where('entry_id', $journalId);
         $this->assertSame((int) $lines->sum('debit_minor'), (int) $lines->sum('credit_minor'));
         $expenseId = DB::table('accounts')->where('code', '6-1200')->value('id');
-        $this->assertSame(10400000, (int) DB::table('journal_lines')->where('entry_id', $journalId)
+        $this->assertSame(10000000, (int) DB::table('journal_lines')->where('entry_id', $journalId)
             ->where('account_id', $expenseId)->sum('debit_minor'));
+        $liabilityId = DB::table('accounts')->where('code', '2-1800')->value('id');
+        $this->assertSame(400000, (int) DB::table('journal_lines')->where('entry_id', $journalId)
+            ->where('account_id', $liabilityId)->sum('debit_minor'));
     }
 
     public function test_payroll_approval_waits_for_closing_commission_lock(): void

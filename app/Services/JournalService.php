@@ -288,6 +288,9 @@ class JournalService
                 && ! $isAdvance && ! $isAdvanceRepayment) {
                 throw ValidationException::withMessages(['journal' => 'Balik jurnal kasbon lewat halaman Kasbon Karyawan ya.']);
             }
+            if (in_array($original->source_type, ['rider_commission_lock', 'rider_incentive_operation'], true)) {
+                throw ValidationException::withMessages(['journal' => 'Koreksi saldo insentif Rider lewat mutasi baru di halaman Saldo Insentif Rider ya.']);
+            }
             if (in_array($original->source_type, ['thr_run', 'thr_provision'], true)) {
                 throw ValidationException::withMessages(['journal' => 'Jurnal THR ini dikelola dari halaman THR ya.']);
             }

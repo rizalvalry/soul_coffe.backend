@@ -121,7 +121,7 @@ class RiderCommissionService
         ];
     }
 
-    public function lockForSettlement(int $cartId, string $date): void
+    public function lockForSettlement(int $cartId, string $date, ?int $actorId = null): void
     {
         $riderIds = DB::table('rider_closings')->where('cart_id', $cartId)
             ->where('operating_date', $date)->pluck('rider_id')->unique()->all();
@@ -133,13 +133,20 @@ class RiderCommissionService
             $versionId = DB::table('rider_commission_versions')
                 ->where('rider_id', $riderId)->where('effective_from', '<=', $date)
                 ->orderByDesc('effective_from')->orderByDesc('id')->value('id');
-            DB::table('rider_daily_commission_locks')->insertOrIgnore([
-                'rider_id' => $riderId, 'operating_date' => $date,
-                'cups_sold' => $summary['cups_sold'], 'version_id' => $versionId,
-                'tier_min_cups' => $summary['tier_min_cups'],
-                'amount_per_cup_minor' => $summary['amount_per_cup_minor'],
-                'commission_minor' => $summary['commission_minor'], 'locked_at' => now(),
-            ]);
+            DB::transaction(function () use ($riderId, $date, $summary, $versionId, $actorId): void {
+                $inserted = DB::table('rider_daily_commission_locks')->insertOrIgnore([
+                    'rider_id' => $riderId, 'operating_date' => $date,
+                    'cups_sold' => $summary['cups_sold'], 'version_id' => $versionId,
+                    'tier_min_cups' => $summary['tier_min_cups'],
+                    'amount_per_cup_minor' => $summary['amount_per_cup_minor'],
+                    'commission_minor' => $summary['commission_minor'], 'locked_at' => now(),
+                ]);
+                if ($inserted) {
+                    $lock = DB::table('rider_daily_commission_locks')->where('rider_id', $riderId)
+                        ->where('operating_date', $date)->first();
+                    app(RiderIncentiveBalanceService::class)->accrue($lock, $actorId);
+                }
+            }, 3);
         }
     }
 
