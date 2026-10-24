@@ -1,0 +1,19 @@
+{
+    "oapk": [
+        {
+            "version": "1.5.10",
+            "version_code": 30,
+            "file": "soul-coffeemate-v1.5.10.apk",
+            "size_bytes": 25036460,
+            "sha256": "1614FCE6F0121E0A2FB34DC1281681EF819F03BDABD5347F2720FB848A222E7B",
+            "released_at": "2026-10-23",
+            "notes": [
+                "Brew dan alokasi sekarang bisa mencatat sampai 9.999 cup per produk, sesuai stok yang tersedia.",
+                "Runner bisa mencatat Tutup Coffee Bike, dengan Finance sebagai cadangan.",
+                "Catatan lapangan kini lebih mudah diisi saat kerja harian."
+            ],
+            "min_backend": "79c0cee"
+        }
+    ],
+    "capps": []
+}

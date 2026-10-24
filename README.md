@@ -8,6 +8,12 @@ No customer logs into the operational app.
 
 The mobile client is a separate Expo/React Native app that ships as an Android APK.
 
+## Distribusi APK
+
+Penguji bisa buka `/publish` untuk melihat versi OperationalApps terbaru dan mengunduh APK. Link `/publish/version/oapk_latest` selalu mengarah ke rilis terbaru. CustomerApps akan muncul di halaman yang sama saat APK-nya sudah siap.
+
+Untuk menambah rilis, taruh APK baru di `dist/`, lalu tambahkan entri kanal `oapk` atau `capps` di `dist/releases.json`. Isi `version`, `version_code`, nama file, ukuran byte, SHA-256, tanggal rilis, poin "Yang baru", dan commit backend minimum. Hapus APK kanal yang sebelumnya dengan `git rm` supaya `dist/` hanya menyimpan APK terbaru per kanal. Commit manifest dan APK baru bersama-sama; versi lama akan mendapat halaman 410 dengan link ke rilis terbaru.
+
 ## Specification
 
 The business process is locked in documents kept alongside this repository:

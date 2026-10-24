@@ -185,7 +185,7 @@ struktural, bukan bergantung pada aturan `.htaccess` yang bisa salah tulis.
 Tiga langkah yang tersisa:
 
 **1. Buat database dan impor data.** hPanel → MySQL Databases → buat database. Lalu phpMyAdmin →
-pilih database itu → Import → unggah `dist/database/soul_coffee_full.sql`. Hasilnya 29 tabel.
+pilih database itu → Import → gunakan dump yang disimpan di luar repo. Dump database tidak disimpan di repo publik.
 
 **2. Isi tiga baris di `.env` server** (`~/domains/rafancloud.com/public_html/soulcoffee/.env`).
 Semua sudah terisi termasuk `APP_KEY`; yang kosong hanya:
@@ -229,6 +229,6 @@ kecil, bukan shared hosting.
 |---|---|
 | Bisa login tanpa internet | Normal — ini APK demo, memang tidak memakai server |
 | "Tidak dapat menghubungi server" (pada build hosting) | Tiga baris `DB_*` belum diisi |
-| "Nomor HP atau kata sandi salah" | `soul_coffee_full.sql` belum diimpor, jadi belum ada user |
+| "Nomor HP atau kata sandi salah" | Data akun belum diimpor; dump database disimpan di luar repo publik |
 | Daftar kosong setelah login | Normal untuk database bersih — mulai dari langkah 1 |
 | "Anda tidak bertugas di gerobak ini hari ini" | Penugasan rider hanya untuk tanggal seed. Administrator perlu membuat penugasan hari ini. |
