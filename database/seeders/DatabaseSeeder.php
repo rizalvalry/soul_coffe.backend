@@ -26,6 +26,7 @@ class DatabaseSeeder extends Seeder
             StockLedgerSeeder::class,
             AccountSeeder::class,
             SupportMaterialsSeeder::class,
+            DailyOperatingExpenseSeeder::class,
             PayrollConfigurationSeeder::class,
         ]);
     }
