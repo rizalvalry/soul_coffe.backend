@@ -17,6 +17,7 @@ class DirectSaleLine extends Model
         'unit_price_minor',
         'unit_cost_minor',
         'subtotal_minor',
+        'price_reason',
     ];
 
     protected function casts(): array

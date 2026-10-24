@@ -19,6 +19,7 @@ use App\Services\Access\PermissionMatrix;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 /**
@@ -43,10 +44,11 @@ class DirectSaleService
     public function __construct(
         private readonly StockLedgerService $ledger,
         private readonly JournalService $journals,
+        private readonly ProductSellPriceResolver $sellPrices,
     ) {}
 
     /**
-     * @param  array<int, array{product_id:int, qty:int}>  $lines
+     * @param  array<int, array{product_id:int, qty:int, unit_price_minor?:int, price_reason?:string}>  $lines
      */
     public function record(
         User $actor,
@@ -54,12 +56,37 @@ class DirectSaleService
         array $lines,
         string $paymentMethod = 'cash',
         ?string $note = null,
+        ?string $buyerName = null,
     ): DirectSale {
         if (! PermissionMatrix::can($actor, PanelModule::DIRECT_SALE_ACTIONS, 'edit')) {
             throw new RuntimeException('Hanya Finance atau Administrator yang mencatat penjualan langsung kantor.');
         }
 
         $merged = $this->mergeLines($lines);
+        $overrides = [];
+        foreach ($lines as $index => $line) {
+            $productId = (int) ($line['product_id'] ?? 0);
+            if ($productId <= 0 || (int) ($line['qty'] ?? 0) <= 0) {
+                continue;
+            }
+            $rawPrice = $line['unit_price_minor'] ?? null;
+            $customPrice = null;
+            if ($rawPrice !== null && $rawPrice !== '') {
+                $customPrice = filter_var($rawPrice, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+                if ($customPrice === false) {
+                    throw ValidationException::withMessages(["lines.$index.unit_price_minor" => 'Harga khusus harus angka rupiah bulat, minimal 0 ya.']);
+                }
+            }
+            $override = ['price' => $customPrice, 'reason' => trim((string) ($line['price_reason'] ?? ''))];
+            if (isset($overrides[$productId]) && $overrides[$productId] !== $override) {
+                throw ValidationException::withMessages(['lines' => 'Produk yang sama harus pakai harga dan alasan yang sama ya.']);
+            }
+            $overrides[$productId] = $override;
+        }
+        $buyerName = trim((string) $buyerName);
+        if (mb_strlen($buyerName) > 255) {
+            throw ValidationException::withMessages(['buyer_name' => 'Nama pembeli maksimal 255 karakter ya.']);
+        }
 
         if ($merged === []) {
             throw new RuntimeException('Tidak ada cups yang dicatat.');
@@ -71,7 +98,7 @@ class DirectSaleService
             throw new RuntimeException('Coffee Bike tidak ditemukan atau sedang tidak aktif.');
         }
 
-        return DB::transaction(function () use ($actor, $cart, $merged, $paymentMethod, $note): DirectSale {
+        return DB::transaction(function () use ($actor, $cart, $merged, $overrides, $paymentMethod, $note, $buyerName): DirectSale {
             Cart::query()->whereKey($cart->id)->lockForUpdate()->firstOrFail();
             $occurredAt = now();
             $this->assertNotClosed($cart->id, $occurredAt->toDateString());
@@ -107,9 +134,21 @@ class DirectSaleService
                 }
 
                 $priceVersion = $product->priceVersionAt($occurredAt);
-                $unitPrice = (int) ($priceVersion?->sell_price_minor ?? 0);
-                if ($unitPrice <= 0) {
+                if ($priceVersion === null) {
+                    throw new RuntimeException('Harga jual dan HPP produk belum tersedia untuk penjualan langsung.');
+                }
+                $standardPrice = $this->sellPrices->price($product, null, $occurredAt);
+                $customPrice = $overrides[$productId]['price'] ?? null;
+                $unitPrice = $customPrice ?? $standardPrice;
+                if ($standardPrice <= 0 && $customPrice === null) {
                     throw new RuntimeException('Harga jual produk belum tersedia untuk penjualan langsung.');
+                }
+                $priceReason = $overrides[$productId]['reason'] ?? '';
+                if ($customPrice !== null && $customPrice !== $standardPrice && $priceReason === '') {
+                    throw ValidationException::withMessages(['lines' => 'Isi alasan harga khusus yang beda dari harga produk ya.']);
+                }
+                if (mb_strlen($priceReason) > 500) {
+                    throw ValidationException::withMessages(['lines' => 'Alasan harga khusus maksimal 500 karakter ya.']);
                 }
                 $subtotal = $unitPrice * $qty;
 
@@ -122,6 +161,7 @@ class DirectSaleService
                     'unit_price_minor' => $unitPrice,
                     'unit_cost_minor' => $priceVersion?->cost_price_minor,
                     'subtotal_minor' => $subtotal,
+                    'price_reason' => $customPrice !== null && $customPrice !== $standardPrice ? $priceReason : null,
                 ];
             }
 
@@ -135,6 +175,7 @@ class DirectSaleService
                 'total_amount_minor' => $totalAmount,
                 'payment_method' => $paymentMethod,
                 'note' => $note,
+                'buyer_name' => $buyerName === '' ? null : $buyerName,
             ]);
 
             foreach ($lineRows as $row) {
@@ -185,6 +226,8 @@ class DirectSaleService
             AuditLog::recordAction($actor, 'direct_sale.created', $directSale, null, [
                 'cart_id' => $cart->id, 'payment_method' => $paymentMethod,
                 'total_amount_minor' => $totalAmount,
+                'buyer_name' => $directSale->buyer_name,
+                'lines' => $lineRows,
             ]);
 
             return $directSale->load('lines');

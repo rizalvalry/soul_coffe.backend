@@ -25,6 +25,7 @@ class CreateDirectSale extends CreateRecord
             lines: $data['lines'] ?? [],
             paymentMethod: $data['payment_method'] ?? 'cash',
             note: $data['note'] ?? null,
+            buyerName: $data['buyer_name'] ?? null,
         );
     }
 

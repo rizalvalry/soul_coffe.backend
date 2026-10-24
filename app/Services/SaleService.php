@@ -19,6 +19,7 @@ use App\Services\Access\PermissionMatrix;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 /**
@@ -56,6 +57,7 @@ class SaleService
         private readonly EventPublisher $events,
         private readonly StaffLocationService $locations,
         private readonly SettlementService $settlements,
+        private readonly ProductSellPriceResolver $sellPrices,
     ) {}
 
     /**
@@ -209,8 +211,11 @@ class SaleService
                     ));
                 }
 
-                $priceVersion = $product->priceVersionAt($occurredAt);
-                $unitPrice = (int) ($priceVersion?->sell_price_minor ?? 0);
+                $priceVersion = $this->sellPrices->baseVersionForDay($product, $date);
+                if ($priceVersion === null) {
+                    throw ValidationException::withMessages(['lines' => 'Harga dan HPP produk ini belum tersedia. Minta Finance isi dulu ya.']);
+                }
+                $unitPrice = $this->sellPrices->priceForCart($product, $cart->id, $date);
                 $subtotal = $unitPrice * $qty;
 
                 $totalQty += $qty;

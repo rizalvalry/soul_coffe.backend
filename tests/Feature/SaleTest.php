@@ -10,6 +10,7 @@ use App\Models\AppNotification;
 use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\Location;
+use App\Models\LocationPriceVersion;
 use App\Models\OutboxEvent;
 use App\Models\Product;
 use App\Models\ProductPriceVersion;
@@ -308,6 +309,81 @@ class SaleTest extends TestCase
 
     // ── The happy path ───────────────────────────────────────────────────────
 
+    public function test_location_price_is_pinned_for_assigned_rider_and_future_version_is_ignored(): void
+    {
+        $this->clockIn();
+        $this->stockCart($this->coffee, 3);
+        ProductPriceVersion::create([
+            'product_id' => $this->coffee->id, 'cost_price_minor' => 10000,
+            'sell_price_minor' => 12000, 'effective_from' => now()->subMinute(),
+        ]);
+        LocationPriceVersion::create([
+            'product_id' => $this->coffee->id, 'location_id' => $this->location->id,
+            'sell_price_minor' => 15000, 'effective_from' => now()->subMinute(),
+        ]);
+        LocationPriceVersion::create([
+            'product_id' => $this->coffee->id, 'location_id' => $this->location->id,
+            'sell_price_minor' => 18000, 'effective_from' => now()->addDay(),
+        ]);
+
+        $this->sell([['product_id' => $this->coffee->id, 'qty' => 1]])
+            ->assertCreated()->assertJsonPath('data.total_amount', 15000);
+        $line = Sale::query()->latest('id')->firstOrFail()->lines()->firstOrFail();
+        $this->assertSame(15000, $line->unit_price_minor);
+        $this->assertSame(10000, $line->unit_cost_minor);
+
+        $otherLocation = Location::create(['name' => 'Lokasi B', 'lat' => -6.2, 'lng' => 106.9]);
+        $first = StaffAssignment::query()->where('user_id', $this->staff->id)->firstOrFail();
+        $first->update(['superseded_at' => now()]);
+        $second = $first->replicate();
+        $second->location_id = $otherLocation->id;
+        $second->superseded_at = null;
+        $second->save();
+        $this->sell([['product_id' => $this->coffee->id, 'qty' => 1]])->assertCreated();
+        $this->assertSame(15000, Sale::query()->latest('id')->firstOrFail()->lines()->firstOrFail()->unit_price_minor);
+        $second->update(['superseded_at' => now()]);
+        $third = $second->replicate();
+        $third->location_id = null;
+        $third->superseded_at = null;
+        $third->save();
+        $this->sell([['product_id' => $this->coffee->id, 'qty' => 1]])->assertCreated();
+        $this->assertSame(15000, Sale::query()->latest('id')->firstOrFail()->lines()->firstOrFail()->unit_price_minor);
+    }
+
+    public function test_different_rider_at_other_location_uses_product_price(): void
+    {
+        $this->clockIn();
+        $this->stockCart($this->coffee, 1);
+        ProductPriceVersion::create([
+            'product_id' => $this->coffee->id, 'cost_price_minor' => 10000,
+            'sell_price_minor' => 12000, 'effective_from' => today()->subDay()->endOfDay(),
+        ]);
+        LocationPriceVersion::create([
+            'product_id' => $this->coffee->id, 'location_id' => $this->location->id,
+            'sell_price_minor' => 15000, 'effective_from' => today(),
+        ]);
+        $this->sell([['product_id' => $this->coffee->id, 'qty' => 1]])
+            ->assertCreated()->assertJsonPath('data.total_amount', 15000);
+
+        $otherLocation = Location::create(['name' => 'Lokasi B', 'lat' => -6.2, 'lng' => 106.9]);
+        $otherCart = Cart::create(['code' => '0019', 'status' => 'active', 'kitchen_id' => $this->kitchen->id]);
+        $otherRider = User::factory()->role(Role::STAFF)->create();
+        app(AttendanceService::class)->clockIn($otherRider);
+        StaffAssignment::create([
+            'source' => 'hand_to_cart', 'user_id' => $otherRider->id,
+            'cart_id' => $otherCart->id, 'location_id' => $otherLocation->id,
+            'operating_date' => today(), 'assigned_by' => $this->barista->id,
+            'kitchen_id' => $this->kitchen->id,
+        ]);
+        app(StockLedgerService::class)->post(
+            StockLedgerService::CART, $otherCart->id, $this->coffee->id,
+            MovementType::ALLOCATION_IN, 1, $this->barista->id, $this->kitchen->id,
+        );
+        $this->sell([['product_id' => $this->coffee->id, 'qty' => 1]],
+            ['cart_id' => $otherCart->id], $otherRider)
+            ->assertCreated()->assertJsonPath('data.total_amount', 12000);
+    }
+
     public function test_a_sale_records_the_cups_and_reduces_the_cart_stock(): void
     {
         $this->clockIn();
@@ -345,7 +421,7 @@ class SaleTest extends TestCase
         $this->assertSame(10000, $line->fresh()->unit_cost_minor);
     }
 
-    public function test_sale_cost_is_null_when_no_price_version_exists(): void
+    public function test_sale_without_base_price_is_rejected_even_if_location_price_exists(): void
     {
         $unpriced = Product::create([
             'code' => 'NO-PRICE', 'name' => 'Belum ada harga', 'unit' => 'cup',
@@ -353,15 +429,43 @@ class SaleTest extends TestCase
         ]);
         $this->clockIn();
         $this->stockCart($unpriced, 1);
+        LocationPriceVersion::create([
+            'product_id' => $unpriced->id, 'location_id' => $this->location->id,
+            'sell_price_minor' => 15000, 'effective_from' => now()->subMinute(),
+        ]);
 
-        $this->sell([['product_id' => $unpriced->id, 'qty' => 1]])->assertCreated();
+        $this->sell([['product_id' => $unpriced->id, 'qty' => 1]])
+            ->assertUnprocessable()->assertJsonValidationErrors(['lines']);
+        $this->assertDatabaseCount('sales', 0);
+        $this->assertSame(1, $this->cartStock($unpriced));
+    }
 
-        $this->assertNull(Sale::query()->firstOrFail()->lines()->sole()->unit_cost_minor);
+    public function test_legacy_first_price_entered_at_noon_counts_for_whole_operating_date(): void
+    {
+        $newProduct = Product::create([
+            'code' => 'FIRST-TODAY', 'name' => 'Produk Baru', 'unit' => 'cup',
+            'is_sellable' => true, 'sort_order' => 3, 'is_active' => true,
+        ]);
+        ProductPriceVersion::create([
+            'product_id' => $newProduct->id, 'cost_price_minor' => 8000,
+            'sell_price_minor' => 12000, 'effective_from' => today()->setTime(12, 0),
+        ]);
+        Carbon::setTestNow(today()->setTime(9, 0));
+        try {
+            $this->clockIn();
+            $this->stockCart($newProduct, 1);
+            $this->sell([['product_id' => $newProduct->id, 'qty' => 1]])
+                ->assertCreated()->assertJsonPath('data.total_amount', 12000);
+            $line = Sale::query()->firstOrFail()->lines()->sole();
+            $this->assertSame(8000, $line->unit_cost_minor);
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     public function test_tied_effective_price_versions_match_finance_resource_and_sale_snapshot(): void
     {
-        $effectiveFrom = now()->subHours(12);
+        $effectiveFrom = today()->subDay()->endOfDay();
         foreach ([[11000, 22000], [12000, 23000]] as [$cost, $price]) {
             ProductPriceVersion::create([
                 'product_id' => $this->coffee->id, 'cost_price_minor' => $cost,
@@ -522,7 +626,7 @@ class SaleTest extends TestCase
                 'product_id' => $this->coffee->id,
                 'cost_price_minor' => 15000,
                 'sell_price_minor' => 30000,
-                'effective_from' => now(),
+                'effective_from' => now()->startOfDay(),
             ]);
             $attendance = app(AttendanceService::class);
             $attendance->clockIn($this->barista);

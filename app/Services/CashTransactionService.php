@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
+use Ramsey\Uuid\Uuid;
 
 class CashTransactionService
 {
@@ -28,16 +29,22 @@ class CashTransactionService
             'date' => ['required', 'date_format:Y-m-d'],
             'cash_category_id' => ['required', 'integer', 'exists:cash_categories,id'],
             'cash_account_id' => ['required', 'integer', 'exists:cash_accounts,id'],
-            'amount_minor' => ['required', 'integer', 'min:1', 'max:1000000000000'],
+            'amount_minor' => ['nullable', 'integer', 'min:1', 'max:1000000000000'],
             'description' => ['required', 'string', 'max:255'],
             'office_item_id' => ['nullable', 'integer', 'exists:office_items,id'],
-            'quantity' => ['nullable', 'integer', 'min:1'],
+            'quantity' => ['nullable', 'integer', 'min:1', 'max:4294967295'],
+            'unit_price_minor' => ['nullable', 'integer', 'min:1', 'max:1000000000000'],
+            'employee_id' => ['nullable', 'integer', 'exists:users,id'],
+            'location_id' => ['nullable', 'integer', 'exists:locations,id'],
             'evidence_path' => ['nullable', 'string', 'max:255'],
             'cart_id' => ['nullable', 'integer', 'exists:carts,id'],
         ])->validate();
 
-        if (isset($data['office_item_id']) !== isset($data['quantity'])) {
-            throw ValidationException::withMessages(['quantity' => 'Barang dan jumlah harus diisi bersama.']);
+        if (isset($data['office_item_id']) && ! isset($data['quantity'])) {
+            throw ValidationException::withMessages(['quantity' => 'Isi jumlah barangnya juga, ya.']);
+        }
+        if (isset($data['unit_price_minor']) !== isset($data['quantity']) && ! isset($data['office_item_id'])) {
+            throw ValidationException::withMessages(['quantity' => 'Isi jumlah dan harga satuan bersama, ya.']);
         }
         if (isset($data['evidence_path'])) {
             $path = $data['evidence_path'];
@@ -50,10 +57,20 @@ class CashTransactionService
         }
 
         return DB::transaction(function () use ($actor, $data): CashTransaction {
+            if (isset($data['unit_price_minor'])) {
+                $amount = (int) $data['quantity'] * (int) $data['unit_price_minor'];
+                if ($amount < 1 || $amount > 1000000000000 || (isset($data['amount_minor']) && (int) $data['amount_minor'] !== $amount)) {
+                    throw ValidationException::withMessages(['amount_minor' => 'Nominal harus sama dengan jumlah kali harga satuan, maksimal Rp1 triliun.']);
+                }
+                $data['amount_minor'] = $amount;
+            } elseif (! isset($data['amount_minor'])) {
+                throw ValidationException::withMessages(['amount_minor' => 'Isi nominalnya dulu, ya.']);
+            }
             $existing = CashTransaction::query()->where('uuid', $data['uuid'])->lockForUpdate()->first();
             if ($existing) {
                 foreach (['date', 'cash_category_id', 'cash_account_id', 'amount_minor', 'description',
-                    'office_item_id', 'quantity', 'evidence_path', 'cart_id'] as $field) {
+                    'office_item_id', 'quantity', 'unit_price_minor', 'employee_id', 'location_id',
+                    'evidence_path', 'cart_id'] as $field) {
                     $old = $field === 'date' ? $existing->date->toDateString() : $existing->$field;
                     if ((string) ($old ?? '') !== (string) ($data[$field] ?? '')) {
                         throw ValidationException::withMessages(['uuid' => 'UUID ini sudah dipakai untuk transaksi yang berbeda.']);
@@ -64,6 +81,13 @@ class CashTransactionService
             }
 
             $category = CashCategory::query()->with('account')->lockForUpdate()->findOrFail($data['cash_category_id']);
+            if (($category->is_daily || $category->default_unit_price_minor !== null)
+                && (! isset($data['quantity']) || ! isset($data['unit_price_minor']))) {
+                throw ValidationException::withMessages(['unit_price_minor' => 'Isi jumlah dan harga satuan dulu, ya.']);
+            }
+            if ($category->is_daily && ($category->direction !== 'OUT' || $category->account->type !== 'EXPENSE')) {
+                throw ValidationException::withMessages(['cash_category_id' => 'Kategori harian harus kas keluar ke akun beban, ya.']);
+            }
             $cash = CashAccount::query()->with('account')->lockForUpdate()->findOrFail($data['cash_account_id']);
             if (! $category->is_active || ! $category->account->is_active
                 || ! $cash->is_active || ! $cash->account->is_active
@@ -107,6 +131,7 @@ class CashTransactionService
             $transaction = CashTransaction::query()->create([
                 ...$data,
                 'direction' => $category->direction,
+                'is_daily_expense' => $category->is_daily,
                 'recorded_by' => $actor->id,
                 'status' => 'POSTED',
             ]);
@@ -139,6 +164,73 @@ class CashTransactionService
             }
 
             return $transaction;
+        }, 3);
+    }
+
+    /** @return array<int, array<string, mixed>> Nothing is written until confirmDailyDraft() is called. */
+    public function draftFromYesterday(User $actor): array
+    {
+        $this->authorize($actor);
+
+        return CashTransaction::query()->with('category')->whereDate('date', today()->subDay()->toDateString())
+            ->where('status', 'POSTED')->whereNotNull('unit_price_minor')
+            ->whereNotIn('id', fn ($query) => $query->select('original.source_id')
+                ->from('journal_entries as original')
+                ->join('journal_entries as reversal', 'reversal.reverses_entry_id', '=', 'original.id')
+                ->where('original.source_type', 'cash_transaction')->where('original.purpose', 'CASH_TX'))
+            ->whereHas('category', fn ($query) => $query->where('is_daily', true))
+            ->orderBy('id')->get()->map(fn (CashTransaction $row): array => [
+                'cash_category_id' => $row->cash_category_id,
+                'cash_account_id' => $row->cash_account_id,
+                'description' => $row->description,
+                'quantity' => $row->quantity,
+                'unit_price_minor' => $row->unit_price_minor,
+                'employee_id' => $row->employee_id,
+                'location_id' => $row->location_id,
+                'cart_id' => $row->cart_id,
+                'office_item_id' => $row->office_item_id,
+            ])->all();
+    }
+
+    /** @return array<int, CashTransaction> */
+    public function confirmDailyDraft(User $actor, string $requestKey, array $rows): array
+    {
+        $this->authorize($actor);
+        Validator::make(['request_key' => $requestKey, 'rows' => $rows], [
+            'request_key' => ['required', 'uuid'], 'rows' => ['required', 'array', 'min:1', 'max:100'],
+        ])->validate();
+        $hash = hash('sha256', json_encode(array_values($rows), JSON_THROW_ON_ERROR));
+
+        return DB::transaction(function () use ($actor, $requestKey, $rows, $hash): array {
+            $inserted = DB::table('cash_daily_batches')->insertOrIgnore([
+                'request_key' => $requestKey, 'payload_hash' => $hash,
+                'row_count' => count($rows), 'created_at' => now(),
+            ]);
+            $batch = DB::table('cash_daily_batches')->where('request_key', $requestKey)->lockForUpdate()->first();
+            if ($batch->payload_hash !== $hash || (int) $batch->row_count !== count($rows)) {
+                throw ValidationException::withMessages(['request_key' => 'Kunci ini sudah dipakai untuk draft yang berbeda.']);
+            }
+            if ($inserted === 0) {
+                return array_map(fn (int $index): CashTransaction => CashTransaction::query()
+                    ->where('uuid', Uuid::uuid5(Uuid::NAMESPACE_URL, 'cash-daily:'.$requestKey.':'.$index)->toString())
+                    ->firstOrFail(), array_keys(array_values($rows)));
+            }
+            $posted = [];
+            foreach (array_values($rows) as $index => $row) {
+                if (! is_array($row) || ! CashCategory::query()->join('accounts', 'accounts.id', '=', 'cash_categories.account_id')
+                    ->where('cash_categories.id', $row['cash_category_id'] ?? null)
+                    ->where('cash_categories.is_daily', true)->where('cash_categories.direction', 'OUT')
+                    ->where('accounts.type', 'EXPENSE')->exists()) {
+                    throw ValidationException::withMessages(['rows' => 'Draft harus berisi kategori harian, ya.']);
+                }
+                $posted[] = $this->record($actor, [
+                    ...$row,
+                    'uuid' => Uuid::uuid5(Uuid::NAMESPACE_URL, 'cash-daily:'.$requestKey.':'.$index)->toString(),
+                    'date' => today()->toDateString(),
+                ]);
+            }
+
+            return $posted;
         }, 3);
     }
 
