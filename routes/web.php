@@ -2,6 +2,7 @@
 
 use App\Enums\PanelModule;
 use App\Http\Controllers\NewsInlineImageController;
+use App\Http\Controllers\PublishController;
 use App\Models\CashTransaction;
 use App\Models\PayrollItem;
 use App\Models\ThrItem;
@@ -12,6 +13,18 @@ use Illuminate\Support\Facades\Storage;
 
 Route::get('/', function () {
     return view('welcome');
+});
+
+Route::middleware('throttle:60,1')->group(function (): void {
+    Route::get('/publish', [PublishController::class, 'index'])->name('publish.index');
+    Route::get('/publish/version/{channel}_latest', [PublishController::class, 'latest'])
+        ->where('channel', 'oapk|capps')->name('publish.latest');
+    Route::get('/publish/version/{channel}_v{version}', [PublishController::class, 'show'])
+        ->where(['channel' => 'oapk|capps', 'version' => '[0-9]+\.[0-9]+\.[0-9]+'])
+        ->name('publish.version');
+    Route::get('/publish/version/{channel}_v{version}/download', [PublishController::class, 'download'])
+        ->where(['channel' => 'oapk|capps', 'version' => '[0-9]+\.[0-9]+\.[0-9]+'])
+        ->middleware('throttle:10,1,publish-download')->name('publish.download');
 });
 
 // Session-guarded (Filament panel's own guard), not api/v1 — this is called from inside the
