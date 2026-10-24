@@ -52,6 +52,7 @@ use Database\Seeders\PayrollConfigurationSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -197,6 +198,27 @@ class PayrollRunTest extends TestCase
         $this->assertSame($before['gross_pay_minor'], $after['gross_pay_minor']);
         $this->assertSame($before['pph21_minor'], $after['pph21_minor']);
         $this->assertSame($before['take_home_minor'], $after['take_home_minor']);
+    }
+
+    public function test_migration_backfill_keeps_preexisting_monthly_payroll_amount(): void
+    {
+        $legacy = User::factory()->role(Role::BARISTA)->create(['joined_at' => '2026-01-01']);
+        $ciphertext = Crypt::encryptString('500000');
+        $profileId = DB::table('employee_profiles')->insertGetId([
+            'user_id' => $legacy->id, 'base_salary_minor' => $ciphertext,
+            'salary_basis' => 'bulanan', 'payroll_active' => true,
+            'ptkp_status' => 'TK/0', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $migration = require database_path('migrations/2026_10_24_000083_create_employee_salary_versions.php');
+        $migration->backfillProfiles();
+
+        $version = $legacy->employeeProfile->salaryVersionFor('2026-10-01');
+        $snapshot = app(PayrollCalculator::class)->calculate($legacy->fresh(), '2026-10');
+        $this->assertSame('2026-10-01', $version->effective_from->format('Y-m-d'));
+        $this->assertSame($ciphertext, DB::table('employee_salary_versions')
+            ->where('employee_profile_id', $profileId)->value('base_salary_minor'));
+        $this->assertSame(500000, $snapshot['base_salary_minor']);
+        $this->assertSame(475000, $snapshot['take_home_minor']);
     }
 
     public function test_late_closing_suggestion_is_overridden_by_finance_and_below_target_only(): void

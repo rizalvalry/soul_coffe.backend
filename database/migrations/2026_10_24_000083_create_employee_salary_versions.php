@@ -20,9 +20,14 @@ return new class extends Migration
             $table->unique(['employee_profile_id', 'effective_from'], 'employee_salary_effective_unique');
         });
 
+        $this->backfillProfiles();
+    }
+
+    public function backfillProfiles(): void
+    {
         DB::table('employee_profiles')->orderBy('id')->chunkById(100, function ($profiles): void {
             foreach ($profiles as $profile) {
-                DB::table('employee_salary_versions')->insert([
+                DB::table('employee_salary_versions')->insertOrIgnore([
                     'employee_profile_id' => $profile->id,
                     'effective_from' => '2026-10-01',
                     'salary_basis' => $profile->salary_basis,
