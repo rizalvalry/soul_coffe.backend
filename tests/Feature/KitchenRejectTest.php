@@ -213,6 +213,7 @@ class KitchenRejectTest extends TestCase
 
     public function test_multipart_retry_replays_only_identical_fields_and_photo(): void
     {
+        $this->travelTo(now());
         $key = (string) Str::uuid();
         $this->submit($this->production, $this->payload(2), $key)->assertCreated();
         $this->submit($this->production, $this->payload(2), $key)
