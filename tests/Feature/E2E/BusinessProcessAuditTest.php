@@ -529,7 +529,7 @@ class BusinessProcessAuditTest extends TestCase
             'ownerRecord' => $this->product, 'pageClass' => EditProduct::class,
         ])->callTableAction('create', data: [
             'cost_price_minor' => 9000, 'sell_price_minor' => 21000,
-            'effective_from' => now()->toDateTimeString(),
+            'effective_from' => today()->addDay()->toDateString(),
         ])->assertHasNoTableActionErrors();
         $this->assertSame($before + 1, $this->product->priceVersions()->count());
     }

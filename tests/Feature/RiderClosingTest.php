@@ -14,6 +14,7 @@ use App\Models\Cart;
 use App\Models\CentralKitchen;
 use App\Models\JournalEntry;
 use App\Models\Location;
+use App\Models\LocationPriceVersion;
 use App\Models\Media;
 use App\Models\OutboxEvent;
 use App\Models\Product;
@@ -437,6 +438,109 @@ class RiderClosingTest extends TestCase
         $this->assertSame(3000, (int) $book->debit - (int) $book->credit);
         $this->assertSame((int) DB::table('journal_lines')->sum('debit_minor'),
             (int) DB::table('journal_lines')->sum('credit_minor'));
+    }
+
+    public function test_base_price_change_after_first_sale_does_not_change_todays_cart_price(): void
+    {
+        $this->issue(2, MovementType::ALLOCATION_IN);
+        $saleBody = [
+            'cart_id' => $this->cart->id,
+            'lines' => [['product_id' => $this->product->id, 'qty' => 1]],
+            'payment_method' => 'cash',
+        ];
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/sales', ['uuid' => (string) Str::uuid(), ...$saleBody])
+            ->assertCreated()->assertJsonPath('data.total_amount', 20000);
+        ProductPriceVersion::create([
+            'product_id' => $this->product->id, 'cost_price_minor' => 9000,
+            'sell_price_minor' => 25000, 'effective_from' => now(),
+        ]);
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/sales', ['uuid' => (string) Str::uuid(), ...$saleBody])
+            ->assertCreated()->assertJsonPath('data.total_amount', 20000);
+        $this->actingAs($this->rider, 'sanctum')->getJson('/api/v1/me/closing/draft')
+            ->assertOk()->assertJsonPath('data.lines.0.unit_price_minor', 20000);
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', [...$this->body(0, 0), 'qris' => 0, 'transfer' => 0])
+            ->assertCreated()->assertJsonPath('data.total_minor', 40000);
+        $this->actingAs($this->finance, 'sanctum')
+            ->getJson('/api/v1/settlements/draft/'.$this->cart->id)
+            ->assertOk()->assertJsonPath('data.expected_total_minor', 40000);
+        $this->actingAs($this->finance, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/settlements', [
+                'cart_id' => $this->cart->id, 'cash' => 40000, 'qris' => 0, 'transfer' => 0,
+            ])->assertCreated()->assertJsonPath('data.variance', 0);
+    }
+
+    public function test_scheduled_midday_base_version_does_not_change_unsold_cart_price_today(): void
+    {
+        $this->issue(1, MovementType::ALLOCATION_IN);
+        $noon = today()->setTime(12, 0);
+        ProductPriceVersion::create([
+            'product_id' => $this->product->id, 'cost_price_minor' => 9000,
+            'sell_price_minor' => 25000, 'effective_from' => $noon,
+        ]);
+        Carbon::setTestNow($noon->copy()->subHours(3));
+        $this->actingAs($this->rider, 'sanctum')->getJson('/api/v1/me/closing/draft')
+            ->assertOk()->assertJsonPath('data.lines.0.unit_price_minor', 20000);
+        Carbon::setTestNow($noon->copy()->addHour());
+        $this->actingAs($this->rider, 'sanctum')->getJson('/api/v1/me/closing/draft')
+            ->assertOk()->assertJsonPath('data.lines.0.unit_price_minor', 20000);
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/sales', [
+                'uuid' => (string) Str::uuid(), 'cart_id' => $this->cart->id,
+                'lines' => [['product_id' => $this->product->id, 'qty' => 1]],
+            ])->assertCreated()->assertJsonPath('data.total_amount', 20000);
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', [...$this->body(0, 0), 'qris' => 0, 'transfer' => 0])
+            ->assertCreated()->assertJsonPath('data.total_minor', 20000);
+    }
+
+    public function test_location_price_flows_from_rider_draft_to_closing_and_settlement_methods(): void
+    {
+        $locationId = StaffAssignment::query()->where('user_id', $this->rider->id)->value('location_id');
+        LocationPriceVersion::create([
+            'product_id' => $this->product->id, 'location_id' => $locationId,
+            'sell_price_minor' => 15000, 'effective_from' => now()->subMinute(),
+        ]);
+        LocationPriceVersion::create([
+            'product_id' => $this->product->id, 'location_id' => $locationId,
+            'sell_price_minor' => 17000, 'effective_from' => now()->addDay(),
+        ]);
+        $this->issue(2, MovementType::ALLOCATION_IN);
+        $this->actingAs($this->rider, 'sanctum')->getJson('/api/v1/me/closing/draft')
+            ->assertOk()->assertJsonPath('data.lines.0.unit_price_minor', 15000);
+        $this->actingAs($this->rider, 'sanctum')->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/sales', [
+                'uuid' => (string) Str::uuid(), 'cart_id' => $this->cart->id,
+                'lines' => [['product_id' => $this->product->id, 'qty' => 1]],
+                'payment_method' => 'cash',
+            ])->assertCreated()->assertJsonPath('data.total_amount', 15000);
+        $first = StaffAssignment::query()->where('cart_id', $this->cart->id)->firstOrFail();
+        $otherLocation = Location::create(['name' => 'Lokasi B', 'lat' => -6.2, 'lng' => 106.9]);
+        $first->update(['superseded_at' => now()]);
+        $later = $first->replicate();
+        $later->location_id = $otherLocation->id;
+        $later->superseded_at = null;
+        $later->save();
+        $this->actingAs($this->rider, 'sanctum')->getJson('/api/v1/me/closing/draft')
+            ->assertOk()->assertJsonPath('data.lines.0.unit_price_minor', 15000);
+        $closing = $this->actingAs($this->rider, 'sanctum')
+            ->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/me/closing', [...$this->body(0, 0), 'qris' => 15000, 'transfer' => 0])
+            ->assertCreated()->assertJsonPath('data.total_minor', 30000)
+            ->assertJsonPath('data.cash_minor', 15000);
+        $this->assertSame(8000, RiderClosing::query()->firstOrFail()->lines()->firstOrFail()->unit_cost_minor);
+        $this->actingAs($this->finance, 'sanctum')
+            ->getJson('/api/v1/settlements/draft/'.$this->cart->id)
+            ->assertOk()->assertJsonPath('data.expected_total_minor', 30000)
+            ->assertJsonPath('data.expected_cash_minor', 15000)
+            ->assertJsonPath('data.expected_qris_minor', 15000);
+        $this->actingAs($this->finance, 'sanctum')
+            ->withHeader('Idempotency-Key', $this->closingKey())
+            ->postJson('/api/v1/settlements', [
+                'cart_id' => $this->cart->id, 'cash' => 15000, 'qris' => 15000, 'transfer' => 0,
+            ])->assertCreated()->assertJsonPath('data.variance', 0);
     }
 
     public function test_closing_uses_handover_refill_and_carry_then_posts_aggregate_ledger_once(): void

@@ -38,6 +38,7 @@ class DirectSaleForm
                                 ->all())
                             ->searchable()
                             ->required()
+                            ->distinct()
                             ->live(),
 
                         TextInput::make('qty')
@@ -46,12 +47,24 @@ class DirectSaleForm
                             ->minValue(1)
                             ->required()
                             ->live(),
+                        TextInput::make('unit_price_minor')
+                            ->label('Harga khusus per cup (Rp)')
+                            ->integer()->minValue(0)->step(1)
+                            ->helperText('Kosongkan kalau pakai harga produk.'),
+                        TextInput::make('price_reason')
+                            ->label('Alasan harga khusus')
+                            ->maxLength(500)
+                            ->helperText('Isi kalau harga khusus beda dari harga produk.'),
                     ])
                     ->columns(2)
                     ->minItems(1)
                     ->required()
                     ->addActionLabel('Tambah Produk')
                     ->columnSpanFull(),
+
+                TextInput::make('buyer_name')
+                    ->label('Nama pembeli / instansi')
+                    ->maxLength(255),
 
                 Select::make('payment_method')
                     ->label('Metode Bayar')

@@ -46,14 +46,21 @@ class DirectSalesTable
                     ->searchable()
                     ->sortable(),
 
+                TextColumn::make('buyer_name')
+                    ->label('Pembeli / instansi')
+                    ->placeholder('-')
+                    ->searchable(),
+
                 TextColumn::make('lines')
                     ->label('Produk')
                     ->wrap()
                     ->state(fn (DirectSale $record): string => $record->lines
                         ->map(fn (DirectSaleLine $line): string => sprintf(
-                            '%s ×%d',
+                            '%s ×%d · Rp %s%s',
                             $line->product?->name ?? '-',
                             $line->qty,
+                            number_format($line->unit_price_minor, 0, ',', '.'),
+                            $line->price_reason ? ' ('.$line->price_reason.')' : '',
                         ))
                         ->implode(', ')),
 

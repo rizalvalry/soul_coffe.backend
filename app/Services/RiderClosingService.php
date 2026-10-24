@@ -31,6 +31,7 @@ class RiderClosingService
         private readonly SettlementService $settlements,
         private readonly JournalService $journals,
         private readonly RefillRequestStateMachine $refills,
+        private readonly ProductSellPriceResolver $sellPrices,
     ) {}
 
     public function assignment(User $rider): StaffAssignment
@@ -118,9 +119,9 @@ class RiderClosingService
             ->where('cart_id', $cart->id)->whereDate('operating_date', $date->toDateString())->first();
         $ids = array_unique([...array_keys($incoming), ...array_keys($carry)]);
         $products = Product::query()->operational()->whereIn('id', $ids)->orderBy('sort_order')->get();
-        $lines = $products->map(function (Product $product) use ($incoming, $carry, $officeSold, $existing): array {
+        $lines = $products->map(function (Product $product) use ($incoming, $carry, $officeSold, $existing, $cart, $date): array {
             $prior = $existing?->lines->firstWhere('product_id', $product->id);
-            $price = $product->priceVersionAt(now());
+            $price = $this->sellPrices->priceForCart($product, $cart->id, $date);
 
             return [
                 'product_id' => $product->id,
@@ -131,7 +132,7 @@ class RiderClosingService
                 'qty_remaining' => $prior?->qty_remaining ?? 0,
                 'qty_wasted' => $prior?->qty_wasted ?? 0,
                 'qty_sold' => $prior?->qty_sold ?? 0,
-                'unit_price_minor' => $prior?->unit_price_minor ?? (int) ($price?->sell_price_minor ?? 0),
+                'unit_price_minor' => $prior?->unit_price_minor ?? $price,
                 'subtotal_minor' => $prior?->subtotal_minor ?? 0,
             ];
         })->values()->all();
@@ -294,11 +295,12 @@ class RiderClosingService
                     throw new RuntimeException("Sisa produk #{$id} melebihi stok setelah penjualan lama. Muat ulang Closing ya.");
                 }
                 $price = $oldLines->get($id);
-                $version = $price ? null : $products[$id]->priceVersionAt($date->isToday() ? now() : $date->copy()->endOfDay());
+                $version = $price ? null : $this->sellPrices->baseVersionForDay($products[$id], $date);
                 if (! $price && ! $version) {
                     throw new RuntimeException("Harga produk #{$id} belum tersedia untuk hari Closing.");
                 }
-                $unitPrice = (int) ($price?->unit_price_minor ?? $version->sell_price_minor);
+                $unitPrice = (int) ($price?->unit_price_minor
+                    ?? $this->sellPrices->priceForCart($products[$id], $cart->id, $date));
                 $unitCost = (int) ($price?->unit_cost_minor ?? $version->cost_price_minor ?? 0);
                 $subtotal = $sold * $unitPrice;
                 $total += $subtotal;
