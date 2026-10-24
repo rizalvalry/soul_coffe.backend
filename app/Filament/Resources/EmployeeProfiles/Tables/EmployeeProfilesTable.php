@@ -26,7 +26,7 @@ class EmployeeProfilesTable
                     ->boolean()
                     ->visible(fn (): bool => Gate::allows('manage-payroll')),
                 TextColumn::make('base_salary_minor')
-                    ->label('Gaji pokok')
+                    ->label('Gaji pokok (jadwal terbaru)')
                     ->formatStateUsing(fn (?int $state): string => $state === null ? '—' : 'Rp '.number_format($state, 0, ',', '.'))
                     ->visible(fn (): bool => Gate::allows('manage-payroll')),
             ])

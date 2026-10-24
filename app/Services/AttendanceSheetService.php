@@ -123,7 +123,7 @@ class AttendanceSheetService
                     $localClock = Carbon::parse($clockIn->getRawOriginal('clocked_in_at'), config('app.timezone'))
                         ->timezone('Asia/Jakarta');
                     $time = $localClock->format('H:i');
-                    $suggestLate = $user->role === Role::STAFF && isset($cupsByDay[$day])
+                    $suggestLate = $clockIn->role === Role::STAFF && isset($cupsByDay[$day])
                         && $localClock->format('H:i:s') > $lateAfter.':00'
                         && (int) $cupsByDay[$day]->cups_sold < $targetCups;
                     $cells[$day] = [

@@ -614,6 +614,7 @@ class BusinessProcessAuditTest extends TestCase
             ->assertHasNoErrors()
             ->assertSee('Dibawa pulang');
         $profile = $employee->employeeProfile;
+        $profile->setSalaryEffectiveFrom('2026-10-01');
         $profile->base_salary_minor = PHP_INT_MAX;
         $profile->save();
         PayrollComponentEntry::create([

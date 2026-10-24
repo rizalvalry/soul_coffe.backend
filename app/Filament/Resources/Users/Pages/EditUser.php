@@ -6,6 +6,7 @@ use App\Enums\PanelModule;
 use App\Enums\Role;
 use App\Filament\Resources\Users\UserAccessForm;
 use App\Filament\Resources\Users\UserResource;
+use App\Models\Account;
 use App\Models\User;
 use App\Services\Access\PermissionMatrix;
 use Filament\Actions\DeleteAction;
@@ -54,6 +55,9 @@ class EditUser extends EditRecord
         abort_if($requestedRole === Role::MANAGEMENT->value, 422);
 
         return DB::transaction(function () use ($record, $data, $requestedRole): Model {
+            if ($requestedRole !== $record->role->value) {
+                Account::query()->orderBy('id')->lockForUpdate()->first();
+            }
             User::query()->where('role', Role::ADMINISTRATOR->value)
                 ->orderBy('id')->lockForUpdate()->get(['id']);
             $actor = Auth::user()->refresh();

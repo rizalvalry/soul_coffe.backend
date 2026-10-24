@@ -150,6 +150,7 @@ class EmployeeAdvanceTest extends TestCase
 
     public function test_installment_never_makes_take_home_negative_and_remainder_carries(): void
     {
+        $this->employee->employeeProfile->setSalaryEffectiveFrom('2026-10-01');
         $this->employee->employeeProfile->update(['base_salary_minor' => 100000]);
         $advance = $this->createAdvance(300000);
         $service = app(PayrollRunService::class);

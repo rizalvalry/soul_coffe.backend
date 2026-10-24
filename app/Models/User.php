@@ -129,6 +129,15 @@ class User extends Authenticatable implements FilamentUser, HasName
                 && ! PermissionMatrix::canManagePermissions($actor)) {
                 abort(403);
             }
+            if ($user->exists && $user->isDirty('role') && $user->role === Role::RIDER) {
+                $profile = $user->employeeProfile;
+                $nextMonth = now('Asia/Jakarta')->startOfMonth()->addMonth()->format('Y-m-d');
+                if ($profile?->salaryVersionFor($nextMonth)?->salary_basis === 'harian'
+                    || $profile?->salaryVersions()->whereDate('effective_from', '>=', $nextMonth)
+                        ->where('salary_basis', 'harian')->exists()) {
+                    throw ValidationException::withMessages(['role' => 'Atur gaji bulanan mulai bulan depan sebelum pindah jadi Runner ya.']);
+                }
+            }
             if ($user->exists && ($wasSuper || $user->isDirty('is_super_admin')) && $actor !== null
                 && ! $actor->is_super_admin) {
                 abort(403);

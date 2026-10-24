@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Enums\Role;
 use App\Models\PayrollComponentEntry;
 use App\Models\PayrollPriorWithholding;
 use App\Models\User;
@@ -42,23 +41,21 @@ class PayrollCalculator
         $through = $start->format('Y-m-t');
 
         $profile = $user->employeeProfile;
-        if (! $profile || ! $profile->payroll_active || $profile->base_salary_minor === null) {
+        $salaryVersion = $profile?->salaryVersionFor($from);
+        if (! $profile || ! $profile->payroll_active || ! $salaryVersion || $salaryVersion->base_salary_minor === null) {
             throw new DomainException('Profil payroll belum aktif atau gaji pokok belum diisi.');
         }
-        $baseSalary = $profile->base_salary_minor;
+        $baseSalary = $salaryVersion->base_salary_minor;
         if (! is_int($baseSalary) || $baseSalary < 0) {
             throw new DomainException('Gaji pokok harus rupiah bulat dan tidak boleh negatif.');
         }
 
-        $salaryBasis = $profile->salary_basis ?? 'bulanan';
+        $salaryBasis = $salaryVersion->salary_basis;
         $dailyRate = null;
         $attendanceDays = null;
         if ($salaryBasis === 'harian') {
-            if ($user->role === Role::RIDER) {
-                throw new DomainException('Gaji Runner tetap bulanan ya.');
-            }
             $workingDays = max(1, (int) config('soul.attendance_working_days', 26));
-            $dailyRate = $profile->daily_rate_minor ?? (intdiv($baseSalary, $workingDays)
+            $dailyRate = $salaryVersion->daily_rate_minor ?? (intdiv($baseSalary, $workingDays)
                 + (int) (($baseSalary % $workingDays) * 2 >= $workingDays));
             if (! is_int($dailyRate) || $dailyRate < 0) {
                 throw new DomainException('Tarif harian harus rupiah bulat dan tidak boleh negatif.');
@@ -80,19 +77,17 @@ class PayrollCalculator
         $bonusCups = 0;
         $bonus = 0;
         $bonusThreshold = null;
-        if ($user->role === Role::STAFF) {
-            $bonusCups = (int) DB::table('rider_closings as closings')
-                ->join('rider_closing_lines as lines', 'lines.rider_closing_id', '=', 'closings.id')
-                ->join('products', 'products.id', '=', 'lines.product_id')
-                ->where('closings.rider_id', $user->id)
-                ->whereBetween('closings.operating_date', [$from, $through])
-                ->where('products.unit', 'cup')->sum('lines.qty_sold');
-            $bonusRule = DB::table('payroll_monthly_bonus_rules')
-                ->where('min_cups', '<=', $bonusCups)->orderByDesc('min_cups')->first();
-            if ($bonusRule) {
-                $bonus = (int) $bonusRule->amount_minor;
-                $bonusThreshold = (int) $bonusRule->min_cups;
-            }
+        $bonusCups = (int) DB::table('rider_closings as closings')
+            ->join('rider_closing_lines as lines', 'lines.rider_closing_id', '=', 'closings.id')
+            ->join('products', 'products.id', '=', 'lines.product_id')
+            ->where('closings.rider_id', $user->id)
+            ->whereBetween('closings.operating_date', [$from, $through])
+            ->where('products.unit', 'cup')->sum('lines.qty_sold');
+        $bonusRule = DB::table('payroll_monthly_bonus_rules')
+            ->where('min_cups', '<=', $bonusCups)->orderByDesc('min_cups')->first();
+        if ($bonusRule) {
+            $bonus = (int) $bonusRule->amount_minor;
+            $bonusThreshold = (int) $bonusRule->min_cups;
         }
         $balanceIncentive = $this->balances->payableBalance($user->id, $through);
         $legacyIncentive = $this->balances->legacyAmount($user->id, $from, $through);
@@ -174,7 +169,8 @@ class PayrollCalculator
 
         return [
             'period' => $period, 'user_id' => $user->id, 'base_salary_minor' => $baseSalary,
-            'salary_basis' => $salaryBasis, 'daily_rate_minor' => $dailyRate,
+            'salary_basis' => $salaryBasis, 'salary_effective_from' => $salaryVersion->effective_from->format('Y-m-d'),
+            'daily_rate_minor' => $dailyRate,
             'attendance_days' => $attendanceDays, 'monthly_bonus_minor' => $bonus,
             'monthly_bonus_cups' => $bonusCups, 'monthly_bonus_min_cups' => $bonusThreshold,
             'rider_cups' => $cups, 'rider_incentive_minor' => $incentive,

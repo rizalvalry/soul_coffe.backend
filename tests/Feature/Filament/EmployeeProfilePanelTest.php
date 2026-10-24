@@ -11,9 +11,11 @@ use App\Filament\Resources\EmployeeProfiles\Pages\ListEmployeeProfiles;
 use App\Filament\Resources\Users\Pages\CreateUser;
 use App\Models\AuditLog;
 use App\Models\EmployeeProfile;
+use App\Models\PayrollRun;
 use App\Models\User;
 use App\Services\Access\PermissionMatrix;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -90,8 +92,7 @@ class EmployeeProfilePanelTest extends TestCase
 
         $this->assertSame(8100000, $profile->fresh()->base_salary_minor);
         $this->assertSame('987654321098765', $profile->fresh()->npwp);
-        $audit = AuditLog::query()->where('subject_type', EmployeeProfile::class)
-            ->where('subject_id', $profile->id)->where('action', 'employee_payroll_updated')->latest('id')->firstOrFail();
+        $audit = AuditLog::query()->where('action', 'employee_salary_version_saved')->latest('id')->firstOrFail();
         $this->assertSame($manager->id, $audit->actor_id);
         $this->assertSame('[redacted]', $audit->before_json['base_salary_minor']);
         $this->assertSame('[redacted]', $audit->after_json['base_salary_minor']);
@@ -99,7 +100,6 @@ class EmployeeProfilePanelTest extends TestCase
         $this->assertStringNotContainsString('987654321098765', json_encode($audit->after_json));
         $this->assertSame(7800000, $audit->displayChanges('before')['base_salary_minor']);
         $this->assertSame(8100000, $audit->displayChanges('after')['base_salary_minor']);
-
         PermissionMatrix::set(Role::MANAGEMENT, PanelModule::AUDIT_LOGS, ['view']);
         $this->get(ViewAuditLog::getUrl(['record' => $audit]))->assertSuccessful()
             ->assertSee('7800000')->assertSee('8100000');
@@ -124,6 +124,130 @@ class EmployeeProfilePanelTest extends TestCase
         $this->assertSame('harian', $profile->fresh()->salary_basis);
         $this->assertSame(38462, $profile->fresh()->daily_rate_minor);
         $this->assertNotSame('38462', DB::table('employee_profiles')->where('id', $profile->id)->value('daily_rate_minor'));
+    }
+
+    public function test_daily_basis_waits_for_salary_before_defaulting_the_rate(): void
+    {
+        $profile = $this->profile();
+        $profile->update(['base_salary_minor' => null]);
+        $this->actingAs(User::factory()->role(Role::MANAGEMENT)->create());
+
+        Livewire::test(EditEmployeeProfile::class, ['record' => $profile->id])
+            ->fillForm(['salary_basis' => 'harian'])
+            ->call('save')->assertHasNoFormErrors();
+        $this->assertNull($profile->fresh()->daily_rate_minor);
+
+        Livewire::test(EditEmployeeProfile::class, ['record' => $profile->id])
+            ->fillForm(['base_salary_minor' => 1000000])
+            ->call('save')->assertHasNoFormErrors();
+        $this->assertSame(38462, $profile->fresh()->daily_rate_minor);
+    }
+
+    public function test_salary_change_defaults_to_next_month_and_versions_are_encrypted(): void
+    {
+        $this->travelTo(Carbon::parse('2026-10-24 12:00:00'));
+        $profile = $this->profile();
+        $this->actingAs(User::factory()->role(Role::MANAGEMENT)->create());
+
+        Livewire::test(EditEmployeeProfile::class, ['record' => $profile->id])
+            ->fillForm(['base_salary_minor' => 1000000, 'salary_basis' => 'harian'])
+            ->call('save')->assertHasNoFormErrors();
+
+        $this->assertSame('bulanan', $profile->salaryVersionFor('2026-10-01')->salary_basis);
+        $november = $profile->salaryVersionFor('2026-11-01');
+        $this->assertSame('harian', $november->salary_basis);
+        $this->assertSame(1000000, $november->base_salary_minor);
+        $this->assertSame(38462, $november->daily_rate_minor);
+        $raw = DB::table('employee_salary_versions')->where('id', $november->id)->first();
+        $this->assertNotSame('1000000', $raw->base_salary_minor);
+        $this->assertNotSame('38462', $raw->daily_rate_minor);
+    }
+
+    public function test_salary_change_rejects_past_month_and_approved_current_month(): void
+    {
+        $this->travelTo(Carbon::parse('2026-10-24 12:00:00'));
+        $profile = $this->profile();
+        $manager = User::factory()->role(Role::MANAGEMENT)->create();
+        $this->actingAs($manager);
+
+        Livewire::test(EditEmployeeProfile::class, ['record' => $profile->id])
+            ->fillForm(['salary_effective_month' => '2026-09'])
+            ->fillForm(['base_salary_minor' => 1000000])
+            ->call('save')->assertHasFormErrors(['salary_effective_month']);
+        $this->assertSame(7800000, $profile->fresh()->base_salary_minor);
+
+        PayrollRun::query()->create([
+            'period_start' => '2026-10-01', 'status' => 'APPROVED', 'created_by' => $manager->id,
+        ]);
+        Livewire::test(EditEmployeeProfile::class, ['record' => $profile->id])
+            ->fillForm(['salary_effective_month' => '2026-10'])
+            ->fillForm(['base_salary_minor' => 1000000])
+            ->call('save')->assertHasFormErrors(['salary_effective_month']);
+        $this->assertSame(7800000, $profile->fresh()->base_salary_minor);
+    }
+
+    public function test_salary_change_can_start_current_month_before_approval(): void
+    {
+        $this->travelTo(Carbon::parse('2026-10-24 12:00:00'));
+        $profile = $this->profile();
+        $this->actingAs(User::factory()->role(Role::MANAGEMENT)->create());
+
+        Livewire::test(EditEmployeeProfile::class, ['record' => $profile->id])
+            ->fillForm(['salary_effective_month' => '2026-10'])
+            ->fillForm(['base_salary_minor' => 1000000])
+            ->call('save')->assertHasNoFormErrors();
+
+        $this->assertSame(1000000, $profile->salaryVersionFor('2026-10-01')->base_salary_minor);
+        $this->assertSame(1, $profile->salaryVersions()->count());
+    }
+
+    public function test_editing_october_after_scheduling_november_uses_october_values(): void
+    {
+        $this->travelTo(Carbon::parse('2026-10-24 12:00:00'));
+        $profile = $this->profile();
+        $this->actingAs(User::factory()->role(Role::MANAGEMENT)->create());
+        Livewire::test(EditEmployeeProfile::class, ['record' => $profile->id])
+            ->fillForm(['salary_effective_month' => '2026-10', 'base_salary_minor' => 1000000,
+                'salary_basis' => 'harian', 'daily_rate_minor' => 38462])
+            ->call('save')->assertHasNoFormErrors();
+        Livewire::test(EditEmployeeProfile::class, ['record' => $profile->id])
+            ->fillForm(['salary_effective_month' => '2026-11', 'base_salary_minor' => 500000,
+                'salary_basis' => 'bulanan'])
+            ->call('save')->assertHasNoFormErrors();
+
+        Livewire::test(EditEmployeeProfile::class, ['record' => $profile->id])
+            ->fillForm(['salary_effective_month' => '2026-10'])
+            ->fillForm(['daily_rate_minor' => 40000])
+            ->call('save')->assertHasNoFormErrors();
+
+        $october = $profile->salaryVersionFor('2026-10-01');
+        $this->assertSame('harian', $october->salary_basis);
+        $this->assertSame(1000000, $october->base_salary_minor);
+        $this->assertSame(40000, $october->daily_rate_minor);
+        $this->assertSame(500000, $profile->salaryVersionFor('2026-11-01')->base_salary_minor);
+        $this->assertSame(500000, $profile->fresh()->base_salary_minor);
+    }
+
+    public function test_effective_month_save_writes_version_even_when_values_match_latest_profile(): void
+    {
+        $this->travelTo(Carbon::parse('2026-10-24 12:00:00'));
+        $profile = $this->profile();
+        $this->actingAs(User::factory()->role(Role::MANAGEMENT)->create());
+        Livewire::test(EditEmployeeProfile::class, ['record' => $profile->id])
+            ->fillForm(['salary_effective_month' => '2026-11', 'base_salary_minor' => 500000])
+            ->call('save')->assertHasNoFormErrors();
+
+        Livewire::test(EditEmployeeProfile::class, ['record' => $profile->id])
+            ->fillForm(['salary_effective_month' => '2026-10'])
+            ->fillForm(['base_salary_minor' => 500000])
+            ->call('save')->assertHasNoFormErrors();
+
+        $this->assertSame(500000, $profile->salaryVersionFor('2026-10-01')->base_salary_minor);
+        $this->assertSame(500000, $profile->salaryVersionFor('2026-11-01')->base_salary_minor);
+        $audit = AuditLog::query()->where('action', 'employee_salary_version_saved')->latest('id')->firstOrFail();
+        $this->assertSame('[redacted]', $audit->before_json['base_salary_minor']);
+        $this->assertSame(7800000, $audit->displayChanges('before')['base_salary_minor']);
+        $this->assertSame(500000, $audit->displayChanges('after')['base_salary_minor']);
     }
 
     public function test_administrator_can_view_and_edit_payroll_with_its_own_audit_role(): void

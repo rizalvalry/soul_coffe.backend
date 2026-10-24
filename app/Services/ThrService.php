@@ -162,13 +162,14 @@ class ThrService
         $period = $run->planned_payment_date->format('Y-m');
         foreach (User::query()->with('employeeProfile')->whereIn('id', $userIds)->orderBy('id')->get() as $user) {
             $profile = $user->employeeProfile;
-            if (! $profile?->payroll_active || ! is_int($profile->base_salary_minor) || ! $user->joined_at) {
+            $salaryVersion = $profile?->salaryVersionFor($period.'-01');
+            if (! $profile?->payroll_active || ! is_int($salaryVersion?->base_salary_minor) || ! $user->joined_at) {
                 throw ValidationException::withMessages(['user_ids' => 'Profil, gaji, atau tanggal masuk '.$user->name.' belum siap untuk THR ya.']);
             }
             $joined = Carbon::parse($user->joined_at)->startOfDay();
             $holiday = $run->holiday_date->copy()->startOfDay();
             $months = $joined->gt($holiday) ? 0 : (int) floor($joined->diffInMonths($holiday));
-            $base = $profile->base_salary_minor;
+            $base = $salaryVersion->base_salary_minor;
             if ($componentIds !== []) {
                 $entries = PayrollComponentEntry::query()->where('user_id', $user->id)
                     ->whereDate('period_start', $period.'-01')
@@ -195,6 +196,7 @@ class ThrService
                 'pph21_minor' => $tax, 'net_minor' => $gross - $tax,
                 'ptkp_status' => $profile->ptkp_status,
                 'period' => $period, 'setting_version_id' => $setting?->id,
+                'salary_effective_from' => $salaryVersion->effective_from->format('Y-m-d'),
             ]]);
         }
     }
@@ -219,7 +221,7 @@ class ThrService
                 ->whereHas('employeeProfile', fn ($query) => $query->where('payroll_active', true))
                 ->whereDate('joined_at', '<=', Carbon::parse($month.'-01')->endOfMonth())->get();
             foreach ($users as $user) {
-                $base = (int) $user->employeeProfile->base_salary_minor;
+                $base = (int) $user->employeeProfile->salaryVersionFor($month.'-01')?->base_salary_minor;
                 foreach (PayrollComponentEntry::query()->where('user_id', $user->id)
                     ->whereDate('period_start', $month.'-01')
                     ->whereIn('component_type_id', $setting->component_type_ids)->get() as $entry) {
