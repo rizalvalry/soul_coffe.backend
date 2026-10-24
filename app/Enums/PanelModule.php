@@ -43,6 +43,7 @@ enum PanelModule: string
     case ATTENDANCE = 'attendance';
     case ABSEN_EXEMPTIONS = 'absen_exemptions';
     case REPORTS = 'reports';
+    case FINANCE_DAILY_REPORT = 'finance_daily_report';
     case AUDIT_LOGS = 'audit_logs';
     case PIN_RESET_REQUESTS = 'pin_reset_requests';
     case AI_SETTINGS = 'ai_settings';
@@ -117,6 +118,7 @@ enum PanelModule: string
             self::ATTENDANCE => 'Laporan Absensi',
             self::ABSEN_EXEMPTIONS => 'Izin Absen Luar Lokasi',
             self::REPORTS => 'Laporan & Ekspor',
+            self::FINANCE_DAILY_REPORT => 'Laporan Harian Finance',
             self::AUDIT_LOGS => 'Audit Trail',
             self::PIN_RESET_REQUESTS => 'Permintaan Reset PIN',
             self::AI_SETTINGS => 'Pengaturan AI',
@@ -188,7 +190,7 @@ enum PanelModule: string
             self::USERS, self::DEVICES, self::CUSTOMERS, self::EMPLOYEES, self::ROLE_MATRIX, self::AUDIT_LOGS,
             self::PIN_RESET_REQUESTS, self::AI_SETTINGS, self::LOCATION_SETTINGS, self::MENU_NAMING,
             self::NEWS_FEED => 'Pengguna & Pengaturan',
-            self::REPORTS, self::MANAGEMENT_REPORTS, self::PAYROLL, self::EMPLOYEE_ADVANCES,
+            self::REPORTS, self::FINANCE_DAILY_REPORT, self::MANAGEMENT_REPORTS, self::PAYROLL, self::EMPLOYEE_ADVANCES,
             self::PAYROLL_PRIOR_WITHHOLDING, self::TAX_SETTINGS, self::ACCOUNTING_PERIODS,
             self::OPENING_BALANCES, self::CHART_OF_ACCOUNTS, self::JOURNALS,
             self::JOURNAL_REVERSALS, self::GENERAL_LEDGER, self::CASH,

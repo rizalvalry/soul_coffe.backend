@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Carts\Schemas;
 
+use App\Models\Cart;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -23,6 +24,12 @@ class CartForm
                 TextInput::make('plate')
                     ->label('Plat')
                     ->maxLength(255),
+
+                Select::make('bike_type')
+                    ->label('Jenis Coffee Bike')
+                    ->options(array_combine(Cart::BIKE_TYPES, Cart::BIKE_TYPES))
+                    ->searchable()
+                    ->native(false),
 
                 Select::make('status')
                     ->label('Status Unit')
