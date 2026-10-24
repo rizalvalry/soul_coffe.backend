@@ -10,6 +10,7 @@ use App\Models\CentralKitchen;
 use App\Models\DirectSale;
 use App\Models\JournalEntry;
 use App\Models\Location;
+use App\Models\LocationPriceVersion;
 use App\Models\Product;
 use App\Models\ProductPriceVersion;
 use App\Models\Sale;
@@ -19,12 +20,14 @@ use App\Models\StockLedger;
 use App\Models\User;
 use App\Services\DirectSaleService;
 use App\Services\Reporting\DashboardMetricsService;
+use App\Services\Reporting\ManagementReportService;
 use App\Services\Reporting\SalesActivityService;
 use App\Services\SettlementService;
 use App\Services\StockLedgerService;
 use App\Services\TaxService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -360,6 +363,71 @@ class DirectSaleTest extends TestCase
     }
 
     // ── Price pinning ────────────────────────────────────────────────────────
+
+    public function test_buyer_custom_price_and_reason_are_pinned_and_used_by_margin_report(): void
+    {
+        $this->stockCart($this->assignedCart, 2);
+        $sale = $this->service()->record($this->finance, $this->assignedCart->id, [[
+            'product_id' => $this->coffee->id, 'qty' => 2,
+            'unit_price_minor' => 9000, 'price_reason' => 'Pesanan Polri',
+        ]], buyerName: 'Polri');
+        $this->assertSame('Polri', $sale->buyer_name);
+        $this->assertSame(18000, $sale->total_amount_minor);
+        $this->assertSame(9000, $sale->lines->first()->unit_price_minor);
+        $this->assertSame(10000, $sale->lines->first()->unit_cost_minor);
+        $this->assertSame('Pesanan Polri', $sale->lines->first()->price_reason);
+        $report = app(ManagementReportService::class)->build(today(), today());
+        $this->assertSame(18000, $report['sections']['margin_produk']['rows'][0][1]);
+        $this->assertSame(20000, $report['sections']['margin_produk']['rows'][0][2]);
+        $this->assertSame(-2000, $report['sections']['margin_produk']['rows'][0][3]);
+    }
+
+    public function test_different_custom_price_requires_reason_and_rejects_decimals(): void
+    {
+        $this->stockCart($this->idleCart, 2);
+        try {
+            $this->service()->record($this->finance, $this->idleCart->id, [[
+                'product_id' => $this->coffee->id, 'qty' => 1, 'unit_price_minor' => 9000,
+            ]]);
+            $this->fail('Missing reason should be rejected.');
+        } catch (ValidationException $e) {
+            $this->assertSame(422, $e->status);
+        }
+        $this->assertDatabaseCount('direct_sales', 0);
+        $this->expectException(ValidationException::class);
+        $this->service()->record($this->finance, $this->idleCart->id, [[
+            'product_id' => $this->coffee->id, 'qty' => 1,
+            'unit_price_minor' => '9000.5', 'price_reason' => 'Pesanan',
+        ]]);
+    }
+
+    public function test_zero_custom_price_is_valid_with_a_reason(): void
+    {
+        $this->stockCart($this->idleCart, 1);
+        $sale = $this->service()->record($this->finance, $this->idleCart->id, [[
+            'product_id' => $this->coffee->id, 'qty' => 1,
+            'unit_price_minor' => 0, 'price_reason' => 'Sampel pesanan',
+        ]]);
+        $this->assertSame(0, $sale->total_amount_minor);
+        $this->assertSame(0, $sale->lines->first()->unit_price_minor);
+    }
+
+    public function test_direct_sale_uses_product_price_regardless_of_cart_location(): void
+    {
+        $this->stockCart($this->assignedCart, 1);
+        $this->stockCart($this->idleCart, 1);
+        $locationId = StaffAssignment::query()->where('cart_id', $this->assignedCart->id)->value('location_id');
+        LocationPriceVersion::create([
+            'product_id' => $this->coffee->id, 'location_id' => $locationId,
+            'sell_price_minor' => 15000, 'effective_from' => now()->subMinute(),
+        ]);
+        $assigned = $this->service()->record($this->finance, $this->assignedCart->id,
+            [['product_id' => $this->coffee->id, 'qty' => 1]]);
+        $idle = $this->service()->record($this->finance, $this->idleCart->id,
+            [['product_id' => $this->coffee->id, 'qty' => 1]]);
+        $this->assertSame(20000, $assigned->total_amount_minor);
+        $this->assertSame(20000, $idle->total_amount_minor);
+    }
 
     public function test_price_is_pinned_from_the_current_price_version_at_record_time(): void
     {

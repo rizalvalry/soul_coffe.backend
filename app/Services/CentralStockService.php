@@ -488,6 +488,7 @@ class CentralStockService
             return [$same, []];
         }
 
+        $previousCartAssignment = $active->first(fn (StaffAssignment $row): bool => (int) $row->cart_id === (int) $cart->id);
         $displacedStaffIds = [];
         foreach ($active as $old) {
             $old->update(['superseded_at' => now()]);
@@ -512,6 +513,19 @@ class CentralStockService
             'source' => 'hand_to_cart',
             'note' => $note,
         ]);
+
+        if ($previousCartAssignment && (int) $previousCartAssignment->location_id !== (int) $resolvedLocationId) {
+            $firstLocationId = StaffAssignment::query()->where('cart_id', $cart->id)
+                ->whereDate('operating_date', $dateString)->where('source', 'hand_to_cart')
+                ->orderBy('id')->value('location_id');
+            $this->audit($barista, 'central_stock.location_changed', $assignment->id, [
+                'cart_id' => $cart->id,
+                'operating_date' => $dateString,
+                'old_location_id' => $previousCartAssignment->location_id,
+                'new_location_id' => $resolvedLocationId,
+                'price_location_id' => $firstLocationId,
+            ]);
+        }
 
         if ($setupMissing) {
             $recipientIds = array_values(array_unique(array_merge(

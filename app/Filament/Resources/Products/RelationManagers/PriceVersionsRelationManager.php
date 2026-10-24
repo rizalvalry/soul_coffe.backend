@@ -5,14 +5,16 @@ namespace App\Filament\Resources\Products\RelationManagers;
 use App\Enums\PanelModule;
 use App\Services\Access\PermissionMatrix;
 use Filament\Actions\CreateAction;
-use Filament\Forms\Components\DateTimePicker;
+use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Auth\Access\Response;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Price history for a product.
@@ -52,16 +54,14 @@ class PriceVersionsRelationManager extends RelationManager
                     ->prefix('Rp')
                     ->step(1),
 
-                DateTimePicker::make('effective_from')
+                DatePicker::make('effective_from')
                     ->label('Berlaku Mulai')
-                    // Seconds are kept deliberately. Hiding them floors the value to :00, so a
-                    // correction entered in the same minute as the version it replaces lands
-                    // *before* it and silently never takes effect — the row is written, the
-                    // price does not change, and nothing reports an error.
-                    ->seconds()
-                    ->default(now())
+                    ->minDate(fn (): string => $this->getOwnerRecord()->priceVersions()->exists()
+                        ? today()->addDay()->toDateString() : today()->toDateString())
+                    ->default(fn (): string => $this->getOwnerRecord()->priceVersions()->exists()
+                        ? today()->addDay()->toDateString() : today()->toDateString())
                     ->required()
-                    ->helperText('Harga yang dipakai sistem adalah versi terbaru yang waktunya sudah lewat.'),
+                    ->helperText('Harga pertama boleh mulai hari ini. Perubahan berikutnya mulai besok ya.'),
             ]);
     }
 
@@ -89,7 +89,20 @@ class PriceVersionsRelationManager extends RelationManager
             ->headerActions([
                 CreateAction::make()->label('Tambah versi harga')
                     ->authorize(fn (): bool => self::canCreatePriceVersion())
-                    ->visible(fn (): bool => self::canCreatePriceVersion()),
+                    ->visible(fn (): bool => self::canCreatePriceVersion())
+                    ->mutateDataUsing(function (array $data): array {
+                        $firstPrice = ! $this->getOwnerRecord()->priceVersions()->exists();
+                        $earliest = $firstPrice ? today()->toDateString() : today()->addDay()->toDateString();
+                        if (Carbon::parse($data['effective_from'])->toDateString() < $earliest) {
+                            throw ValidationException::withMessages([
+                                'effective_from' => $firstPrice
+                                    ? 'Harga pertama mulai paling cepat hari ini ya.'
+                                    : 'Perubahan harga mulai paling cepat besok ya.',
+                            ]);
+                        }
+
+                        return $data;
+                    }),
             ])
             ->recordActions([])
             ->toolbarActions([]);

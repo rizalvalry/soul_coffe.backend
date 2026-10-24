@@ -24,6 +24,7 @@ class DirectSale extends Model
         'total_amount_minor',
         'payment_method',
         'note',
+        'buyer_name',
         'voided_at',
         'voided_by',
         'void_reason',

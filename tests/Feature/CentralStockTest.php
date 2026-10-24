@@ -3,16 +3,21 @@
 namespace Tests\Feature;
 
 use App\Enums\Role;
+use App\Models\AuditLog;
 use App\Models\Cart;
 use App\Models\DailyCartAllowance;
 use App\Models\Location;
+use App\Models\LocationPriceVersion;
 use App\Models\Media;
 use App\Models\OutboxEvent;
 use App\Models\Product;
+use App\Models\ProductPriceVersion;
 use App\Models\StaffAssignment;
 use App\Models\User;
 use App\Services\AttendanceService;
 use App\Services\CentralStockService;
+use App\Services\ProductSellPriceResolver;
+use App\Services\RiderLocationSetupService;
 use App\Services\StockLedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -228,6 +233,38 @@ class CentralStockTest extends TestCase
         $this->assertSame($first->id, $second->id);
         $this->assertSame(1, StaffAssignment::query()->where('cart_id', $this->cart->id)->count());
         $this->assertSame(1, OutboxEvent::query()->where('name', 'CartAssignmentChanged')->count());
+    }
+
+    public function test_midday_location_move_is_audited_and_keeps_first_cart_price_location(): void
+    {
+        $firstLocationId = $this->clearAssignmentsKeepingLocation();
+        $otherLocation = Location::create(['name' => 'Lokasi Pindah', 'lat' => -6.2, 'lng' => 106.9]);
+        $administrator = User::query()->where('role', Role::ADMINISTRATOR)->firstOrFail();
+        $setups = app(RiderLocationSetupService::class);
+        $setups->save($administrator, $this->staff, $firstLocationId, 'selling_location');
+        $first = $this->service->handToCart($this->barista, $this->cart, $this->staff, [$this->product->id => 1]);
+        $setups->save($administrator, $this->staff, $otherLocation->id, 'selling_location');
+        $later = $this->service->handToCart($this->barista, $this->cart, $this->staff, [$this->product->id => 1]);
+
+        $this->assertNotSame($first->id, $later->id);
+        $this->assertSame($otherLocation->id, $later->location_id);
+        $this->assertEquals([
+            'cart_id' => $this->cart->id,
+            'operating_date' => today()->toDateString(),
+            'old_location_id' => $firstLocationId,
+            'new_location_id' => $otherLocation->id,
+            'price_location_id' => $firstLocationId,
+        ], AuditLog::query()->where('action', 'central_stock.location_changed')->sole()->after_json);
+        LocationPriceVersion::create([
+            'product_id' => $this->product->id, 'location_id' => $firstLocationId,
+            'sell_price_minor' => 15000, 'effective_from' => today(),
+        ]);
+        ProductPriceVersion::create([
+            'product_id' => $this->product->id, 'cost_price_minor' => 8000,
+            'sell_price_minor' => 12000, 'effective_from' => today()->subDay(),
+        ]);
+        $this->assertSame(15000, app(ProductSellPriceResolver::class)
+            ->priceForCart($this->product, $this->cart->id, today()));
     }
 
     public function test_a_new_handover_replaces_the_riders_previous_cart_without_erasing_history(): void

@@ -86,6 +86,11 @@ class Product extends Model
         return $this->hasMany(ProductPriceVersion::class, 'product_id');
     }
 
+    public function locationPriceVersions(): HasMany
+    {
+        return $this->hasMany(LocationPriceVersion::class, 'product_id');
+    }
+
     public function dailyTargets(): HasMany
     {
         return $this->hasMany(DailyTarget::class, 'product_id');
