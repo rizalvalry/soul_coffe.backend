@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Carts\Tables;
 
+use App\Models\Cart;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\IconColumn;
@@ -22,6 +23,10 @@ class CartsTable
                     ->copyable(),
                 TextColumn::make('plate')
                     ->label('Plat')
+                    ->searchable()
+                    ->placeholder('-'),
+                TextColumn::make('bike_type')
+                    ->label('Jenis Coffee Bike')
                     ->searchable()
                     ->placeholder('-'),
                 TextColumn::make('status')
@@ -58,6 +63,9 @@ class CartsTable
                         'maintenance' => 'Perbaikan',
                         'retired' => 'Tidak dipakai',
                     ]),
+                SelectFilter::make('bike_type')
+                    ->label('Jenis Coffee Bike')
+                    ->options(array_combine(Cart::BIKE_TYPES, Cart::BIKE_TYPES)),
                 SelectFilter::make('kitchen')
                     ->label('Dapur')
                     ->relationship('kitchen', 'name'),
